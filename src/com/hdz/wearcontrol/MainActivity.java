@@ -87,6 +87,7 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
     private long lastTapAt = 0;
     private boolean disclaimerOk = false;
     private boolean disclaimerDialogUp = false;
+    private Runnable reconnector;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -141,7 +142,7 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
                     return;
                 }
                 Toast.makeText(MainActivity.this, R.string.spatial_toast, Toast.LENGTH_SHORT).show();
-                if (client != null && client.isConnected()) {
+                if (client instanceof VivoGaiaClient && client.isConnected()) {
                     ((VivoGaiaClient) client).setSpatial(isChecked);
                 } else {
                     Toast.makeText(MainActivity.this, "未连接", Toast.LENGTH_SHORT).show();
@@ -158,7 +159,9 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
                 deepxMode = (deepxMode + 1) % DEEPX_NAMES.length;
                 deepxSetAt = SystemClock.elapsedRealtime();
                 btnDeepx.setText(DEEPX_NAMES[deepxMode]);
-                ((VivoGaiaClient) client).setDeepX(DEEPX_MODES[deepxMode]);
+                if (client instanceof VivoGaiaClient) {
+                    ((VivoGaiaClient) client).setDeepX(DEEPX_MODES[deepxMode]);
+                }
             }
         });
 
@@ -195,8 +198,11 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
                     if (client != null && client.isConnected()) {
                         client.queryBattery();
                         client.queryNoise();
-                        ((VivoGaiaClient) client).querySpatial();
-                        ((VivoGaiaClient) client).queryDeepX();
+                        // 空间音频/DeepX 是 vivo 专属, 其他品牌直接强转会 ClassCastException 崩溃
+                        if (client instanceof VivoGaiaClient) {
+                            ((VivoGaiaClient) client).querySpatial();
+                            ((VivoGaiaClient) client).queryDeepX();
+                        }
                     } else if (client == null
                             || SystemClock.elapsedRealtime() - connectStartAt > 12000) {
                         // 没有进行中的连接尝试才重连,避免打断慢连接
@@ -213,8 +219,9 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
     @Override
     protected void onPause() {
         super.onPause();
-        // 手表应用切后台就断开,省电
+        // 手表应用切后台就断开,省电;挂着的重连任务一并取消,别在后台偷偷连
         ui.removeCallbacks(refresher);
+        if (reconnector != null) ui.removeCallbacks(reconnector);
         if (client != null) {
             client.disconnect();
             client = null;
@@ -232,7 +239,7 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
                         getSharedPreferences("cfg", MODE_PRIVATE).edit()
                                 .putBoolean("spatial_ack", true).apply();
                         spatialSetAt = SystemClock.elapsedRealtime();
-                        if (client != null && client.isConnected()) {
+                        if (client instanceof VivoGaiaClient && client.isConnected()) {
                             ((VivoGaiaClient) client).setSpatial(true);
                         }
                     }
@@ -399,9 +406,10 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
                 status.setTextColor(Color.WHITE);
                 status.setText("已连接");
                 sub.setTextColor(COL_LABEL_GRAY);
-                sub.setText(deviceName);
-                // 实验功能仅 vivo 有, 其他品牌藏掉开发者入口
                 boolean vivo = client instanceof VivoGaiaClient;
+                // 华为/小米是实验性支持,未在任何真机上验证过,明说
+                sub.setText(deviceName + (vivo ? "" : "（实验性支持·未验证）"));
+                // 实验功能仅 vivo 有, 其他品牌藏掉开发者入口
                 devHint.setVisibility(vivo ? View.VISIBLE : View.GONE);
                 if (!vivo) devSection.setVisibility(View.GONE);
             }
@@ -482,16 +490,19 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
                 sub.setText("");
             }
         });
-        // 耳机开关机/走远断连后,3 秒后自动试着连回来
+        // 耳机开关机/走远断连后,3 秒后自动试着连回来(切后台会被取消)
         if (!isFinishing() && !isDestroyed()) {
-            ui.postDelayed(new Runnable() {
-                @Override public void run() {
-                    if (!isFinishing() && !isDestroyed()
-                            && (client == null || !client.isConnected())) {
-                        tryConnect();
+            if (reconnector == null) {
+                reconnector = new Runnable() {
+                    @Override public void run() {
+                        if (!isFinishing() && !isDestroyed()
+                                && (client == null || !client.isConnected())) {
+                            tryConnect();
+                        }
                     }
-                }
-            }, 3000);
+                };
+            }
+            ui.postDelayed(reconnector, 3000);
         }
     }
 

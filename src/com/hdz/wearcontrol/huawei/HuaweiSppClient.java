@@ -64,8 +64,13 @@ public class HuaweiSppClient implements TwsClient {
                     out = socket.getOutputStream();
                 } catch (Exception e) {
                     safeClose();
+                    if (closing) return; // 已被新连接替代,不再打扰 UI
                     for (Listener l : listeners)
                         l.onError("连接失败: " + e.getMessage() + "\n(耳机需先与手表配对)");
+                    return;
+                }
+                if (closing) {
+                    safeClose();
                     return;
                 }
                 for (Listener l : listeners) l.onConnected(device.getName());
@@ -146,9 +151,13 @@ public class HuaweiSppClient implements TwsClient {
 
     /** CRC16/XMODEM: poly=0x1021, init=0, 无反射, 无最终 XOR */
     static int crc16Xmodem(byte[] data, int len) {
+        return crc16Xmodem(data, 0, len);
+    }
+
+    static int crc16Xmodem(byte[] data, int off, int len) {
         int crc = 0;
         for (int i = 0; i < len; i++) {
-            crc ^= (data[i] & 0xFF) << 8;
+            crc ^= (data[off + i] & 0xFF) << 8;
             for (int b = 0; b < 8; b++) {
                 if ((crc & 0x8000) != 0) crc = ((crc << 1) ^ 0x1021) & 0xFFFF;
                 else crc = (crc << 1) & 0xFFFF;
@@ -157,29 +166,59 @@ public class HuaweiSppClient implements TwsClient {
         return crc;
     }
 
-    // ---- 接收: ASCII AT 行 + 二进制帧混合流 ----
+    // ---- 接收: 二进制 SPP 帧 + ASCII AT 行混合流 ----
+    // 注意 0x5A 是可打印字符 'Z', 不能先按字符行解析, 必须先做字节级帧提取
+
+    private static final int FRAME_LEN = 11; // 5A 00 06 00 group cmd p1 p2 value crc(2B)
 
     private void startReader() {
         new Thread(new Runnable() {
             @Override public void run() {
                 try {
                     InputStream in = socket.getInputStream();
+                    java.io.ByteArrayOutputStream pending =
+                            new java.io.ByteArrayOutputStream();
                     StringBuilder ascii = new StringBuilder();
                     byte[] b = new byte[256];
                     while (!closing) {
                         int r = in.read(b);
                         if (r < 0) break;
-                        for (int i = 0; i < r; i++) {
-                            int c = b[i] & 0xFF;
-                            if (c == 0x0A) {
-                                handleLine(ascii.toString().trim());
-                                ascii.setLength(0);
-                            } else if (c >= 0x20 && c < 0x7F) {
-                                ascii.append((char) c);
-                                if (ascii.length() > 160) ascii.setLength(0); // 防二进制撑爆
+                        pending.write(b, 0, r);
+                        byte[] all = pending.toByteArray();
+                        pending.reset();
+                        int off = 0;
+                        while (off < all.length) {
+                            int head = findFrameHead(all, off);
+                            if (head < 0) {
+                                // 没有帧头: 尾部最多留 3 字节防截断, 其余按字符行解析
+                                int keep = Math.min(3, all.length - off);
+                                int asciiEnd = all.length - keep;
+                                for (int i = off; i < asciiEnd; i++) {
+                                    feedAscii(ascii, all[i] & 0xFF);
+                                }
+                                if (keep > 0) pending.write(all, all.length - keep, keep);
+                                break;
+                            }
+                            // 帧头前的杂字节按字符行解析
+                            for (int i = off; i < head; i++) {
+                                feedAscii(ascii, all[i] & 0xFF);
+                            }
+                            if (head + FRAME_LEN > all.length) { // 帧不完整, 等下一段
+                                pending.write(all, head, all.length - head);
+                                break;
+                            }
+                            int crc = ((all[head + 9] & 0xFF) << 8) | (all[head + 10] & 0xFF);
+                            if (crc == crc16Xmodem(all, head, 9)) {
+                                dispatchFrame(all, head);
+                                off = head + FRAME_LEN;
+                            } else {
+                                // CRC 对不上: 假帧头(正文里的 'Z'), 只跳过这 1 字节
+                                feedAscii(ascii, all[head] & 0xFF);
+                                off = head + 1;
                             }
                         }
                     }
+                    flushAscii(ascii);
                     if (!closing) for (Listener l : listeners) l.onDisconnected("连接已关闭");
                 } catch (IOException e) {
                     if (!closing) for (Listener l : listeners) l.onDisconnected("连接断开: " + e.getMessage());
@@ -187,6 +226,47 @@ public class HuaweiSppClient implements TwsClient {
                 safeClose();
             }
         }, "hw-reader").start();
+    }
+
+    private static int findFrameHead(byte[] b, int from) {
+        for (int i = from; i + 4 <= b.length; i++) {
+            if ((b[i] & 0xFF) == 0x5A && (b[i + 1] & 0xFF) == 0x00
+                    && (b[i + 2] & 0xFF) == 0x06 && (b[i + 3] & 0xFF) == 0x00) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private void feedAscii(StringBuilder ascii, int c) {
+        if (c == 0x0A) {
+            handleLine(ascii.toString().trim());
+            ascii.setLength(0);
+        } else if (c >= 0x20 && c < 0x7F) {
+            ascii.append((char) c);
+            if (ascii.length() > 160) ascii.setLength(0); // 防二进制撑爆
+        }
+    }
+
+    private void flushAscii(StringBuilder ascii) {
+        if (ascii.length() > 0) handleLine(ascii.toString().trim());
+    }
+
+    /** 二进制帧分发: 降噪组(0x2B)的应答回给 UI 高亮 */
+    private void dispatchFrame(byte[] b, int head) {
+        int group = b[head + 4] & 0xFF;
+        int cmd = b[head + 5] & 0xFF;
+        int value = b[head + 8] & 0xFF;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < FRAME_LEN; i++) sb.append(String.format("%02X ", b[head + i]));
+        Log.d("HwClient", "frame group=0x" + Integer.toHexString(group)
+                + " cmd=0x" + Integer.toHexString(cmd) + " value=" + value
+                + " [" + sb.toString().trim() + "]");
+        if (group == GROUP_ANC && cmd == CMD_ANC_SWITCH) {
+            for (Listener li : listeners) {
+                li.onNoiseMode(value == 0x01 ? MODE_ANC : MODE_OFF);
+            }
+        }
     }
 
     /** 解析 +HUAWEIBATTERY= 行: 首个数字为对数, 其后 count 对 (key, value) */

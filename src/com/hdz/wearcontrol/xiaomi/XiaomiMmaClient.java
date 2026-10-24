@@ -110,14 +110,35 @@ public class XiaomiMmaClient implements TwsClient {
                     out = socket.getOutputStream();
                 } catch (Exception e) {
                     safeClose();
+                    if (closing) return; // 已被新连接替代,不再打扰 UI
                     fireError("连接失败: " + e.getMessage());
+                    return;
+                }
+                if (closing) {
+                    safeClose();
                     return;
                 }
                 for (Listener l : listeners) l.onConnected(device.getName());
                 startAuth();
                 startReader();
+                startAuthTimeout();
             }
         }, "mma-connect").start();
+    }
+
+    /** 认证超时兜底: 6 秒没过认证就明说, 免得界面挂着"已连接"却永远没有数据 */
+    private void startAuthTimeout() {
+        new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    Thread.sleep(6000);
+                } catch (InterruptedException ignored) {
+                }
+                if (!closing && !authed) {
+                    fireError("认证超时: 该机型可能不支持(实验性支持·未验证)");
+                }
+            }
+        }, "mma-auth-timeout").start();
     }
 
     private static BluetoothSocket fallbackChannel(BluetoothDevice device, int channel)
@@ -249,9 +270,13 @@ public class XiaomiMmaClient implements TwsClient {
                             // 找帧头
                             int head = findHeader(buf, off, bufLen);
                             if (head < 0) {
-                                bufLen = Math.min(bufLen, 2); // 留 2 字节防帧头截断
-                                if (bufLen > 0)
-                                    System.arraycopy(buf, off, buf, 0, bufLen);
+                                // 没有帧头: 只留末尾 2 字节防帧头被截断, 其余丢弃
+                                // (必须拷贝 buf[bufLen-keep..], 之前的写法从 off 拷贝会留错字节)
+                                int keep = Math.min(2, bufLen);
+                                if (keep > 0) {
+                                    System.arraycopy(buf, bufLen - keep, buf, 0, keep);
+                                }
+                                bufLen = keep;
                                 break;
                             }
                             if (head + 7 > bufLen) { // 头不完整
