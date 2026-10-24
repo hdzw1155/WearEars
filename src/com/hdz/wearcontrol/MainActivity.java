@@ -349,6 +349,9 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
         status.setText(R.string.status_connecting);
         sub.setTextColor(COL_LABEL_GRAY);
         sub.setText(target.getName());
+        // 记下 MAC 给磁贴做实时连接状态判断
+        getSharedPreferences("cfg", MODE_PRIVATE).edit()
+                .putString("tile_mac", target.getAddress()).apply();
         connectStartAt = SystemClock.elapsedRealtime();
         client.connect(target);
     }
@@ -401,6 +404,11 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
 
     @Override
     public void onConnected(final String deviceName) {
+        getSharedPreferences("cfg", MODE_PRIVATE).edit()
+                .putString("tile_status", "已连接")
+                .putString("tile_name", deviceName == null ? "耳机" : deviceName)
+                .putLong("tile_last_ok", System.currentTimeMillis())
+                .apply();
         ui.post(new Runnable() {
             @Override public void run() {
                 status.setTextColor(Color.WHITE);
@@ -421,12 +429,36 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
         setBatt(pctL, barL, left, (chargeFlags & 0x01) != 0);
         setBatt(pctR, barR, right, (chargeFlags & 0x02) != 0);
         setBatt(pctC, barC, box, (chargeFlags & 0x04) != 0);
+        // 给系统磁贴留快照
+        getSharedPreferences("cfg", MODE_PRIVATE).edit()
+                .putInt("tile_batt_l", left)
+                .putInt("tile_batt_r", right)
+                .putInt("tile_batt_c", box)
+                .apply();
+        refreshTiles();
     }
 
     @Override
     public void onNoiseMode(int mode) {
         lastMode = mode;
         renderMode();
+        if (mode >= 0 && mode < 3) {
+            getSharedPreferences("cfg", MODE_PRIVATE).edit()
+                    .putInt("tile_mode", mode)
+                    .putString("tile_mode_name",
+                            new String[]{"降噪开", "降噪关", "通透"}[mode])
+                    .apply();
+        }
+        refreshTiles();
+    }
+
+    /** 数据变了就叫系统立刻重画磁贴 */
+    private void refreshTiles() {
+        try {
+            androidx.wear.tiles.TileService.getUpdater(this)
+                    .requestUpdate(TwsTileService.class);
+        } catch (Exception ignored) {
+        }
     }
 
     @Override
