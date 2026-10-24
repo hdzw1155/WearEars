@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TWS 管家</string>
+    <string name="status_idle">未连接</string>
+    <string name="status_connecting">连接中…</string>
+    <string name="noise_title">噪声控制</string>
+    <string name="btn_anc">降噪开</string>
+    <string name="btn_off">降噪关</string>
+    <string name="btn_trans">通透</string>
+    <string name="btn_refresh">刷新电量</string>
+    <string name="dev_section">开发者设置</string>
+    <string name="dev_unlocked_toast">开发者设置已开启</string>
+    <string name="spatial_switch">空间音频</string>
+    <string name="spatial_caption">实验功能，作者感觉无效；仅限 vivo TWS Air 3 Pro；⚠️ 切换前必须摘下耳机、音量调至最低，谨防突发爆音损伤听力</string>
+    <string name="spatial_toast">实验功能：请摘下耳机调试，音效可能突变</string>
+    <string name="spatial_dialog_title">实验性功能</string>
+    <string name="spatial_dialog_msg">空间音频为实验性功能，作者感觉无效：仅限 vivo TWS Air 3 Pro 适配，指令来自社区逆向协议、未获官方认证，未来固件更新后可能失效。\n\n⚠️ 切换瞬间可能出现音量突变、爆音或啸叫，务必先摘下耳机（勿佩戴入耳）并将音量调至最低，确认安全后再佩戴试听。\n\n是否已了解风险并继续？</string>
+    <string name="deepx_label">DeepX 音效</string>
+    <string name="deepx_caption">因不明原因，点击后请等待几秒生效；目前仅适配 vivo TWS Air 3 Pro；调试时请先摘下耳机、调低音量，请不要连续切换，功能可能会失效</string>
+    <string name="dialog_ok">已了解风险，继续</string>
+    <string name="dialog_cancel">取消</string>
+    <string name="global_disclaimer_title">免责声明</string>
+    <string name="global_disclaimer_msg">本应用为非官方、未获授权的第三方学习研究工具，通过逆向私有协议控制耳机，不收集、不上传任何数据。\n\n⚠️ 安全提示：私有指令未经官方认证，可能引发突发爆音、啸叫或音量突变，有损伤听力的风险。首次连接新机型、固件升级后首次使用、以及每次开启「开发者设置」内的实验性功能前，务必先摘下耳机（勿佩戴入耳）并将音量调至最低，确认无异常后再佩戴；请勿在驾驶、骑行或操作机械等需要集中注意力的场景下使用。\n\n听力健康无法挽回，请谨慎操作。使用本应用的一切风险由您自行承担。\n\n是否同意并继续？</string>
+    <string name="dialog_agree">我已知晓并同意</string>
+    <string name="dialog_refuse">不同意并退出</string>
+    <string name="disclaimer">免责声明：本应用为个人学习研究作品，与 vivo / 华为 / 小米 / 三星 / 高通等厂商均无关联。「开发者设置」内为实验性功能（仅 vivo 机型），指令来自社区反编译推断并经真机探测校准，仅限 vivo TWS Air 3 Pro 验证；华为/小米支持基于公开协议文档实现，未逐一实测。\n⚠️ 听力安全警告：实验功能切换瞬间可能出现突发爆音、啸叫或音量突变，每次操作前务必摘下耳机（勿佩戴入耳）并将音量调至最低，确认无异常后再佩戴；听力损伤不可逆，请务必谨慎。请勿在驾驶、骑行等需要集中注意力的场景下使用。\n使用本应用的一切风险——包括但不限于听力不适、财产损失、耳机固件异常、数据丢失及软件安全风险——由使用者自行承担，作者不对任何直接或间接损失负责。</string>
+</resources>

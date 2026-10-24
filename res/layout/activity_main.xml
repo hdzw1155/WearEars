@@ -1,0 +1,325 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:scrollbars="none"
+    android:background="#0A0A0A">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingLeft="20dp"
+        android:paddingRight="20dp"
+        android:paddingTop="16dp"
+        android:paddingBottom="14dp">
+
+        <!-- 标题 / 状态 -->
+        <TextView
+            android:id="@+id/status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:text="@string/status_idle"
+            android:textColor="#FFFFFF"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/sub"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:layout_marginTop="2dp"
+            android:textColor="#8E8E93"
+            android:textSize="9sp" />
+
+        <!-- 电量卡片 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:background="@drawable/card_bg"
+            android:layout_marginTop="12dp"
+            android:padding="12dp"
+            android:baselineAligned="false">
+
+            <LinearLayout
+                android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_weight="1" android:orientation="vertical"
+                android:gravity="center_horizontal">
+                <TextView
+                    android:id="@+id/badge_l"
+                    android:layout_width="20dp" android:layout_height="20dp"
+                    android:gravity="center" android:text="左"
+                    android:textColor="#C7C7CC" android:textSize="9sp"
+                    android:background="@drawable/circle_norm" />
+                <TextView
+                    android:id="@+id/pct_l"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:textColor="#FFFFFF" android:textSize="13sp"
+                    android:textStyle="bold" android:text="--" />
+                <ProgressBar
+                    android:id="@+id/bar_l"
+                    style="@android:style/Widget.Material.ProgressBar.Horizontal"
+                    android:layout_width="match_parent" android:layout_height="4dp"
+                    android:layout_marginTop="4dp"
+                    android:layout_marginLeft="6dp" android:layout_marginRight="6dp"
+                    android:max="100" android:progress="0" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_weight="1" android:orientation="vertical"
+                android:gravity="center_horizontal">
+                <TextView
+                    android:id="@+id/badge_r"
+                    android:layout_width="20dp" android:layout_height="20dp"
+                    android:gravity="center" android:text="右"
+                    android:textColor="#C7C7CC" android:textSize="9sp"
+                    android:background="@drawable/circle_norm" />
+                <TextView
+                    android:id="@+id/pct_r"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:textColor="#FFFFFF" android:textSize="13sp"
+                    android:textStyle="bold" android:text="--" />
+                <ProgressBar
+                    android:id="@+id/bar_r"
+                    style="@android:style/Widget.Material.ProgressBar.Horizontal"
+                    android:layout_width="match_parent" android:layout_height="4dp"
+                    android:layout_marginTop="4dp"
+                    android:layout_marginLeft="6dp" android:layout_marginRight="6dp"
+                    android:max="100" android:progress="0" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_weight="1" android:orientation="vertical"
+                android:gravity="center_horizontal">
+                <TextView
+                    android:id="@+id/badge_c"
+                    android:layout_width="20dp" android:layout_height="20dp"
+                    android:gravity="center" android:text="盒"
+                    android:textColor="#C7C7CC" android:textSize="9sp"
+                    android:background="@drawable/circle_norm" />
+                <TextView
+                    android:id="@+id/pct_c"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:textColor="#FFFFFF" android:textSize="13sp"
+                    android:textStyle="bold" android:text="--" />
+                <ProgressBar
+                    android:id="@+id/bar_c"
+                    style="@android:style/Widget.Material.ProgressBar.Horizontal"
+                    android:layout_width="match_parent" android:layout_height="4dp"
+                    android:layout_marginTop="4dp"
+                    android:layout_marginLeft="6dp" android:layout_marginRight="6dp"
+                    android:max="100" android:progress="0" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- 噪声控制卡片 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/card_bg"
+            android:layout_marginTop="10dp"
+            android:padding="12dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/noise_title"
+                android:textColor="#8E8E93"
+                android:textSize="9sp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="8dp"
+                android:baselineAligned="false">
+
+                <LinearLayout
+                    android:id="@+id/mode_off"
+                    android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:orientation="vertical"
+                    android:gravity="center_horizontal"
+                    android:paddingTop="4dp" android:paddingBottom="4dp"
+                    android:clickable="true" android:focusable="true">
+                    <ImageView
+                        android:id="@+id/img_off"
+                        android:layout_width="46dp" android:layout_height="46dp"
+                        android:padding="11dp"
+                        android:background="@drawable/circle_norm"
+                        android:src="@drawable/ic_off"
+                        android:contentDescription="@string/btn_off" />
+                    <TextView
+                        android:id="@+id/lbl_off"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:layout_marginTop="5dp"
+                        android:text="@string/btn_off"
+                        android:textColor="#8E8E93" android:textSize="11sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/mode_trans"
+                    android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:orientation="vertical"
+                    android:gravity="center_horizontal"
+                    android:paddingTop="4dp" android:paddingBottom="4dp"
+                    android:clickable="true" android:focusable="true">
+                    <ImageView
+                        android:id="@+id/img_trans"
+                        android:layout_width="46dp" android:layout_height="46dp"
+                        android:padding="11dp"
+                        android:background="@drawable/circle_norm"
+                        android:src="@drawable/ic_trans"
+                        android:contentDescription="@string/btn_trans" />
+                    <TextView
+                        android:id="@+id/lbl_trans"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:layout_marginTop="5dp"
+                        android:text="@string/btn_trans"
+                        android:textColor="#8E8E93" android:textSize="11sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/mode_anc"
+                    android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:orientation="vertical"
+                    android:gravity="center_horizontal"
+                    android:paddingTop="4dp" android:paddingBottom="4dp"
+                    android:clickable="true" android:focusable="true">
+                    <ImageView
+                        android:id="@+id/img_anc"
+                        android:layout_width="46dp" android:layout_height="46dp"
+                        android:padding="11dp"
+                        android:background="@drawable/circle_norm"
+                        android:src="@drawable/ic_anc"
+                        android:contentDescription="@string/btn_anc" />
+                    <TextView
+                        android:id="@+id/lbl_anc"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:layout_marginTop="5dp"
+                        android:text="@string/btn_anc"
+                        android:textColor="#8E8E93" android:textSize="11sp" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/btn_refresh"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="8dp"
+            android:padding="8dp"
+            android:text="@string/btn_refresh"
+            android:textColor="#5B8DEF"
+            android:textSize="11sp" />
+
+        <!-- 开发者设置入口: 连点5下解锁(状态持久化); 解锁后显示实验功能卡片 -->
+        <TextView
+            android:id="@+id/dev_hint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="12dp"
+            android:padding="8dp"
+            android:text="@string/dev_section"
+            android:textColor="#3C3C40"
+            android:textSize="10sp" />
+
+        <LinearLayout
+            android:id="@+id/dev_section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/card_bg"
+            android:layout_marginTop="4dp"
+            android:paddingLeft="14dp"
+            android:paddingRight="14dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/spatial_switch"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp" />
+
+                <Switch
+                    android:id="@+id/switch_spatial"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/spatial_caption"
+                android:textColor="#6E6E73"
+                android:textSize="9sp" />
+
+            <!-- DeepX 音效: 三态循环按钮(关/清澈人声/超重低音) -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="10dp">
+
+                <TextView
+                    android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/deepx_label"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp" />
+
+                <Button
+                    android:id="@+id/btn_deepx"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="0dp"
+                    android:minHeight="0dp"
+                    android:paddingLeft="10dp"
+                    android:paddingRight="10dp"
+                    android:text="--"
+                    android:textColor="#FFFFFF"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/deepx_caption"
+                android:textColor="#6E6E73"
+                android:textSize="9sp" />
+        </LinearLayout>
+
+        <!-- 免责声明: 常驻最底部 -->
+        <TextView
+            android:id="@+id/disclaimer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="@string/disclaimer"
+            android:textColor="#4A4A4E"
+            android:textSize="9sp" />
+    </LinearLayout>
+</ScrollView>
