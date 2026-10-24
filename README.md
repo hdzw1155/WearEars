@@ -2,7 +2,7 @@
 
 在 **Wear OS 手表**上直接控制各品牌 TWS 耳机——降噪切换、电量查询，不依赖手机。手表通过蓝牙直连耳机发送各厂商私有协议指令，耳机可同时保持与手机的音频连接。
 
-vivo 单品牌版的老项目在 [vivo-tws-watch-control](https://github.com/hdzw1155/vivo-tws-watch-control)（已停止新功能开发），本仓库是它的多品牌重构版。
+vivo 单品牌版的老项目在 [vivo-tws-watch-control](https://github.com/hdzw1155/vivo-tws-watch-control)，本仓库是它的多品牌重构版。
 
 - 个人免费开源，非官方工具
 - 不收集、不上传任何数据
