@@ -53,25 +53,137 @@ UI 层只认 `TwsClient`：能力用 `caps()` 门控、成熟度用 `verifLevel(
 
 ## 适配新耳机
 
-抓到了新品牌的蓝牙协议（或想给现有协议补命令）？流程已经模板化，脏活可以直接外包给你手边的 AI：
+新品牌 = 一个驱动类 + 注册一行，UI/布局/表冠/省电全部复用。协议脏活可以直接外包给你手边的 AI，三步：
 
-1. 按模板填一张你耳机的协议表：`docs/DRIVER_TEMPLATE.md`（帧格式 / 命令表 / 匹配词 / 坑位记录）
-2. 把填好的表连同下面这段指令一起丢给任意 AI 编程助手：
+1. 按「协议表模板」节填一张你耳机的表（就在本页下面）
+2. 把填好的表、下面指令框、连同「驱动标准契约」节一起丢给任意 AI 编程助手：
 
    ```text
    我要给 Wear OS 开源项目 tws-control-for-wear 适配一个新品牌耳机驱动。
-   请先读仓库里的 docs/DRIVER_SPEC.md（驱动标准契约）和
-   src/com/hdz/wearcontrol/skeleton/SkeletonClient.java（填空骨架），
-   协议信息按我附上的协议表来，没有的命令做空实现，不许臆造帧格式。
+   驱动标准契约与协议表模板见本消息附带的 README 两节，填空骨架是仓库里的
+   src/com/hdz/wearcontrol/skeleton/SkeletonClient.java（读不到仓库我随后贴给你）。
+   协议信息按我填好的协议表来，没有的命令做空实现，不许臆造帧格式。
    代码风格：纯 Java 8 匿名内部类、无 lambda。
    写完后告诉我需要在 DriverRegistry 注册哪一行。
    ```
 
 3. 拿回驱动类，在 `DriverRegistry.DRIVERS` 注册一行，编译装表，logcat 抓原始帧对照修正
 
-> 你用的 AI 读不了 GitHub 仓库？把 `docs/DRIVER_SPEC.md`、`docs/DRIVER_TEMPLATE.md` 和 `src/com/hdz/wearcontrol/skeleton/SkeletonClient.java` 三个文件的内容一并贴给它，效果相同。
+> 你用的 AI 读不了 GitHub 仓库？把这个 README 整页 + `skeleton/SkeletonClient.java` 的内容一并贴给它，效果相同。
+>
+> 协议怎么抓？探针轮换 / 官方 App 交叉对照 / 沉默≠不支持的方法论见姊妹项目 [vivo-tws-watch-control 的 AI_CONTEXT.md](https://github.com/hdzw1155/vivo-tws-watch-control/blob/main/docs/AI_CONTEXT.md)。
 
-协议探测的方法论（探针轮换 / 官方 App 交叉对照 / 沉默≠不支持）见姊妹项目 [vivo-tws-watch-control 的 AI_CONTEXT.md](https://github.com/hdzw1155/vivo-tws-watch-control/blob/main/docs/AI_CONTEXT.md)。
+### 驱动标准契约（给人和 AI 看的接口规范）
+
+#### 1. 角色分工
+
+```
+MainActivity / UI 层
+    │  只认 TwsClient 接口：caps() 判能力、verifLevel() 判成熟度，
+    │  全工程禁止 instanceof 具体品牌类
+    ▼
+TwsClient（驱动标准接口）
+    ▲
+    │  实现：消化品牌私有协议（帧格式/命令号/认证/CRC）
+各品牌驱动（vivo/ huawei/ xiaomi/ …）
+```
+
+新品牌适配 = **一个驱动类 + DriverRegistry 里一行注册**，UI、布局、表冠、省电策略全部复用。
+
+#### 2. 生命周期
+
+1. `init(Context)`——创建方在 connect 前注入系统上下文；不需要系统服务的驱动空实现；必须容忍 `ctx == null`。
+2. `addListener(Listener)`——订阅回调，支持多订阅者。
+3. `connect(BluetoothDevice)`——内部自起线程，**不得阻塞调用方**；连上后自行完成握手/认证/首查，然后开始回调。
+4. `disconnect()`——幂等；关闭 socket、注销系统服务代理（如 HFP）、停掉所有内部线程。
+5. 重连策略归 UI 管，驱动不自作主张重连。
+
+#### 3. 能力位 caps()
+
+| 位 | 含义 | UI 行为 |
+| --- | --- | --- |
+| CAP_NOISE | 降噪三态切换 | 显示三个模式按钮 |
+| CAP_BATTERY | 三段电量 | 显示电量卡片 |
+| CAP_SPATIAL | 空间音频开关 | 显示开发者区空间音频开关（实验） |
+| CAP_DEEPX | 音效档位 | 显示开发者区音效按钮（实验） |
+
+没有的能力：相关 query/set 方法做**空实现**即可，UI 已按 caps() 隐藏入口，不会调到。
+
+#### 4. 验证等级 verifLevel()
+
+- `VERIF_REAL`：在本项目里真机验证过——UI 不加提示。
+- `VERIF_UNTESTED`：协议来自社区逆向文档，未真机验证——UI 自动挂"（实验性支持·未验证）"。
+
+诚实标注是硬要求：新驱动上线一律 `VERIF_UNTESTED`，直到有贡献者真机验证并更新上面的支持情况表后再改。
+
+#### 5. Listener 回调语义（7 个）
+
+| 回调 | 线程 | 未知/不支持时的约定 |
+| --- | --- | --- |
+| onConnected(name) | 后台线程 | — |
+| onDisconnected(reason) | 后台线程 | reason 说人话 |
+| onError(msg) | 后台线程 | msg 说人话，带排查线索 |
+| onBattery(l,r,box,flags) | 后台线程 | 未上报用 0xFF；flags bit0/1/2=左/右/盒充电中 |
+| onNoiseMode(mode) | 后台线程 | 未知用 -1 |
+| onSpatial(Boolean) | 后台线程 | 未知/解析失败用 null |
+| onDeepX(Integer) | 后台线程 | 未知/解析失败用 null |
+
+UI 侧自行切主线程；驱动侧回调前先查 closing 守卫（旧连接的残留帧不得上 UI）。
+
+#### 6. 实现守则（都是踩过坑换来的）
+
+1. `socket`/`out` 等跨线程字段必须 `volatile`（连接线程写、UI 线程读）。
+2. 读流错位时**单字节滑动重同步**找帧头，整块丢弃会漏真帧。
+3. 未知帧全量打日志（hex），这是协议分析的 ground truth。
+4. 不支持的操作（如华为通透）用 `onError` 明说，不要静默。
+5. connect 失败先小睡 1~2 秒再回调：上一个连接刚死时耳机侧槽位要几秒才释放，立刻重试会陷入连-断循环。
+6. 纯 Java 8、匿名内部类，禁 lambda（免 Gradle 构建链没有 core-lambda-stubs）。
+
+#### 7. 注册
+
+在 `DriverRegistry` 里加一个 `DriverInfo`（brandName / matchWords / isFallback / create）并放进 `DRIVERS` 数组。精确品牌词排前面，泛词（tws/air/buds 之类）只能做兜底殿后。
+
+### 协议表模板（适配新耳机的唯一必填表）
+
+#### 0. 品牌基本信息
+
+| 项 | 值 |
+| --- | --- |
+| 品牌名（英文小写） | 例：oppo |
+| 蓝牙名匹配词（设备名小写包含即命中） | 例：oppo、oneplus、enco |
+| 传输层 | RFCOMM(SPP) / BLE GATT / 其他 |
+| SDP 服务 UUID 或固定通道 | 例：00001101-… 或 channel 6 |
+| 是否需要认证/握手 | 是（描述流程）/ 否 |
+| 协议资料来源 | 例：TWS-Pods-PC 的 xx 目录 / 自行抓包 |
+
+#### 1. 帧格式
+
+```
+（此处画帧结构，逐字节标注，例：）
+FF | VERB | 00 | LEN | VENDOR(2B 大端) | CMD(2B 大端) | PAYLOAD(LEN 字节)
+```
+
+- 字节序：大端 / 小端
+- 校验：无 / CRC16-XMODEM / 其他（多项式、初值、是否反射）
+- 换行或分隔符（ASCII 行协议才填）
+
+#### 2. 命令表（状态列必须如实：✅真机验证 / 📄文档推断 / ❌已证伪）
+
+| 功能 | SET | QUERY | ACK | 主动上报 | payload 语义 | 状态 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 电量 | — | 0x… | — | 0x… | 左/右/盒/充电位 | 📄 |
+| 降噪 | 0x… | 0x… | 0x… | 0x… | 00=降噪 01=关 02=通透 | 📄 |
+| （更多…） | | | | | | |
+
+#### 3. 能力自评（caps）
+
+勾选本协议当前有把握的：☐NOISE ☐BATTERY ☐SPATIAL ☐DEEPX
+（没把握的一律不勾，对应方法留空实现）
+
+#### 4. 坑位记录（适配过程中逐条追加，给后人）
+
+- 例：verb 用错耳机直接沉默不报错，表现为超时
+- 例：电量走 HFP AT 通道，SPP 上裸问无回包
 
 ## 安装
 

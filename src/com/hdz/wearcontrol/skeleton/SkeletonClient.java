@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * 新品牌驱动的填空骨架：按 docs/DRIVER_TEMPLATE.md 填协议，照 TODO 逐洞补齐，
+ * 新品牌驱动的填空骨架：按 README 的「协议表模板」节填协议，照 TODO 逐洞补齐，
  * 写完在 DriverRegistry.DRIVERS 里注册一行。不注册不参与匹配，放着编译无副作用。
  */
 public class SkeletonClient implements TwsClient {
