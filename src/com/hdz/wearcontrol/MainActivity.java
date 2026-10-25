@@ -87,6 +87,8 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
     private long lastTapAt = 0;
     private boolean disclaimerOk = false;
     private boolean disclaimerDialogUp = false;
+    /** 前台标志: 只有界面真在前台才投重连任务(修后台偷连占耳机槽位的时序洞) */
+    private boolean inFront = false;
     private Runnable reconnector;
     private long reconnectDelay = 3000L;
     private Runnable bgExit;
@@ -191,6 +193,7 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
     @Override
     protected void onResume() {
         super.onResume();
+        inFront = true;
         tryConnect();
         // 阶梯轮询省电: 连上先快查两轮拿首屏,之后转 30 秒慢轮询;
         // 空间音频/DeepX 状态几乎不变,降到每 4 轮(约 2 分钟)问一次
@@ -227,6 +230,7 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
     @Override
     protected void onPause() {
         super.onPause();
+        inFront = false;
         // 手表应用切后台就断开,省电;挂着的重连任务一并取消,别在后台偷偷连
         ui.removeCallbacks(refresher);
         if (reconnector != null) ui.removeCallbacks(reconnector);
@@ -269,10 +273,6 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
         if (bgExit == null) {
             bgExit = new Runnable() {
                 @Override public void run() {
-                    if (ModeCyclerActivity.running) {
-                        ui.postDelayed(this, 3000);
-                        return;
-                    }
                     // 冻结解冻竞态保险: 只有确认自己在后台才退场,
                     // 避免把刚被系统拉起的新前台实例误杀(表现为再开卡死)
                     if (isFinishing() || isDestroyed()) return; // resumed 期间 onStart 已撤定时,这里双保险
@@ -407,9 +407,6 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
         status.setText(R.string.status_connecting);
         sub.setTextColor(COL_LABEL_GRAY);
         sub.setText(target.getName());
-        // 记下 MAC 给磁贴做实时连接状态判断
-        getSharedPreferences("cfg", MODE_PRIVATE).edit()
-                .putString("tile_mac", target.getAddress()).apply();
         connectStartAt = SystemClock.elapsedRealtime();
         client.connect(target);
     }
@@ -462,11 +459,6 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
 
     @Override
     public void onConnected(final String deviceName) {
-        getSharedPreferences("cfg", MODE_PRIVATE).edit()
-                .putString("tile_status", "已连接")
-                .putString("tile_name", deviceName == null ? "耳机" : deviceName)
-                .putLong("tile_last_ok", System.currentTimeMillis())
-                .apply();
         ui.post(new Runnable() {
             @Override public void run() {
                 status.setTextColor(Color.WHITE);
@@ -487,36 +479,12 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
         setBatt(pctL, barL, left, (chargeFlags & 0x01) != 0);
         setBatt(pctR, barR, right, (chargeFlags & 0x02) != 0);
         setBatt(pctC, barC, box, (chargeFlags & 0x04) != 0);
-        // 给系统磁贴留快照
-        getSharedPreferences("cfg", MODE_PRIVATE).edit()
-                .putInt("tile_batt_l", left)
-                .putInt("tile_batt_r", right)
-                .putInt("tile_batt_c", box)
-                .apply();
-        refreshTiles();
-    }
+        }
 
     @Override
     public void onNoiseMode(int mode) {
         lastMode = mode;
         renderMode();
-        if (mode >= 0 && mode < 3) {
-            getSharedPreferences("cfg", MODE_PRIVATE).edit()
-                    .putInt("tile_mode", mode)
-                    .putString("tile_mode_name",
-                            new String[]{"降噪开", "降噪关", "通透"}[mode])
-                    .apply();
-        }
-        refreshTiles();
-    }
-
-    /** 数据变了就叫系统立刻重画磁贴 */
-    private void refreshTiles() {
-        try {
-            androidx.wear.tiles.TileService.getUpdater(this)
-                    .requestUpdate(TwsTileService.class);
-        } catch (Exception ignored) {
-        }
     }
 
     @Override
@@ -580,8 +548,9 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
                 sub.setText("");
             }
         });
-        // 耳机断连后自动重连,指数退避省电: 3s/6s/12s/24s,封顶 30s(切后台会被取消)
-        if (!isFinishing() && !isDestroyed()) {
+        // 耳机断连后自动重连,指数退避省电: 3s/6s/12s/24s,封顶 30s
+        // inFront 挡住时序洞: onPause 清任务后,迟到的断连回调不得再投(后台偷连占耳机槽位)
+        if (inFront && !isFinishing() && !isDestroyed()) {
             if (reconnector != null) ui.removeCallbacks(reconnector);
             reconnector = new Runnable() {
                 @Override public void run() {

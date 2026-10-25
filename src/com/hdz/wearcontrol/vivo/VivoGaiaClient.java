@@ -96,8 +96,8 @@ public class VivoGaiaClient implements TwsClient {
     }
 
     private final List<TwsClient.Listener> listeners = new CopyOnWriteArrayList<TwsClient.Listener>();
-    private BluetoothSocket socket;
-    private OutputStream out;
+    private volatile BluetoothSocket socket;
+    private volatile OutputStream out;
     private volatile boolean closing = false;
     private int cfg = CFG_FAMILY_V4;
 
@@ -370,17 +370,26 @@ public class VivoGaiaClient implements TwsClient {
             @Override public void run() {
                 try {
                     InputStream in = socket.getInputStream();
-                    byte[] head = new byte[8];
-                    while (!closing) {
-                        if (!readFully(in, head, 8)) break;
-                        if ((head[0] & 0xFF) != 0xFF) {
-                            continue; // 流错位,丢弃继续同步
+                    // 单字节流: 头不对只吐 1 字节重试,真帧头藏在 8 字节块中间也不会漏
+                    int first = in.read();
+                    while (!closing && first >= 0) {
+                        if ((first & 0xFF) != 0xFF) {
+                            first = in.read();
+                            continue;
                         }
+                        byte[] head = new byte[8];
+                        head[0] = (byte) first;
+                        if (!readFully(in, head, 1, 7)) break;
                         int len = head[3] & 0xFF;
                         int vendor = ((head[4] & 0xFF) << 8) | (head[5] & 0xFF);
                         int cmd = ((head[6] & 0xFF) << 8) | (head[7] & 0xFF);
+                        if (head[2] != 0x00 || (head[1] != 0x03 && head[1] != 0x04)) {
+                            first = in.read();
+                            continue;
+                        }
                         byte[] payload = new byte[len];
                         if (len > 0 && !readFully(in, payload, len)) break;
+
 
                         if (vendor == VENDOR_VIVO && cmd == RESP_BATT && payload.length >= 5) {
                             fireBattery(payload[1] & 0xFF, payload[2] & 0xFF,
@@ -419,11 +428,15 @@ public class VivoGaiaClient implements TwsClient {
     }
 
     private static boolean readFully(InputStream in, byte[] buf, int n) throws IOException {
-        int off = 0;
-        while (off < n) {
-            int r = in.read(buf, off, n - off);
+        return readFully(in, buf, 0, n);
+    }
+
+    private static boolean readFully(InputStream in, byte[] buf, int off, int n) throws IOException {
+        while (n > 0) {
+            int r = in.read(buf, off, n);
             if (r < 0) return false;
             off += r;
+            n -= r;
         }
         return true;
     }

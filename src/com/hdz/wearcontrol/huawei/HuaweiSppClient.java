@@ -32,8 +32,8 @@ public class HuaweiSppClient implements TwsClient {
     private static final int CMD_ANC_SWITCH = 0x04;
 
     private final List<Listener> listeners = new CopyOnWriteArrayList<Listener>();
-    private BluetoothSocket socket;
-    private OutputStream out;
+    private volatile BluetoothSocket socket;
+    private volatile OutputStream out;
     private volatile boolean closing = false;
     // HFP 电量通道: 系统的 Headset 代理(需手表已连耳机的 HFP)
     private android.bluetooth.BluetoothAdapter hfAdapter;

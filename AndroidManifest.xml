@@ -22,25 +22,6 @@
             </intent-filter>
         </activity>
 
-        <service
-            android:name=".TwsTileService"
-            android:exported="true"
-            android:label="耳机控制"
-            android:icon="@mipmap/ic_launcher"
-            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
-            <intent-filter>
-                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
-            </intent-filter>
-            <meta-data
-                android:name="androidx.wear.tiles.PREVIEW"
-                android:resource="@mipmap/ic_launcher" />
-        </service>
 
-        <activity
-            android:name=".ModeCyclerActivity"
-            android:exported="true"
-            android:excludeFromRecents="true"
-            android:noHistory="true"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
     </application>
 </manifest>

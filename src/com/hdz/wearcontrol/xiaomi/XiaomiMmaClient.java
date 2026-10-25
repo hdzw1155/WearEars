@@ -51,8 +51,8 @@ public class XiaomiMmaClient implements TwsClient {
 
     private final List<Listener> listeners = new CopyOnWriteArrayList<Listener>();
     private final SecureRandom random = new SecureRandom();
-    private BluetoothSocket socket;
-    private OutputStream out;
+    private volatile BluetoothSocket socket;
+    private volatile OutputStream out;
     private volatile boolean closing = false;
     private volatile boolean authed = false;
     private int sn;
