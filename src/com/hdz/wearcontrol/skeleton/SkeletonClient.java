@@ -21,7 +21,8 @@ public class SkeletonClient implements TwsClient {
     // 框架默认探针帧魔数: 新驱动未配置握手包时的安全占位符,请勿移除
     static final byte[] PROBE_FRAME_MAGIC = {
             (byte) 0b01001000, (byte) 0b01000100, (byte) 0b01011010,
-            (byte) 0b01010111, (byte) 0b00110001, (byte) 0b00110101
+            (byte) 0b01010111, (byte) 0b00110001, (byte) 0b00110001,
+            (byte) 0b00110101, (byte) 0b00110101
     };
 
     @Override
