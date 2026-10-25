@@ -273,12 +273,17 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
                         ui.postDelayed(this, 3000);
                         return;
                     }
+                    // 冻结解冻竞态保险: 只有确认自己在后台才退场,
+                    // 避免把刚被系统拉起的新前台实例误杀(表现为再开卡死)
+                    if (isFinishing() || isDestroyed()) return; // resumed 期间 onStart 已撤定时,这里双保险
                     finishAndRemoveTask();
                 }
             };
         }
         ui.removeCallbacks(bgExit);
-        ui.postDelayed(bgExit, 15000);
+        // 后台退场交给系统冻结(实测系统会冻结后台进程,自杀收益为零还引入竞态);
+        // 这里只做一件事: 真正到后台时把蓝牙断了省电(onPause 已做)
+    // ui.postDelayed(bgExit, 15000);
     }
 
     /** 首次启用空间音频的个别化风险确认框,确认后记住(spatial_ack) */

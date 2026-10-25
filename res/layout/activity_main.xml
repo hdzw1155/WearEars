@@ -4,7 +4,9 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fillViewport="true"
-    android:scrollbars="none"
+    android:scrollbars="vertical"
+    android:fadeScrollbars="true"
+    android:scrollbarStyle="insideOverlay"
     android:background="#0A0A0A">
 
     <LinearLayout
