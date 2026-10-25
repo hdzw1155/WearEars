@@ -1,5 +1,12 @@
 # TWS Control for Wear
 
+[![Release](https://img.shields.io/github/v/release/hdzw1155/tws-control-for-wear)](https://github.com/hdzw1155/tws-control-for-wear/releases)
+[![License](https://img.shields.io/github/license/hdzw1155/tws-control-for-wear)](https://github.com/hdzw1155/tws-control-for-wear/blob/main/LICENSE)
+![Platform](https://img.shields.io/badge/platform-Wear%20OS%203%2B-3DDC84?logo=android&logoColor=white)
+![Dependencies](https://img.shields.io/badge/dependencies-zero-orange)
+![Data collection](https://img.shields.io/badge/data_collection-none-success)
+![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen)
+
 **欢迎所有人基于本项目自由开发**：fork、魔改、适配你自己的耳机，统统随意；也可以把 `docs/` 里的协议表模板和驱动契约直接喂给你手边的 AI 编程助手，让它在你本地照着填空骨架把新驱动写出来——这正是这个项目存在的意义。
 
 在 **Wear OS 手表**上直接控制各品牌 TWS 耳机——降噪切换、电量查询，不依赖手机。手表通过蓝牙直连耳机发送各厂商私有协议指令，耳机可同时保持与手机的音频连接。
