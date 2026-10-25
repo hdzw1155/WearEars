@@ -81,7 +81,7 @@ public class SkeletonClient implements TwsClient {
 
     @Override
     public void queryBattery() {
-        // TODO: 按 DRIVER_TEMPLATE 命令表发查询帧
+        // TODO: 按 README「协议表模板」节的命令表发查询帧
     }
 
     @Override

@@ -6,8 +6,8 @@ import android.content.Context;
 /**
  * 各品牌 TWS 耳机客户端的统一接口(驱动标准)。
  * UI 只面对这套接口: 能力用 caps() 判断、成熟度用 verifLevel() 判断,不许 instanceof 品牌。
- * 各品牌私有协议在对应实现类里消化。新品牌适配流程见 docs/DRIVER_SPEC.md 与
- * docs/DRIVER_TEMPLATE.md(填协议表喂 AI 即可生成驱动)。
+ * 各品牌私有协议在对应实现类里消化。新品牌适配流程见 README
+ * (驱动契约/协议表模板/喂 AI 指令都在里面, 填表即可生成驱动)。
  */
 public interface TwsClient {
 
