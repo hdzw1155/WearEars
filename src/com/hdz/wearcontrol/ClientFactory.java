@@ -1,18 +1,19 @@
 package com.hdz.wearcontrol;
 
 import android.bluetooth.BluetoothDevice;
+import android.content.Context;
 
 import com.hdz.wearcontrol.huawei.HuaweiSppClient;
 import com.hdz.wearcontrol.vivo.VivoGaiaClient;
 import com.hdz.wearcontrol.xiaomi.XiaomiMmaClient;
 
-/** 按蓝牙设备名挑对应品牌的客户端; 不认识的返回 null */
+/** 按蓝牙设备名挑对应品牌的客户端; 不认识的返回 null。ctx 用于华为的 HFP 电量通道 */
 public final class ClientFactory {
 
     private ClientFactory() {
     }
 
-    public static TwsClient create(BluetoothDevice device) {
+    public static TwsClient create(Context ctx, BluetoothDevice device) {
         String n = device.getName();
         if (n == null) return null;
         String ln = n.toLowerCase();
@@ -21,7 +22,9 @@ public final class ClientFactory {
             return new VivoGaiaClient();
         }
         if (ln.contains("freebuds") || ln.contains("huawei") || ln.contains("honor")) {
-            return new HuaweiSppClient();
+            HuaweiSppClient c = new HuaweiSppClient();
+            if (ctx != null) c.attachContext(ctx);
+            return c;
         }
         if (ln.contains("xiaomi") || ln.contains("redmi") || ln.contains("mibuds")) {
             return new XiaomiMmaClient();
@@ -31,5 +34,10 @@ public final class ClientFactory {
             return new VivoGaiaClient();
         }
         return null;
+    }
+
+    /** 兼容旧调用(无 context, 华为电量通道不可用) */
+    public static TwsClient create(BluetoothDevice device) {
+        return create(null, device);
     }
 }

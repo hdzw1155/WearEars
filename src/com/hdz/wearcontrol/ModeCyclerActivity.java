@@ -37,7 +37,7 @@ public class ModeCyclerActivity extends android.app.Activity implements TwsClien
             finish();
             return;
         }
-        client = ClientFactory.create(target);
+        client = ClientFactory.create(this, target);
         if (client == null) {
             finish();
             return;

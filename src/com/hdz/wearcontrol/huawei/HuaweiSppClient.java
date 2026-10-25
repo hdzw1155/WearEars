@@ -1,7 +1,9 @@
 package com.hdz.wearcontrol.huawei;
 
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothHeadset;
 import android.bluetooth.BluetoothSocket;
+import android.content.Context;
 import android.util.Log;
 
 import com.hdz.wearcontrol.TwsClient;
@@ -18,7 +20,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * 协议来源: TWS-Pods-PC huawei 目录(HuaweiPods 逆向文档)。
  * 帧格式: 5A 00 06 00 [group] [cmd] [p1] [p2] [value] [crc16/xmodem 2B]。
  * 降噪: group 0x2B, 开关 cmd 0x04; 通透模式协议未见文档, 暂不支持。
- * 电量走 HFP AT 通道, SPP 上尽力询问(AT+HUAWEIBATTERY?), 多数机型无回包。
+ * 电量走 HFP AT 通道(+HUAWEIBATTERY=): 优先经系统的蓝牙 Headset 服务发 AT,
+ * SPP 上的裸 AT 询问保留为兜底(多数机型无回包)。
  */
 public class HuaweiSppClient implements TwsClient {
 
@@ -32,6 +35,58 @@ public class HuaweiSppClient implements TwsClient {
     private BluetoothSocket socket;
     private OutputStream out;
     private volatile boolean closing = false;
+    // HFP 电量通道: 系统的 Headset 代理(需手表已连耳机的 HFP)
+    private android.bluetooth.BluetoothAdapter hfAdapter;
+    private BluetoothHeadset headset;
+    private Context appCtx;
+    private final android.content.BroadcastReceiver atReceiver =
+            new android.content.BroadcastReceiver() {
+                @Override public void onReceive(Context ctx, android.content.Intent i) {
+                    // 耳机经 HFP 主动上报的 AT 行(含电量)
+                    if (BluetoothHeadset.ACTION_VENDOR_SPECIFIC_HEADSET_EVENT.equals(
+                            i.getAction())) {
+                        String cmd = i.getStringExtra(BluetoothHeadset.EXTRA_VENDOR_SPECIFIC_HEADSET_EVENT_ARGS);
+                        if (cmd != null) handleLine(cmd);
+                    }
+                }
+            };
+
+    /** 记下上下文和 Headset 代理, 用于走 HFP 通道问电量 */
+    public void attachContext(Context ctx) {
+        appCtx = ctx.getApplicationContext();
+        try {
+            hfAdapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+            hfAdapter.getProfileProxy(appCtx, new android.bluetooth.BluetoothProfile.ServiceListener() {
+                @Override public void onServiceConnected(int profile, android.bluetooth.BluetoothProfile proxy) {
+                    headset = (BluetoothHeadset) proxy;
+                }
+
+                @Override public void onServiceDisconnected(int profile) {
+                    headset = null;
+                }
+            }, android.bluetooth.BluetoothProfile.HEADSET);
+            android.content.IntentFilter f = new android.content.IntentFilter(
+                    BluetoothHeadset.ACTION_VENDOR_SPECIFIC_HEADSET_EVENT);
+            appCtx.registerReceiver(atReceiver, f);
+        } catch (Exception e) {
+            Log.d("HwClient", "headset proxy fail: " + e);
+        }
+    }
+
+    private void teardownHfp() {
+        if (appCtx == null) return;
+        try {
+            appCtx.unregisterReceiver(atReceiver);
+        } catch (Exception ignored) {
+        }
+        if (headset != null && hfAdapter != null) {
+            try {
+                hfAdapter.closeProfileProxy(android.bluetooth.BluetoothProfile.HEADSET, headset);
+            } catch (Exception ignored) {
+            }
+            headset = null;
+        }
+    }
 
     @Override
     public String brandName() {
@@ -83,6 +138,7 @@ public class HuaweiSppClient implements TwsClient {
     @Override
     public void disconnect() {
         closing = true;
+        teardownHfp();
         safeClose();
     }
 
@@ -97,8 +153,23 @@ public class HuaweiSppClient implements TwsClient {
 
     @Override
     public void queryBattery() {
-        // 电量在 HFP AT 通道; SPP 上尽力询问, 多数机型无回包
-        writeAscii("AT+HUAWEIBATTERY?\r\n");
+        // 电量在 HFP AT 通道: 优先走系统 Headset 代理对已连的 HFP 设备发 AT,
+        // 手表若只配对未连 HFP 则退回 SPP 裸询问(多数机型无回包)
+        boolean sent = false;
+        if (headset != null) {
+            try {
+                for (BluetoothDevice d : headset.getConnectedDevices()) {
+                    if (headset.sendVendorSpecificResultCode(d,
+                            "AT+HUAWEIBATTERY?", "+HUAWEIBATTERY")) {
+                        sent = true;
+                        Log.d("HwClient", "battery asked via HFP to " + d.getName());
+                    }
+                }
+            } catch (Exception e) {
+                Log.d("HwClient", "HFP ask fail: " + e);
+            }
+        }
+        if (!sent) writeAscii("AT+HUAWEIBATTERY?\r\n");
     }
 
     @Override

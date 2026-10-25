@@ -88,6 +88,7 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
     private boolean disclaimerOk = false;
     private boolean disclaimerDialogUp = false;
     private Runnable reconnector;
+    private long reconnectDelay = 3000L;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -190,16 +191,20 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
     protected void onResume() {
         super.onResume();
         tryConnect();
-        // 周期自检: 连着就刷新状态,断了(比如耳机开关机)就自动重连
+        // 阶梯轮询省电: 连上先快查两轮拿首屏,之后转 30 秒慢轮询;
+        // 空间音频/DeepX 状态几乎不变,降到每 4 轮(约 2 分钟)问一次
         if (refresher == null) {
             refresher = new Runnable() {
+                int tick = 0;
+
                 @Override public void run() {
                     if (isFinishing() || isDestroyed()) return;
+                    tick++;
                     if (client != null && client.isConnected()) {
                         client.queryBattery();
                         client.queryNoise();
-                        // 空间音频/DeepX 是 vivo 专属, 其他品牌直接强转会 ClassCastException 崩溃
-                        if (client instanceof VivoGaiaClient) {
+                        if (client instanceof VivoGaiaClient
+                                && (tick == 1 || tick % 4 == 0)) {
                             ((VivoGaiaClient) client).querySpatial();
                             ((VivoGaiaClient) client).queryDeepX();
                         }
@@ -208,7 +213,9 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
                         // 没有进行中的连接尝试才重连,避免打断慢连接
                         tryConnect();
                     }
-                    ui.postDelayed(this, 5000);
+                    // 前 2 轮 5 秒(首屏),之后 30 秒(省电)
+                    long delay = tick <= 2 ? 5000L : 30000L;
+                    ui.postDelayed(this, delay);
                 }
             };
         }
@@ -339,7 +346,7 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
             sub.setText("请先在 手表设置-蓝牙 配对");
             return;
         }
-        TwsClient c = ClientFactory.create(target);
+        TwsClient c = ClientFactory.create(this, target);
         if (c == null) {
             // 名字不认识但像音频设备, 按 vivo 协议试一把
             c = new VivoGaiaClient();
@@ -522,19 +529,23 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
                 sub.setText("");
             }
         });
-        // 耳机开关机/走远断连后,3 秒后自动试着连回来(切后台会被取消)
+        // 耳机断连后自动重连,指数退避省电: 3s/6s/12s/24s,封顶 30s(切后台会被取消)
         if (!isFinishing() && !isDestroyed()) {
-            if (reconnector == null) {
-                reconnector = new Runnable() {
-                    @Override public void run() {
-                        if (!isFinishing() && !isDestroyed()
-                                && (client == null || !client.isConnected())) {
-                            tryConnect();
-                        }
+            if (reconnector != null) ui.removeCallbacks(reconnector);
+            reconnector = new Runnable() {
+                @Override public void run() {
+                    if (!isFinishing() && !isDestroyed()
+                            && (client == null || !client.isConnected())) {
+                        reconnectDelay = Math.min(reconnectDelay * 2, 30000L);
+                        tryConnect();
+                        ui.postDelayed(this, reconnectDelay);
+                    } else {
+                        reconnectDelay = 3000L; // 连上了,下次断连从头退避
                     }
-                };
-            }
-            ui.postDelayed(reconnector, 3000);
+                }
+            };
+            reconnectDelay = 3000L;
+            ui.postDelayed(reconnector, reconnectDelay);
         }
     }
 
