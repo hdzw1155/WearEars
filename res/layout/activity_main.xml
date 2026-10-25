@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/scroll_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fillViewport="true"
@@ -13,7 +14,7 @@
         android:paddingLeft="20dp"
         android:paddingRight="20dp"
         android:paddingTop="16dp"
-        android:paddingBottom="14dp">
+        android:paddingBottom="40dp">
 
         <!-- 标题 / 状态 -->
         <TextView

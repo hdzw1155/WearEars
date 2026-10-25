@@ -243,6 +243,22 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
         if (bgExit != null) ui.removeCallbacks(bgExit);
     }
 
+    /** 表冠/旋转表圈滚动页面: ScrollView 自己能滚就不管, 没滚到底时兜底直喂 */
+    @Override
+    public boolean onGenericMotionEvent(android.view.MotionEvent ev) {
+        if (ev.getAction() == android.view.MotionEvent.ACTION_SCROLL) {
+            float scroll = ev.getAxisValue(android.view.MotionEvent.AXIS_SCROLL);
+            if (scroll != 0f) {
+                android.widget.ScrollView sv = findViewById(R.id.scroll_root);
+                if (sv != null) {
+                    sv.smoothScrollBy(0, (int) (scroll * 60));
+                    return true;
+                }
+            }
+        }
+        return super.onGenericMotionEvent(ev);
+    }
+
     @Override
     protected void onStop() {
         super.onStop();
