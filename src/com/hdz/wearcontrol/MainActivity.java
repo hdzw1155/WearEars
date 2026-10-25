@@ -92,11 +92,42 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
     private Runnable reconnector;
     private long reconnectDelay = 3000L;
     private Runnable bgExit;
+    private android.widget.ScrollView scrollHost;
+    // 表冠滚动泵: 事件增量累进 pending,泵每 16ms 逐帧逼近目标;
+    // 若每个事件各起一段 smooth 动画,动画反复重启就会一顿一顿
+    private float crownPendingPx;
+    private boolean crownPumping;
+    private float crownTickAcc;
+    private static final float CROWN_DETENT_DP = 36f; // 转满一格滚这么多,震一下(36=密集手感)
+    private final Runnable crownPump = new Runnable() {
+        @Override public void run() {
+            if (scrollHost == null || isFinishing() || isDestroyed()
+                    || crownPendingPx == 0f) {
+                crownPumping = false;
+                return;
+            }
+            float move = crownPendingPx * 0.35f; // 指数缓动:越接近目标越慢
+            if (Math.abs(move) < 1f) move = (float) Math.signum(crownPendingPx);
+            int y = scrollHost.getScrollY();
+            int max = Math.max(0,
+                    scrollHost.getChildAt(0).getHeight() - scrollHost.getHeight());
+            if ((y <= 0 && move < 0) || (y >= max && move > 0)) {
+                crownPendingPx = 0; // 已顶到头,别空转
+                crownPumping = false;
+                return;
+            }
+            scrollHost.scrollBy(0, (int) move);
+            crownPendingPx -= move;
+            ui.postDelayed(this, 16);
+        }
+    };
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        scrollHost = findViewById(R.id.scroll_root);
         status = findViewById(R.id.status);
         sub = findViewById(R.id.sub);
         imgOff = findViewById(R.id.img_off);
@@ -231,6 +262,11 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
     protected void onPause() {
         super.onPause();
         inFront = false;
+        // 收掉滚动泵,别在后台空转
+        ui.removeCallbacks(crownPump);
+        crownPumping = false;
+        crownPendingPx = 0;
+        crownTickAcc = 0;
         // 手表应用切后台就断开,省电;挂着的重连任务一并取消,别在后台偷偷连
         ui.removeCallbacks(refresher);
         if (reconnector != null) ui.removeCallbacks(reconnector);
@@ -247,21 +283,30 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
         if (bgExit != null) ui.removeCallbacks(bgExit);
     }
 
-    /** 表冠/旋转表圈滚动页面: ScrollView 自己能滚就不管, 没滚到底时兜底直喂 */
+    /** 表冠/旋转表圈滚动页面: 增量累进+16ms泵指数缓动,别用smoothScrollBy(动画互相打架会顿挫) */
     @Override
     public boolean onGenericMotionEvent(android.view.MotionEvent ev) {
-        if (ev.getAction() == android.view.MotionEvent.ACTION_SCROLL) {
-            float scroll = ev.getAxisValue(android.view.MotionEvent.AXIS_SCROLL);
-            if (scroll != 0f) {
-                android.widget.ScrollView sv = findViewById(R.id.scroll_root);
-                if (sv != null) {
-                    sv.smoothScrollBy(0, (int) (scroll * 60));
-                    return true;
-                }
+        float delta = ev.getAxisValue(android.view.MotionEvent.AXIS_SCROLL);
+        if (scrollHost != null && delta != 0f) {
+            float px = -delta * 55f * getResources().getDisplayMetrics().density;
+            crownPendingPx += px;
+            // 旋转刻度震动: 攒满一格滚一次钟表滴答,和系统列表的表冠手感一致
+            crownTickAcc += px;
+            float detent = CROWN_DETENT_DP * getResources().getDisplayMetrics().density;
+            while (Math.abs(crownTickAcc) >= detent) {
+                crownTickAcc -= Math.signum(crownTickAcc) * detent;
+                scrollHost.performHapticFeedback(
+                        android.view.HapticFeedbackConstants.CLOCK_TICK);
             }
+            if (!crownPumping) {
+                crownPumping = true;
+                ui.post(crownPump);
+            }
+            return true;
         }
         return super.onGenericMotionEvent(ev);
     }
+
 
     @Override
     protected void onStop() {

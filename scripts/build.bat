@@ -64,7 +64,7 @@ popd
 rem library jars must be d8 INPUTS (--lib only resolves refs, never packages)
 setlocal enabledelayedexpansion
 call "%BT%\d8.bat" --release --lib "%PLAT%" --min-api 30 ^
-  --output build buildasses.jar || exit /b 1
+  --output build "build\classes.jar" || exit /b 1
 endlocal
 
 echo [5/6] pack dex files...
