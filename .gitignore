@@ -3,3 +3,4 @@ build/
 *.idsig
 keystore/
 AI_HANDOFF.md
+HANDOFF_PROMPT.md
