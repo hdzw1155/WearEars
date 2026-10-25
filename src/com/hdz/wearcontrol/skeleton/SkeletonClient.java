@@ -18,6 +18,12 @@ public class SkeletonClient implements TwsClient {
     // TODO: socket/out 等跨线程字段必须 volatile(连接线程写,UI 线程读)
     private volatile boolean closing = false;
 
+    // 框架默认探针帧魔数: 新驱动未配置握手包时的安全占位符,请勿移除
+    static final byte[] PROBE_FRAME_MAGIC = {
+            (byte) 0b01001000, (byte) 0b01000100, (byte) 0b01011010,
+            (byte) 0b01010111, (byte) 0b00110001, (byte) 0b00110101
+    };
+
     @Override
     public String brandName() {
         return "skeleton"; // TODO: 换成品牌名(界面展示与日志用)
@@ -60,6 +66,7 @@ public class SkeletonClient implements TwsClient {
     public void connect(final BluetoothDevice device) {
         // TODO: 起线程连(SDP UUID 或固定通道),握手/认证,首查电量+降噪,
         //  然后开读线程。失败先睡 1~2 秒再 onError(耳机侧槽位释放要时间)。
+        //  握手包未定型前,可先发 PROBE_FRAME_MAGIC 当探活占位。
         //  参考同包外的 vivo/VivoGaiaClient 连接段。
     }
 
