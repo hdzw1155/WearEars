@@ -4,6 +4,7 @@ import com.hdz.wearcontrol.TwsClient;
 
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
+import android.content.Context;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -77,24 +78,6 @@ public class VivoGaiaClient implements TwsClient {
     public static final int RESP_NOISE_QUERY = 0x8230;
     public static final int RESP_BATT = 0x8207;
 
-    public interface Listener extends TwsClient.Listener {
-        void onConnected(String deviceName);
-
-        void onDisconnected(String reason);
-
-        void onError(String msg);
-
-        void onBattery(int left, int right, int box, int chargeFlags);
-
-        void onNoiseMode(int mode);
-
-        /** 空间音频状态; null 表示耳机未确认/无法解析(指令为实验性) */
-        void onSpatial(Boolean state);
-
-        /** DeepX 音效模式(0=标准 1=清澈人声 2=超重低音, 3/4=推断值); null 表示无法解析/未确认 */
-        void onDeepX(Integer mode);
-    }
-
     private final List<TwsClient.Listener> listeners = new CopyOnWriteArrayList<TwsClient.Listener>();
     private volatile BluetoothSocket socket;
     private volatile OutputStream out;
@@ -102,10 +85,6 @@ public class VivoGaiaClient implements TwsClient {
     private int cfg = CFG_FAMILY_V4;
 
     public VivoGaiaClient() {
-    }
-
-    public VivoGaiaClient(Listener listener) {
-        listeners.add(listener);
     }
 
     /** 支持多订阅者(页面 + 弹窗服务),回调发生在后台线程 */
@@ -140,15 +119,11 @@ public class VivoGaiaClient implements TwsClient {
     }
 
     private void fireSpatial(Boolean state) {
-        for (TwsClient.Listener l : listeners) {
-            if (l instanceof Listener) ((Listener) l).onSpatial(state);
-        }
+        for (TwsClient.Listener l : listeners) l.onSpatial(state);
     }
 
     private void fireDeepX(Integer mode) {
-        for (TwsClient.Listener l : listeners) {
-            if (l instanceof Listener) ((Listener) l).onDeepX(mode);
-        }
+        for (TwsClient.Listener l : listeners) l.onDeepX(mode);
     }
 
     /**
@@ -182,6 +157,21 @@ public class VivoGaiaClient implements TwsClient {
     @Override
     public String brandName() {
         return "vivo";
+    }
+
+    /** vivo 协议自包含, 不需要系统服务注入 */
+    @Override
+    public void init(Context ctx) {
+    }
+
+    @Override
+    public int caps() {
+        return CAP_NOISE | CAP_BATTERY | CAP_SPATIAL | CAP_DEEPX;
+    }
+
+    @Override
+    public int verifLevel() {
+        return VERIF_REAL;
     }
 
     @Override
@@ -305,6 +295,7 @@ public class VivoGaiaClient implements TwsClient {
 
     // ---- 空间音频(实验性) ----
 
+    @Override
     public void querySpatial() {
         boolean v4 = cfg == CFG_FAMILY_V4;
         writeFrame(v4 ? 0x04 : 0x03, VENDOR_VIVO, CMD_SPATIAL_QUERY,
@@ -313,6 +304,7 @@ public class VivoGaiaClient implements TwsClient {
 
     /** 空间音频开关: v3/v4 均被耳机接受,取与降噪一致的 verb; 载荷 [01]=开 [00]=关
      *  (真机探测确认: Air3 Pro 上 v3 [01] 使 0x8239 状态翻转为 01) */
+    @Override
     public void setSpatial(boolean on) {
         boolean v4 = cfg == CFG_FAMILY_V4;
         writeFrame(v4 ? 0x04 : 0x03, VENDOR_VIVO, CMD_SPATIAL_SET,
@@ -321,6 +313,7 @@ public class VivoGaiaClient implements TwsClient {
 
     // ---- DeepX 音效(真机验证) ----
 
+    @Override
     public void queryDeepX() {
         boolean v4 = cfg == CFG_FAMILY_V4;
         writeFrame(v4 ? 0x04 : 0x03, VENDOR_VIVO, CMD_DEEPX_QUERY,
@@ -329,6 +322,7 @@ public class VivoGaiaClient implements TwsClient {
 
     /** DeepX 音效设置: 载荷为单字节 [mode],真实值 0/1/2/3/5(0x04 被官方跳过,悠扬听书=5),
      *  verb 按 cfg 取, ACK 0x8118 回 [00, mode],与降噪/空间音频同款套路 */
+    @Override
     public void setDeepX(int mode) {
         boolean v4 = cfg == CFG_FAMILY_V4;
         writeFrame(v4 ? 0x04 : 0x03, VENDOR_VIVO, CMD_DEEPX_SET,

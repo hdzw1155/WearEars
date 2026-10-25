@@ -1,7 +1,5 @@
 package com.hdz.wearcontrol;
 
-import com.hdz.wearcontrol.vivo.VivoGaiaClient;
-
 import android.Manifest;
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
@@ -28,7 +26,7 @@ import android.widget.Toast;
 import java.util.Set;
 
 /** vivo 耳机 App 风格: 卡片式深色布局 + 三选一圆形模式按钮 + 三段电量条 */
-public class MainActivity extends Activity implements VivoGaiaClient.Listener {
+public class MainActivity extends Activity implements TwsClient.Listener {
 
     private static final int REQ_PERM = 1;
 
@@ -74,9 +72,6 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
         return "未知";
     }
 
-    // 空间音效预设(推断值 0..4): 标准/剧场/音乐厅/录音厅/演唱会
-    private static final String[] SPATIALFX_NAMES =
-            {"标准", "剧场", "音乐厅", "录音棚", "演唱会"};
 
     private Button btnDeepx;
     private int deepxMode = -1;   // 当前档位(数组下标)
@@ -91,7 +86,6 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
     private boolean inFront = false;
     private Runnable reconnector;
     private long reconnectDelay = 3000L;
-    private Runnable bgExit;
     private android.widget.ScrollView scrollHost;
     // 表冠滚动泵: 事件增量累进 pending,泵每 16ms 逐帧逼近目标;
     // 若每个事件各起一段 smooth 动画,动画反复重启就会一顿一顿
@@ -177,8 +171,9 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
                     return;
                 }
                 Toast.makeText(MainActivity.this, R.string.spatial_toast, Toast.LENGTH_SHORT).show();
-                if (client instanceof VivoGaiaClient && client.isConnected()) {
-                    ((VivoGaiaClient) client).setSpatial(isChecked);
+                if (client != null && client.isConnected()
+                        && (client.caps() & TwsClient.CAP_SPATIAL) != 0) {
+                    client.setSpatial(isChecked);
                 } else {
                     Toast.makeText(MainActivity.this, "未连接", Toast.LENGTH_SHORT).show();
                 }
@@ -194,9 +189,8 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
                 deepxMode = (deepxMode + 1) % DEEPX_NAMES.length;
                 deepxSetAt = SystemClock.elapsedRealtime();
                 btnDeepx.setText(DEEPX_NAMES[deepxMode]);
-                if (client instanceof VivoGaiaClient) {
-                    ((VivoGaiaClient) client).setDeepX(DEEPX_MODES[deepxMode]);
-                }
+                // 无此能力的驱动是空实现, 入口也只对 CAP_DEEPX 的驱动显示
+                client.setDeepX(DEEPX_MODES[deepxMode]);
             }
         });
 
@@ -238,10 +232,10 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
                     if (client != null && client.isConnected()) {
                         client.queryBattery();
                         client.queryNoise();
-                        if (client instanceof VivoGaiaClient
-                                && (tick == 1 || tick % 4 == 0)) {
-                            ((VivoGaiaClient) client).querySpatial();
-                            ((VivoGaiaClient) client).queryDeepX();
+                        if (tick == 1 || tick % 4 == 0) {
+                            int caps = client.caps();
+                            if ((caps & TwsClient.CAP_SPATIAL) != 0) client.querySpatial();
+                            if ((caps & TwsClient.CAP_DEEPX) != 0) client.queryDeepX();
                         }
                     } else if (client == null
                             || SystemClock.elapsedRealtime() - connectStartAt > 12000) {
@@ -276,13 +270,6 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
         }
     }
 
-    @Override
-    protected void onStart() {
-        super.onStart();
-        // 回到前台,撤销后台自杀倒计时
-        if (bgExit != null) ui.removeCallbacks(bgExit);
-    }
-
     /** 表冠/旋转表圈滚动页面: 增量累进+16ms泵指数缓动,别用smoothScrollBy(动画互相打架会顿挫) */
     @Override
     public boolean onGenericMotionEvent(android.view.MotionEvent ev) {
@@ -308,29 +295,6 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
     }
 
 
-    @Override
-    protected void onStop() {
-        super.onStop();
-        // 后台15秒自动退场: 空进程赖在后台也不省电,磁贴/跳板都是系统按需拉起的;
-        // 跳板正在连耳机时先让路,等它收工再退。
-        // 注意: 只 finish 不 killProcess——硬杀会留下未关闭的 RFCOMM 句柄,
-        // 耳机侧连接位被"尸体"占着,下次打开疯狂连断循环表现为卡死
-        if (bgExit == null) {
-            bgExit = new Runnable() {
-                @Override public void run() {
-                    // 冻结解冻竞态保险: 只有确认自己在后台才退场,
-                    // 避免把刚被系统拉起的新前台实例误杀(表现为再开卡死)
-                    if (isFinishing() || isDestroyed()) return; // resumed 期间 onStart 已撤定时,这里双保险
-                    finishAndRemoveTask();
-                }
-            };
-        }
-        ui.removeCallbacks(bgExit);
-        // 后台退场交给系统冻结(实测系统会冻结后台进程,自杀收益为零还引入竞态);
-        // 这里只做一件事: 真正到后台时把蓝牙断了省电(onPause 已做)
-    // ui.postDelayed(bgExit, 15000);
-    }
-
     /** 首次启用空间音频的个别化风险确认框,确认后记住(spatial_ack) */
     private void showSpatialDialog() {
         new android.app.AlertDialog.Builder(this)
@@ -342,8 +306,8 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
                         getSharedPreferences("cfg", MODE_PRIVATE).edit()
                                 .putBoolean("spatial_ack", true).apply();
                         spatialSetAt = SystemClock.elapsedRealtime();
-                        if (client instanceof VivoGaiaClient && client.isConnected()) {
-                            ((VivoGaiaClient) client).setSpatial(true);
+                        if (client != null && client.isConnected()) {
+                            client.setSpatial(true);
                         }
                     }
                 })
@@ -392,18 +356,18 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
                 == PackageManager.PERMISSION_GRANTED;
     }
 
-    /** 在已配对设备里挑目标: 名字能被工厂认出的优先,再兜底任意音频设备 */
+    /** 在已配对设备里挑目标: 名字能被驱动认出的优先,再兜底任意音频设备 */
     static BluetoothDevice findTarget(BluetoothAdapter adapter) {
         Set<BluetoothDevice> bonded = adapter.getBondedDevices();
         if (bonded == null) return null;
         for (BluetoothDevice d : bonded) {
-            if (ClientFactory.create(d) != null) return d;
+            if (DriverRegistry.isKnownDevice(d)) return d;
         }
         for (BluetoothDevice d : bonded) {
             ParcelUuid[] uuids = d.getUuids();
             if (uuids == null) continue;
             for (ParcelUuid u : uuids) {
-                if (u.getUuid().equals(VivoGaiaClient.A2DP_SINK_UUID)) return d;
+                if (u.getUuid().equals(DriverRegistry.A2DP_SINK_UUID)) return d;
             }
         }
         return null;
@@ -442,10 +406,10 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
             sub.setText("请先在 手表设置-蓝牙 配对");
             return;
         }
-        TwsClient c = ClientFactory.create(this, target);
+        TwsClient c = DriverRegistry.create(this, target);
         if (c == null) {
-            // 名字不认识但像音频设备, 按 vivo 协议试一把
-            c = new VivoGaiaClient();
+            // 名字不认识但像音频设备, 按兜底驱动试一把
+            c = DriverRegistry.createFallback();
         }
         c.addListener(this);
         client = c;
@@ -509,12 +473,14 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
                 status.setTextColor(Color.WHITE);
                 status.setText("已连接");
                 sub.setTextColor(COL_LABEL_GRAY);
-                boolean vivo = client instanceof VivoGaiaClient;
-                // 华为/小米是实验性支持,未在任何真机上验证过,明说
-                sub.setText(deviceName + (vivo ? "" : "（实验性支持·未验证）"));
-                // 实验功能仅 vivo 有, 其他品牌藏掉开发者入口
-                devHint.setVisibility(vivo ? View.VISIBLE : View.GONE);
-                if (!vivo) devSection.setVisibility(View.GONE);
+                // 驱动自述验证等级与能力: 未验证的明说, 实验功能入口只给有能力的驱动
+                boolean untested = client != null
+                        && client.verifLevel() == TwsClient.VERIF_UNTESTED;
+                boolean experimental = client != null
+                        && (client.caps() & (TwsClient.CAP_SPATIAL | TwsClient.CAP_DEEPX)) != 0;
+                sub.setText(deviceName + (untested ? "（实验性支持·未验证）" : ""));
+                devHint.setVisibility(experimental ? View.VISIBLE : View.GONE);
+                if (!experimental) devSection.setVisibility(View.GONE);
             }
         });
     }

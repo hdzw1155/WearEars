@@ -2,6 +2,7 @@ package com.hdz.wearcontrol.xiaomi;
 
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
+import android.content.Context;
 import android.util.Log;
 
 import com.hdz.wearcontrol.TwsClient;
@@ -61,6 +62,40 @@ public class XiaomiMmaClient implements TwsClient {
     @Override
     public String brandName() {
         return "Xiaomi";
+    }
+
+    /** 小米协议自包含, 不需要系统服务注入 */
+    @Override
+    public void init(Context ctx) {
+    }
+
+    @Override
+    public int caps() {
+        return CAP_NOISE | CAP_BATTERY;
+    }
+
+    /** 认证算法 36/36 真值验证过, 但整机链路未在任何真机上跑过 */
+    @Override
+    public int verifLevel() {
+        return VERIF_UNTESTED;
+    }
+
+    // ---- 实验能力: 小米协议无这些命令, 空实现 ----
+
+    @Override
+    public void querySpatial() {
+    }
+
+    @Override
+    public void setSpatial(boolean on) {
+    }
+
+    @Override
+    public void queryDeepX() {
+    }
+
+    @Override
+    public void setDeepX(int mode) {
     }
 
     @Override

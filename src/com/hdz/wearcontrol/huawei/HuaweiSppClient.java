@@ -51,8 +51,10 @@ public class HuaweiSppClient implements TwsClient {
                 }
             };
 
-    /** 记下上下文和 Headset 代理, 用于走 HFP 通道问电量 */
-    public void attachContext(Context ctx) {
+    /** TwsClient.init: 记下上下文和 Headset 代理, 用于走 HFP 通道问电量 */
+    @Override
+    public void init(Context ctx) {
+        if (ctx == null) return;
         appCtx = ctx.getApplicationContext();
         try {
             hfAdapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
@@ -91,6 +93,35 @@ public class HuaweiSppClient implements TwsClient {
     @Override
     public String brandName() {
         return "Huawei";
+    }
+
+    @Override
+    public int caps() {
+        return CAP_NOISE | CAP_BATTERY;
+    }
+
+    /** SPP 帧未在真机验证; HFP 电量通道也待真机确认 */
+    @Override
+    public int verifLevel() {
+        return VERIF_UNTESTED;
+    }
+
+    // ---- 实验能力: 华为协议无这些命令, 空实现 ----
+
+    @Override
+    public void querySpatial() {
+    }
+
+    @Override
+    public void setSpatial(boolean on) {
+    }
+
+    @Override
+    public void queryDeepX() {
+    }
+
+    @Override
+    public void setDeepX(int mode) {
     }
 
     @Override
