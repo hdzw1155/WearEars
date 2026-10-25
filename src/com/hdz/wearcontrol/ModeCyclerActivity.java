@@ -21,9 +21,13 @@ public class ModeCyclerActivity extends android.app.Activity implements TwsClien
     private int nextMode;
     private boolean done = false;
 
+    /** 主界面的后台自杀让路标志: 跳板活着时为 true,杀进程前看一眼 */
+    static volatile boolean running = false;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        running = true;
         SharedPreferences cfg = getSharedPreferences("cfg", MODE_PRIVATE);
         int last = cfg.getInt("tile_mode", TwsClient.MODE_OFF);
         // 磁贴传来的指定档位(点谁切谁); 没传就循环下一档
@@ -115,6 +119,7 @@ public class ModeCyclerActivity extends android.app.Activity implements TwsClien
 
     @Override
     protected void onDestroy() {
+        running = false;
         h.removeCallbacksAndMessages(null);
         if (client != null) {
             client.disconnect();

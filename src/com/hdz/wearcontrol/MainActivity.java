@@ -89,6 +89,7 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
     private boolean disclaimerDialogUp = false;
     private Runnable reconnector;
     private long reconnectDelay = 3000L;
+    private Runnable bgExit;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -233,6 +234,34 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
             client.disconnect();
             client = null;
         }
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        // 回到前台,撤销后台自杀倒计时
+        if (bgExit != null) ui.removeCallbacks(bgExit);
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        // 后台15秒自动暴毙: 空进程赖在后台也不省电,磁贴/跳板都是系统按需拉起的;
+        // 跳板正在连耳机时先让路,等它收工再死
+        if (bgExit == null) {
+            bgExit = new Runnable() {
+                @Override public void run() {
+                    if (ModeCyclerActivity.running) {
+                        ui.postDelayed(this, 3000);
+                        return;
+                    }
+                    finishAndRemoveTask();
+                    android.os.Process.killProcess(android.os.Process.myPid());
+                }
+            };
+        }
+        ui.removeCallbacks(bgExit);
+        ui.postDelayed(bgExit, 15000);
     }
 
     /** 首次启用空间音频的个别化风险确认框,确认后记住(spatial_ack) */
