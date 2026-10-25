@@ -28,17 +28,29 @@ vivo 单品牌版的老项目在 [vivo-tws-watch-control](https://github.com/hdz
 
 ## 架构
 
-各品牌协议互相隔离，加新品牌只需实现一个类：
+各品牌协议互相隔离，加新品牌只需实现一个类、注册一行：
 
 ```
-TwsClient          统一接口(连接/电量/降噪三态)
-├── vivo/VivoGaiaClient      GAIA 私有协议
-├── huawei/HuaweiSppClient   SPP + CRC16/XMODEM 帧
-├── xiaomi/XiaomiMmaClient   MMA 帧 + 挑战-应答认证
-└── ClientFactory            按蓝牙设备名自动挑品牌
+TwsClient          统一接口(驱动标准: 连接/电量/降噪三态 + 能力位 + 验证等级)
+├── vivo/VivoGaiaClient      GAIA 私有协议(真机验证)
+├── huawei/HuaweiSppClient   SPP + CRC16/XMODEM 帧(未真机验证)
+├── xiaomi/XiaomiMmaClient   MMA 帧 + 挑战-应答认证(未真机验证)
+└── DriverRegistry           按蓝牙设备名自动挑品牌, 匹配规则内聚在各驱动里
 ```
+
+UI 层只认 `TwsClient`：能力用 `caps()` 门控、成熟度用 `verifLevel()` 标注，代码里不出现任何品牌判断。
 
 小米的认证算法（`xiaomi/XiaomiAuth.java`）是 `libxm_bluetooth.so` 逆向算法的独立 Java 移植，与公开的 36 组 Unicorn oracle 真值逐字节一致后才上表。
+
+## 适配新耳机
+
+抓到了新品牌的蓝牙协议（或想给现有协议补命令）？流程已经模板化：
+
+1. 按模板填一张协议表：`docs/DRIVER_TEMPLATE.md`（帧格式 / 命令表 / 匹配词 / 坑位记录）
+2. 把填好的表 + `docs/DRIVER_SPEC.md`（驱动标准契约）+ `src/.../skeleton/SkeletonClient.java`（填空骨架）交给任意 AI 编程助手，生成驱动
+3. 在 `DriverRegistry` 注册一行，编译装表，logcat 抓原始帧对照修正
+
+协议探测的方法论（探针轮换 / 官方 App 交叉对照 / 沉默≠不支持）见姊妹项目 [vivo-tws-watch-control 的 AI_CONTEXT.md](https://github.com/hdzw1155/vivo-tws-watch-control/blob/main/docs/AI_CONTEXT.md)。
 
 ## 安装
 
