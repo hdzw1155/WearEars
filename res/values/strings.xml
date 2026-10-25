@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">TWS 管家</string>
     <string name="status_idle">未连接</string>
-    <string name="status_connecting">连接中…</string>
+    <string name="status_connecting">连接中…耳机忙时约需半分钟</string>
     <string name="noise_title">噪声控制</string>
     <string name="btn_anc">降噪开</string>
     <string name="btn_off">降噪关</string>

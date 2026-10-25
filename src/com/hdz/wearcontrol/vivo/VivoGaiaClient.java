@@ -211,6 +211,12 @@ public class VivoGaiaClient implements TwsClient {
                     out = socket.getOutputStream();
                 } catch (Exception e) {
                     safeClose();
+                    // 连不上先歇 2 秒再报错: 上一个进程被硬杀后,耳机侧连接位要几秒才释放,
+                    // 立刻重试会陷入连-断循环(表现为"第二次进入卡死")
+                    try {
+                        Thread.sleep(2000);
+                    } catch (InterruptedException ignored) {
+                    }
                     if (closing) return; // 已被新的连接替代,不再回调
                     fireError("连接失败: " + e.getMessage()
                             + "\n(耳机未与手表配对? 或耳机已占满两个连接)");

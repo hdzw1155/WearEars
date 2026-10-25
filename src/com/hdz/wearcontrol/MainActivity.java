@@ -246,8 +246,10 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
     @Override
     protected void onStop() {
         super.onStop();
-        // 后台15秒自动暴毙: 空进程赖在后台也不省电,磁贴/跳板都是系统按需拉起的;
-        // 跳板正在连耳机时先让路,等它收工再死
+        // 后台15秒自动退场: 空进程赖在后台也不省电,磁贴/跳板都是系统按需拉起的;
+        // 跳板正在连耳机时先让路,等它收工再退。
+        // 注意: 只 finish 不 killProcess——硬杀会留下未关闭的 RFCOMM 句柄,
+        // 耳机侧连接位被"尸体"占着,下次打开疯狂连断循环表现为卡死
         if (bgExit == null) {
             bgExit = new Runnable() {
                 @Override public void run() {
@@ -256,7 +258,6 @@ public class MainActivity extends Activity implements VivoGaiaClient.Listener {
                         return;
                     }
                     finishAndRemoveTask();
-                    android.os.Process.killProcess(android.os.Process.myPid());
                 }
             };
         }
