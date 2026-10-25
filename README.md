@@ -53,11 +53,23 @@ UI 层只认 `TwsClient`：能力用 `caps()` 门控、成熟度用 `verifLevel(
 
 ## 适配新耳机
 
-抓到了新品牌的蓝牙协议（或想给现有协议补命令）？流程已经模板化：
+抓到了新品牌的蓝牙协议（或想给现有协议补命令）？流程已经模板化，脏活可以直接外包给你手边的 AI：
 
-1. 按模板填一张协议表：`docs/DRIVER_TEMPLATE.md`（帧格式 / 命令表 / 匹配词 / 坑位记录）
-2. 把填好的表 + `docs/DRIVER_SPEC.md`（驱动标准契约）+ `src/.../skeleton/SkeletonClient.java`（填空骨架）交给任意 AI 编程助手，生成驱动
-3. 在 `DriverRegistry` 注册一行，编译装表，logcat 抓原始帧对照修正
+1. 按模板填一张你耳机的协议表：`docs/DRIVER_TEMPLATE.md`（帧格式 / 命令表 / 匹配词 / 坑位记录）
+2. 把填好的表连同下面这段指令一起丢给任意 AI 编程助手：
+
+   ```text
+   我要给 Wear OS 开源项目 tws-control-for-wear 适配一个新品牌耳机驱动。
+   请先读仓库里的 docs/DRIVER_SPEC.md（驱动标准契约）和
+   src/com/hdz/wearcontrol/skeleton/SkeletonClient.java（填空骨架），
+   协议信息按我附上的协议表来，没有的命令做空实现，不许臆造帧格式。
+   代码风格：纯 Java 8 匿名内部类、无 lambda。
+   写完后告诉我需要在 DriverRegistry 注册哪一行。
+   ```
+
+3. 拿回驱动类，在 `DriverRegistry.DRIVERS` 注册一行，编译装表，logcat 抓原始帧对照修正
+
+> 你用的 AI 读不了 GitHub 仓库？把 `docs/DRIVER_SPEC.md`、`docs/DRIVER_TEMPLATE.md` 和 `src/com/hdz/wearcontrol/skeleton/SkeletonClient.java` 三个文件的内容一并贴给它，效果相同。
 
 协议探测的方法论（探针轮换 / 官方 App 交叉对照 / 沉默≠不支持）见姊妹项目 [vivo-tws-watch-control 的 AI_CONTEXT.md](https://github.com/hdzw1155/vivo-tws-watch-control/blob/main/docs/AI_CONTEXT.md)。
 
