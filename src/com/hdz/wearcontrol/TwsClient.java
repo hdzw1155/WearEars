@@ -19,8 +19,10 @@ public interface TwsClient {
     // ---- 能力位: 驱动自述, UI 用 (client.caps() & CAP_X) != 0 门控 ----
     int CAP_NOISE = 1;    // 降噪三态切换
     int CAP_BATTERY = 2;  // 三段电量
+    int CAP_BATTERY_SINGLE = 16;  // 只有整机总电量(标准协议/系统聚合), UI 换成单电量显示
     int CAP_SPATIAL = 4;  // 空间音频开关(实验功能)
-    int CAP_DEEPX = 8;    // 音效档位(实验功能)
+    /** DeepX 音效(仅 vivo 系) */
+    int CAP_DEEPX = 8;
 
     // ---- 验证等级: 如实标注, UI 据此挂"实验性支持·未验证" ----
     int VERIF_REAL = 0;     // 本项目真机验证过

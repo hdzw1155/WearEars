@@ -182,6 +182,7 @@ public class VivoGaiaClient implements TwsClient {
     /** 注意: Listener 回调发生在后台线程,UI 侧需自行切线程。 */
     public void connect(final BluetoothDevice device) {
         closing = false;
+        VivoProbe.attach(this);
         cfg = cfgForName(device.getName());
         new Thread(new Runnable() {
             @Override public void run() {
@@ -236,7 +237,13 @@ public class VivoGaiaClient implements TwsClient {
 
     public void disconnect() {
         closing = true;
+        VivoProbe.detach(this);
         safeClose();
+    }
+
+    /** 探针通道(VivoProbe 广播触发): 任意命令号直发, verb 沿用当前 cfg, 仅调试用 */
+    public void sendProbe(int cmd, byte[] payload) {
+        writeFrame(cfg == CFG_FAMILY_V4 ? 0x04 : 0x03, VENDOR_VIVO, cmd, payload);
     }
 
     private void safeClose() {

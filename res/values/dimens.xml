@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- radii: card 20dp, nested = card - padding, small blocks 12dp -->
+    <dimen name="radius_card">20dp</dimen>
+    <dimen name="radius_chip">12dp</dimen>
+
+    <!-- spacing base 4dp -->
+    <dimen name="page_pad">16dp</dimen>
+    <dimen name="card_pad">14dp</dimen>
+    <dimen name="gap_1">4dp</dimen>
+    <dimen name="gap_2">8dp</dimen>
+    <dimen name="gap_3">12dp</dimen>
+    <dimen name="gap_4">16dp</dimen>
+
+    <!-- type scale -->
+    <dimen name="text_title">15sp</dimen>
+    <dimen name="text_body">13sp</dimen>
+    <dimen name="text_caption">10sp</dimen>
+    <dimen name="text_number">18sp</dimen>
+    <dimen name="text_unit">10sp</dimen>
+
+    <!-- battery progress bar -->
+    <dimen name="bar_height">6dp</dimen>
+    <dimen name="ring_height">40dp</dimen>
+</resources>

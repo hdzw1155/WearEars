@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 自适应图标背景层: 米白纸面(F6F6F2), 满版出血由系统圆形遮罩裁切 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="1000"
+    android:viewportHeight="1000">
+    <path
+        android:fillColor="#F6F6F2"
+        android:pathData="M0,0h1000v1000h-1000z" />
+</vector>

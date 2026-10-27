@@ -27,6 +27,13 @@ if not exist "%PLAT%" (
   echo [X] android.jar not found, run scripts\setup-env.bat first
   exit /b 1
 )
+rem tile dependencies (not committed, see .gitignore): run scripts\fetch-libs.bat once
+set LIBS=libs
+set CP_JARS=%LIBS%\tiles-1.1.0.jar;%LIBS%\tiles-proto-1.1.0.jar;%LIBS%\annotation-1.2.0.jar;%LIBS%\annotation-experimental-1.2.0.jar;%LIBS%\listenablefuture-1.0.jar
+if not exist "%LIBS%\tiles-1.1.0.jar" (
+  echo [X] tile libs missing, run scripts\fetch-libs.bat first
+  exit /b 1
+)
 if not exist keystore\debug.keystore (
   mkdir keystore 2>nul
   keytool -genkeypair -keystore keystore\debug.keystore ^
@@ -45,7 +52,7 @@ echo [2/6] aapt2 link...
 "%BT%\aapt2.exe" link -o build\app.unsigned.apk -I "%PLAT%" ^
   --manifest AndroidManifest.xml --java build\gen ^
   --min-sdk-version 30 --target-sdk-version 34 ^
-  --version-code 10 --version-name 0.2.1 ^
+  --version-code 11 --version-name 0.3.0 ^
   --auto-add-overlay build\res.zip || exit /b 1
 
 echo [3/6] javac...
@@ -54,7 +61,7 @@ set SRCS=
 for /r src %%f in (*.java) do set "SRCS=!SRCS! "%%f""
 for /r build\gen %%f in (*.java) do set "SRCS=!SRCS! "%%f""
 javac -source 8 -target 8 -encoding UTF-8 ^
-  -bootclasspath "%PLAT%" -d build\classes !SRCS! || exit /b 1
+  -bootclasspath "%PLAT%" -classpath "%CP_JARS%" -d build\classes !SRCS! || exit /b 1
 endlocal
 
 echo [4/6] d8 dex...
@@ -63,8 +70,10 @@ jar cf ..\classes.jar com || exit /b 1
 popd
 rem library jars must be d8 INPUTS (--lib only resolves refs, never packages)
 setlocal enabledelayedexpansion
+set D8IN=build\classes.jar
+for %%j in ("%LIBS%\*.jar") do set D8IN=!D8IN! "%%j"
 call "%BT%\d8.bat" --release --lib "%PLAT%" --min-api 30 ^
-  --output build "build\classes.jar" || exit /b 1
+  --output build !D8IN! || exit /b 1
 endlocal
 
 echo [5/6] pack dex files...

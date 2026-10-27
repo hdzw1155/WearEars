@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- launcher icon background (poster off-white) -->
+    <color name="ic_launcher_background">#F6F6F2</color>
+
+    <!-- ===== unified design tokens (2026-10 visual pass) ===== -->
+    <!-- surfaces -->
+    <color name="bg">#000000</color>
+    <color name="surface">#1C1C1E</color>
+    <color name="surface_2">#242428</color>
+    <color name="stroke">#1FFFFFFF</color>
+
+    <!-- text: primary / secondary 60% / tertiary 38% -->
+    <color name="text">#FFFFFF</color>
+    <color name="text_dim">#B3FFFFFF</color>
+    <color name="text_faint">#85FFFFFF</color>
+    <color name="text_icon">#B3FFFFFF</color>
+
+    <!-- single brand blue used everywhere (segmented / chips / switch / tile) -->
+    <color name="accent">#2B6CB0</color>
+
+    <!-- semantic, low saturation -->
+    <color name="ok">#4CC38A</color>
+    <color name="warn">#F5A524</color>
+    <color name="danger">#F0524F</color>
+    <color name="track">#26262A</color>
+    <color name="choice_text">#F2F2F5</color>
+</resources>

@@ -22,6 +22,51 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:label="@string/settings_title" />
+
+        <!-- 私有协议探针(仅实验仓调试), 用法见 vivo/VivoProbe.java 头注释.
+             安全: 非导出, 第三方 App 无法注入指令; 需要 adb 调试时把 exported 临时改回 true
+             重新装调试版, 验证完改回 false. -->
+        <receiver
+            android:name=".vivo.VivoProbe"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.hdz.wearcontrol.PROBE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 磁贴: 系统磁贴宿主通过这条导出服务绑定; 预览图是磁贴列表里显示的那张 -->
+        <service
+            android:name=".TwsTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_tile_preview"
+            android:label="@string/tile_title"
+            android:description="@string/tile_desc"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data
+                android:name="androidx.wear.tiles.PREVIEW"
+                android:resource="@drawable/ic_tile_preview" />
+        </service>
+
+        <!-- 磁贴按钮的秒退跳板: 只起后台服务切档, 不把主界面拉前台 -->
+        <activity
+            android:name=".ModeCyclerActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- 磁贴切降噪的无界面服务: 连耳机→切档→更新快照→自杀 -->
+        <service
+            android:name=".ModeCyclerService"
+            android:exported="false" />
 
     </application>
 </manifest>

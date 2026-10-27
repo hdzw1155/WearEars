@@ -2,5 +2,6 @@ build/
 *.apk
 *.idsig
 keystore/
+libs/
 AI_HANDOFF.md
 HANDOFF_PROMPT.md

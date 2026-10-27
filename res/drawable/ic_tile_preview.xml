@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 磁贴预览图标: 圆角方形卡片版(带留白), 供磁贴选择器/列表展示 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="1000"
+    android:viewportHeight="1000">
+    <!-- 米白圆角卡片底 -->
+    <path
+        android:fillColor="#F6F6F2"
+        android:pathData="M180,0h640a180,180 0 0 1 180,180v640a180,180 0 0 1 -180,180h-640a180,180 0 0 1 -180,-180v-640a180,180 0 0 1 180,-180z" />
+    <!-- 绿色色块组 -->
+    <path
+        android:fillColor="#669F77"
+        android:pathData="M477 265L608 134L710 236L579 367ZM303 331L313 321L419 427L409 437ZM540 704L671 573L723 625L592 756Z" />
+    <!-- 黄色色块组 -->
+    <path
+        android:fillColor="#EAB31A"
+        android:pathData="M417 325L477 265L600 388L540 448ZM182 476L294 364L394 464L282 576ZM446 644L626 464L702 540L522 720Z" />
+    <!-- 蓝色色块组 -->
+    <path
+        android:fillColor="#1E4182"
+        android:pathData="M282 252L305 229L378 302L355 325ZM338 238L395 181L445 231L388 288ZM157 416L235 338L253 356L175 434ZM127 503L271 359L277 365L133 509ZM182 838L773 247L810 284L219 875ZM723 649L801 571L814 584L736 662ZM636 798L749 685L790 726L677 839Z" />
+    <!-- 中心珊瑚红色小方块 -->
+    <path
+        android:fillColor="#DF6863"
+        android:pathData="M429 491L450 470L471 491L450 512Z" />
+    <!-- 黑色线条与色块组 -->
+    <path
+        android:fillColor="#101316"
+        android:pathData="M412 198L489 121L506 138L429 215ZM346 334L465 215L488 238L369 357ZM209 211L212 208L489 485L486 488ZM247 315L261 301L408 448L394 462ZM379 359L415 323L454 362L418 398ZM409 405L453 361L541 449L497 493ZM127 857L857 127L875 145L145 875ZM313 783L365 731L417 783L365 835ZM363 871L869 365L874 370L368 876ZM515 873L871 517L873 519L517 875ZM592 780L723 649L736 662L605 793Z" />
+</vector>

@@ -3,7 +3,7 @@
 [![Release](https://img.shields.io/github/v/release/hdzw1155/tws-control-for-wear)](https://github.com/hdzw1155/tws-control-for-wear/releases)
 [![License](https://img.shields.io/github/license/hdzw1155/tws-control-for-wear)](https://github.com/hdzw1155/tws-control-for-wear/blob/main/LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Wear%20OS%203%2B-3DDC84?logo=android&logoColor=white)
-![Dependencies](https://img.shields.io/badge/dependencies-zero-orange)
+![Dependencies](https://img.shields.io/badge/dependencies-5%20androidx%20jars-orange)
 ![Data collection](https://img.shields.io/badge/data_collection-none-success)
 ![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
@@ -24,13 +24,37 @@
   * **降噪三态切换**：降噪 / 关闭 / 通透三档一键切换（当前模式高亮显示；华为机型暂不支持通透）。
   * **三端电量显示**：实时显示左耳、右耳、充电盒电量及充电状态。
   * **省心连接体验**：断线状态自动清空、回到前台自动重连；适配手表旋转表冠与省电策略。
+  * **磁贴快捷控制**：不用打开 App，在手表磁贴里就能切降噪模式，顺便看一眼上一次连接的电量；三段电量与整机总电量（单电池设备）自适应显示，磁贴样式可跟随界面或单独指定。
+  * **三种界面风格 + 设置页**：极简（横向进度条）/ 液位（胶囊块）/ 经典（压扁圆环）三种电量视图，设置页即时切换；界面语言可跟随系统或手动切中 / 英。
+  * **多品牌与标准兜底**：除 vivo / 华为 / 小米外，新增漫步者、弱水时砂、原道三条社区协议驱动（均标注「实验性」）；认不出私有协议的耳机自动走「标准协议」兜底，不碰耳机私有指令，只读系统聚合电量。
   * **vivo 专属实验功能**：连点 5 下应用内"开发者设置"，可开启空间音频 / DeepX 音效调节（目前仅限 vivo TWS Air3 Pro，详见应用内免责声明）。
+
+## 📸 界面预览
+
+<table>
+  <tr>
+    <td><img src="docs/main-classic.jpg" width="200"/><br><div align="center">经典主界面</div></td>
+    <td><img src="docs/main-minimal.jpg" width="200"/><br><div align="center">极简主界面</div></td>
+    <td><img src="docs/settings.jpg" width="200"/><br><div align="center">设置页</div></td>
+  </tr>
+  <tr>
+    <td><img src="docs/tile-classic.jpg" width="200"/><br><div align="center">经典磁贴</div></td>
+    <td><img src="docs/tile-liquid.jpg" width="200"/><br><div align="center">液位磁贴</div></td>
+    <td><img src="docs/tile-minimal.jpg" width="200"/><br><div align="center">极简磁贴</div></td>
+  </tr>
+</table>
 
 | 耳机品牌 | 蓝牙传输协议 | 降噪控制 | 电量显示 | 当前验证状态 |
 | --- | --- | --- | --- | --- |
 | **vivo / iQOO TWS 家族** | RFCOMM (GAIA) | 开 / 关 / 通透三态 | 左 / 右 / 盒 | ✅ **已真机实测**（Galaxy Watch7 + Air3 Pro 全功能正常） |
 | **华为 FreeBuds / 荣耀** | RFCOMM (SPP) | 开 / 关（通透协议未公开） | 多数机型暂查不到（走 HFP 通道） | ⚠️ **实验性支持**（按协议文档实现，待真机实测） |
 | **小米 / Redmi Buds** | RFCOMM (MMA) | 开 / 关 / 通透三态 | 左 / 右 / 盒（含充电状态） | ⚠️ **实验性支持**（认证算法通过 36/36 离线真值验证，待上耳机实测） |
+| **漫步者 EDIFIER** | RFCOMM (SPP) / BLE GATT | 开 / 关 / 通透（按型号 group 映射；未知 group 只读不写） | 左 / 右 / 盒（头戴型号为总电量） | ⚠️ **实验性支持**（协议来自社区公开逆向，未真机实测） |
+| **弱水时砂 RoseLink** | BLE GATT / RFCOMM (SPP) | 开 / 关 / 通透（风噪档不映射） | 左 / 右 / 盒 | ⚠️ **实验性支持**（协议来自社区公开逆向，未真机实测） |
+| **原道 NiceHCK** | RFCOMM (SPP) | 开 / 关 / 通透（含普通/深度降噪） | 左 / 右 / 盒 | ⚠️ **实验性支持**（协议来自社区公开逆向，未真机实测） |
+| **其他品牌（标准协议兜底）** | 系统蓝牙（A2DP/HFP + HF Indicator 广播） | — | 仅整机总电量（系统聚合，分体电量系统不公开） | ⚠️ **实验性支持**（只读电量，不碰耳机私有协议） |
+
+> 📌 **取设备规则**：先按蓝牙 Class 排除手机/平板，再优先「名字像品牌耳机 + 有 A2DP Sink 角色」的设备，最后才退回名字匹配。个别 ROM 对手机 Class 上报不规范时仍可能选错——真遇到就把手机从手表蓝牙列表里删掉，或把耳机名加上品牌词（如 `vivo TWS Air3 Pro`）。
 
 ## 🚀 我是普通用户：怎么装到手表上用？（3 步搞定）
 
@@ -51,6 +75,8 @@
 请用零基础也能看懂的大白话，一步步教我怎么在手表上开启"开发者选项"和"无线调试"，
 并用手机上的工具把这个 APK 装进手表里。每次只教我做一步，等我回复成功后再教下一步。
 ```
+
+> 💡 装好之后可以顺手加个磁贴：在手表的磁贴列表底部点「添加磁贴」，找到「耳机控制」。先在 App 里连过一次耳机，磁贴就会显示上次连接的电量和时间；没连过也能点它打开控制。
 
 ## 🛠️ 我的耳机还没支持：怎么用 AI 自由适配新耳机？
 
@@ -81,12 +107,13 @@
 第二步：严格遵守「驱动标准契约」与实现守则（纯 Java 8 匿名内部类、严禁使用 lambda、未真机验证一律返回 VERIF_UNTESTED、没有的能力做空实现），基于 SkeletonClient.java 写出完整的驱动类代码，并明确告诉我需要在 DriverRegistry.DRIVERS 里注册哪一行代码。
 ```
 
-### 第三步：两行命令一键打包出 APK
+### 第三步：几条命令一键打包出 APK
 
-拿回 AI 写好的驱动代码放进工程，并在 `DriverRegistry.DRIVERS` 加上注册行后，本项目**免 Gradle 构建**，在 Windows 下直接运行两条脚本即可生成 APK：
+拿回 AI 写好的驱动代码放进工程，并在 `DriverRegistry.DRIVERS` 加上注册行后，本项目**免 Gradle 构建**，在 Windows 下直接运行几条脚本即可生成 APK：
 
 1. 首次配置环境：运行 `scripts\setup-env.bat`
-2. 编译生成安装包：运行 `scripts\build.bat`（纯 Java 零第三方依赖，秒出 APK）
+2. 抓磁贴依赖：运行 `scripts\fetch-libs.bat`（从 Google Maven 下载 5 个 androidx 磁贴 jar，约 1.4MB，只需跑一次，`libs/` 不入库）
+3. 编译生成安装包：运行 `scripts\build.bat`（纯 Java，秒出 APK）
 
 > ⚠️ **AI 折腾风险提示**：AI 生成的代码与蓝牙私有指令存在翻车可能，实验性功能切换瞬间可能出现突发爆音或音量突变。测试前请务必**摘下耳机并调低音量**，注意用机与听力安全！如果跑不通，用 `adb logcat` 抓一段原始十六进制日志丢回给 AI 对照修正即可。
 
@@ -103,7 +130,17 @@ TwsClient                    统一接口(驱动标准: 连接/电量/降噪三�
 ├── vivo/VivoGaiaClient      GAIA 私有协议(真机验证)
 ├── huawei/HuaweiSppClient   SPP + CRC16/XMODEM 帧(未真机验证)
 ├── xiaomi/XiaomiMmaClient   MMA 帧 + 挑战-应答认证(未真机验证，XiaomiAuth.java 经 36/36 Unicorn oracle 真值逐字节验证)
+├── EdifierClient           漫步者 Bes 帧(SPP/BLE, 未真机验证)
+├── RoseLinkClient          弱水时砂 V2/RS 帧(BLE/SPP, 未真机验证)
+├── NiceHckClient           原道 4E 帧(SPP, 未真机验证)
+├── StandardClient          标准协议兜底(系统 A2DP/HFP + HF Indicator, 只读电量)
 └── DriverRegistry           按蓝牙设备名自动挑品牌, 匹配规则内聚在各驱动里
+
+界面与磁贴(共用同一套数据契约):
+MainActivity(极简/液位/经典三风格) ── SettingsActivity(风格/语言/磁贴样式)
+TwsTileService ── TileLayouts(新式布局树) / ClassicTileLayouts(经典样式) / TileResources(仪表盘位图)
+              └─ TileStore(prefs 数据契约) ── TileSnapshot(快照值对象) / TileState(上一次连接文案)
+磁贴按键 ── ModeCyclerActivity(秒退跳板) ── ModeCyclerService(无界面连耳机切档)
 ```
 
 ### 驱动标准契约
@@ -137,6 +174,7 @@ TwsClient（驱动标准接口）
 | --- | --- | --- |
 | `CAP_NOISE` | 降噪三态切换 | 显示三个模式按钮 |
 | `CAP_BATTERY` | 三段电量 | 显示电量卡片 |
+| `CAP_BATTERY_SINGLE` | 只有整机总电量 | 电量区切成单格「总电量」，磁贴也换成单电量版 |
 | `CAP_SPATIAL` | 空间音频开关 | 显示开发者区空间音频开关（实验） |
 | `CAP_DEEPX` | 音效档位 | 显示开发者区音效按钮（实验） |
 
@@ -218,11 +256,61 @@ FF | VERB | 00 | LEN | VENDOR(2B 大端) | CMD(2B 大端) | PAYLOAD(LEN 字节)
 * 例：verb 用错耳机直接沉默不报错，表现为超时
 * 例：电量走 HFP AT 通道，SPP 上裸问无回包
 
+## 🔎 已适配品牌协议速查（贡献者参考）
+
+下表是三条实验性驱动的协议骨架，细节以实现为准；给新耳机写驱动前，建议先按上面的「协议表模板」把资料填成同样格式，再动手。
+
+### 漫步者 EDIFIER
+
+| 项 | 值 |
+| --- | --- |
+| 匹配词 | edifier / 漫步者 / neobuds / lollipods / fitbuds / fitclip / w820 / w860 / w260 |
+| 传输层 | RFCOMM (SPP) `EDF00000-EDFE-DFED-FEDF-EDFEDFEDFEDF`（失败回退 channel 1）/ BLE GATT 兜底 |
+| 握手 | 无，连上直接查 |
+| V2 帧 | `AA EC CMD LEN_H LEN_L PAYLOAD CRC8`，payload 双向 XOR 0xA5，CRC8 = sum(前序线上字节) & 0xFF |
+| V1 帧 | `AA LEN CMD DATA CRC16_H CRC16_L`，LEN = len(DATA)+1，CRC16 = (0x2019+sum) & 0xFFFF |
+| 电量 | `D0` 单值（&0x7F，头戴/老型号）；`F2` 六字节 `[peer][左][右][盒][充电][?]`（新 TWS） |
+| 降噪 | `CC` 查询 → `[group][mode]`；`C1` 设置 `[group][mode]`；group 0x10 / 0x1B / 0x17 与 V1 的 mode 表互不相同，未知 group 只读不写 |
+| 来源 | HyperEars 的 edifier Bes 协议文档、mEDIFIER、BudsLink |
+
+### 弱水时砂 RoseLink
+
+| 项 | 值 |
+| --- | --- |
+| 匹配词 | ruoshui / roselink / 弱水 / rosebuds / ceramics / agate / sportfeel / openfun / openfeel |
+| 传输层 | BLE GATT 服务 `00FE` / 写 `00F1` / 通知 `00F2`；SPP `0cf12d31-fac3-4553-bd80-d6832e7b3931` |
+| 握手 | 无，连上发全量 getInfo |
+| V2 帧 | `FF SEQ LEN BODY CS AA`，CS = sum(FF,SEQ,LEN,BODY) & 0xFF；接收 `DD SEQ TLV… CS AA` |
+| RS Common 帧 | `FF 00 LEN BODY AA`（无 CS/SEQ），V2 不响应时自动降级 |
+| 电量 | 参数 `0C` 三字节左/右/盒，&0x7F = 百分比，bit7 = 充电，FF = 未知 |
+| 降噪 | `09`：01=降噪 / 02=关 / 03=通透 / 04=风噪；按型号族固定选协议，不可探测 |
+| 来源 | IRDecoyFlare/roseselsa-RoseLink-Protocol、OPerepadia/rosebuds |
+
+### 原道 NiceHCK
+
+| 项 | 值 |
+| --- | --- |
+| 匹配词 | yuandao / orig / nicehck |
+| 传输层 | RFCOMM (SPP) `0000a100-1000-8000-4e48-434b4354524c`（失败降级 insecure） |
+| 握手 | 无，连上直接查 |
+| 帧 | `4E LEN_LO LEN_HI 00 OP_LO OP_HI PARAMS`，LEN = 3+params，u16 小端，无校验 |
+| 电量 | op `0x0005` 查询，响应 `[左][右][盒]`，0 = 未知 |
+| 降噪 | `0x0101` 查询（0=关 / 1=通透 / 2=普通降噪 / 3=深度 / 0x10 试验 / 0x11 风噪）；`0x0201` 设置 `[M] 00`，无 ack |
+| 来源 | ZaeXT/NiceHCK_Controller、HELPMEEADICE/NiceHCK_Controller_Windows |
+
+### 标准协议兜底
+
+| 项 | 值 |
+| --- | --- |
+| 传输层 | 系统蓝牙（A2DP/HFP 连接状态 + BluetoothHeadset HF Indicator 广播 / 隐藏 BATTERY_LEVEL_CHANGED 广播） |
+| 能力 | 仅 `CAP_BATTERY_SINGLE`（整机总电量），无降噪/空间音频 |
+| 注意 | 分体电量系统不公开；`BluetoothDevice.getBatteryLevel()` 是 @SystemApi，只能反射，多数机型返回 -1 |
+
 ## ⚠️ 免责声明
 
 App 首次启动有确认弹窗，页面底部常驻免责声明。核心内容：
 
-* 本项目为第三方非官方社区工具，仅供个人学习研究和技术交流，与 vivo / 华为 / 小米及其关联公司无任何关联，未获其授权或背书；商标归各自权利人所有，仅作兼容性说明。
+* 本项目为第三方非官方社区工具，仅供个人学习研究和技术交流，与 vivo / 华为 / 小米 / 漫步者 / 弱水时砂 / 原道及其关联公司无任何关联，未获其授权或背书；商标归各自权利人所有，仅作兼容性说明。
 * 按现状提供，不提供任何明示或默示担保；私有协议可能随固件更新变更。
 * 实验性功能切换瞬间可能出现突发爆音、音量突变，操作前务必摘下耳机并调低音量，听力损伤不可逆；勿在驾驶、骑行等场景使用。
 * 使用风险（含听力不适、财产损失、固件异常、数据丢失、软件安全风险、保修失效、违反第三方条款）由使用者自行承担，法律强制不得排除的责任除外。
@@ -234,11 +322,14 @@ App 首次启动有确认弹窗，页面底部常驻免责声明。核心内容�
 协议知识全部来自社区公开逆向成果：
 
 * **[Zhaoyi-ya/TWS-Pods-PC](https://github.com/Zhaoyi-ya/TWS-Pods-PC)** — vivo 全套协议文档与真机抓包；华为 SPP 协议记录（上游为 HuaweiPods 项目，GPL-3.0）；小米 MMA 协议与认证算法复刻（36 组真值）
-* **[silverpoetry/HyperEars](https://github.com/silverpoetry/HyperEars)** — vivo/iQOO 家族协议画像与机型线格式配置
+* **[silverpoetry/HyperEars](https://github.com/silverpoetry/HyperEars)** — vivo/iQOO 家族协议画像与机型线格式配置；漫步者 Bes 控制协议文档（实验性驱动依据）
 * **[Star-ZER0/Pods-Protocol-Reverse](https://github.com/Star-ZER0/Pods-Protocol-Reverse)** — vivo 公共协议画像
+* **[IRDecoyFlare/roseselsa-RoseLink-Protocol](https://github.com/IRDecoyFlare/roseselsa-RoseLink-Protocol)** — 弱水时砂 RoseLink 全系机型族协议逆向
+* **[OPerepadia/rosebuds](https://github.com/OPerepadia/rosebuds)** — 弱水时砂 BLE GATT 控制路径参考（MIT）
+* **[ZaeXT/NiceHCK_Controller](https://github.com/ZaeXT/NiceHCK_Controller)** — 原道 SPP 控制协议（Java / MIT）；**[HELPMEEADICE/NiceHCK_Controller_Windows](https://github.com/HELPMEEADICE/NiceHCK_Controller_Windows)** — 同协议 Rust 实现
 * 前作 **[vivo-tws-watch-control](https://github.com/hdzw1155/vivo-tws-watch-control)** 的全部实机调优经验
 
-**关于华为部分与 GPL-3.0 的边界**：本项目的华为实现是阅读上述仓库的**协议描述文档**（帧格式 / CRC 算法 / 命令号）后独立编写的 Java 代码，未复制、未参考其 GPL 代码实现；协议规格本身属于功能性事实，不受版权保护。小米部分同理（认证算法为按公开算法描述的独立移植，并与公开真值对拍验证）。因此本项目整体保持 MIT 许可。
+**关于华为部分与 GPL-3.0 的边界**：本项目的华为实现是阅读上述仓库的**协议描述文档**（帧格式 / CRC 算法 / 命令号）后独立编写的 Java 代码，未复制、未参考其 GPL 代码实现；协议规格本身属于功能性事实，不受版权保护。小米部分同理（认证算法为按公开算法描述的独立移植，并与公开真值对拍验证）。漫步者 / 弱水时砂 / 原道三条实验性驱动同样只读上游仓库的协议文档与 MIT 实现描述，独立编写 Java 代码，未复制任何 GPL/AGPL 实现。因此本项目整体保持 MIT 许可。
 
 ## 📢 授权与反倒卖声明
 
@@ -249,7 +340,7 @@ App 首次启动有确认弹窗，页面底部常驻免责声明。核心内容�
 
 ## 📄 许可证
 
-[MIT](LICENSE)（附带上述使用声明）。零第三方依赖、零数据收集。
+[MIT](LICENSE)（附带上述使用声明）。无 Gradle、零数据收集；磁贴需要的 5 个 androidx jar 由脚本一次性抓取，不随仓库分发。
 
 <!--
 11101000 10101111 10111011 11100101 10001000 10110000 11101000 10111111 10011001 11101001 10000111 10001100 11100111 10011010 10000100 01000001 01001001 11101111 10111100 10001100 11101000 10111110 10011011 11101000 10001011 10100110 11100100 10111101 10100000 11100100 10111010 10000110 11101111 10111100 10001100 11101000 10101111 10110111 11101000 10101110 10101001 11100100 10111101 10100000 11100111 10011010 10000100 11100100 10111000 10111011 11100100 10111010 10111010 11101000 10101111 10110111 11100100 10111101 10100000 11100101 10010110 10011101 11100100 10111000 10000000 11100110 10011101 10101111 11100111 10010100 10110101 11100101 10101101 10010000 11100101 10010010 10010110 11100101 10010101 10100001 11100010 10000000 10010100 11100010 10000000 10010100 01011010 01001101

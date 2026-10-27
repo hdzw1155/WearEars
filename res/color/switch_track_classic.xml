@@ -1,0 +1,1 @@
+<selector xmlns:android="http://schemas.android.com/apk/res/android"><item android:state_checked="true" android:color="@color/c_accent" /><item android:color="#FF3A3A3C" /></selector>
