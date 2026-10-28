@@ -1,4 +1,4 @@
-﻿# WearEars 🎧⌚
+# WearEars 🎧⌚
 
 > 项目原名 `tws-control-for-wear`，2026-10 起更名为 **WearEars**；旧的仓库链接会自动跳转到新地址。
 
