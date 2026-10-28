@@ -1,11 +1,11 @@
 @echo off
 rem ============================================================
-rem  TWS control for Wear (multi-brand) - no-Gradle manual build
+rem  WearEars - no-Gradle manual build
 rem  deps: %USERPROFILE%\android-tools\jdk-ms\bin (JDK 17)
 rem        %LOCALAPPDATA%\Android\Sdk (platforms;android-34,
 rem        build-tools;34.0.0, installed by scripts\setup-env.bat)
 rem  tile libs: libs\ (fetched by scripts\fetch-libs.bat)
-rem  output: tws-control-wear-debug.apk
+rem  output: wearears-debug.apk
 rem  NOTE: keep this file ASCII-only. A UTF-8 bat with Chinese text
 rem        plus `chcp 65001` makes cmd misparse lines intermittently.
 rem ============================================================
@@ -85,8 +85,8 @@ echo [6/6] zipalign + sign...
 call "%BT%\apksigner.bat" sign --ks keystore\debug.keystore ^
   --ks-pass pass:android --key-pass pass:android ^
   --ks-key-alias androiddebugkey ^
-  --out tws-control-wear-debug.apk build\app.aligned.apk || exit /b 1
+  --out wearears-debug.apk build\app.aligned.apk || exit /b 1
 
 echo.
-echo [OK] tws-control-wear-debug.apk
+echo [OK] wearears-debug.apk
 endlocal

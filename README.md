@@ -1,7 +1,9 @@
-# TWS Control for Wear 🎧⌚
+# WearEars 🎧⌚
 
-[![Release](https://img.shields.io/github/v/release/hdzw1155/tws-control-for-wear)](https://github.com/hdzw1155/tws-control-for-wear/releases)
-[![License](https://img.shields.io/github/license/hdzw1155/tws-control-for-wear)](https://github.com/hdzw1155/tws-control-for-wear/blob/main/LICENSE)
+> 项目原名 `tws-control-for-wear`，2026-10 起更名为 **WearEars**；旧的仓库链接会自动跳转到新地址。
+
+[![Release](https://img.shields.io/github/v/release/hdzw1155/WearEars)](https://github.com/hdzw1155/WearEars/releases)
+[![License](https://img.shields.io/github/license/hdzw1155/WearEars)](https://github.com/hdzw1155/WearEars/blob/main/LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Wear%20OS%203%2B-3DDC84?logo=android&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-5%20androidx%20jars-orange)
 ![Data collection](https://img.shields.io/badge/data_collection-none-success)
@@ -61,15 +63,15 @@
 如果你不需要改代码，只想直接安装现成 App 到手表上体验，按下面 3 步操作：
 
 1. **手表配对耳机**：先在手表系统的 `设置 → 连接 → 蓝牙` 里，让手表与你的蓝牙耳机完成配对连接（耳机可同时连着手机听歌）。
-2. **下载安装包**：去本项目 [**Releases 页面**](https://github.com/hdzw1155/tws-control-for-wear/releases) 下载最新版 `.apk` 安装包。
+2. **下载安装包**：去本项目 [**Releases 页面**](https://github.com/hdzw1155/WearEars/releases) 下载最新版 `.apk` 安装包。
 3. **安装到手表（任选一种方式）**：
    * **方式 A（手机无线安装，推荐）**：在手机上安装 **WearOS 工具箱**（或水滴手表助手、Bugjaeger）→ 开启手表无线调试并连接 → 选择刚下载的本地 APK 一键安装。
-   * **方式 B（电脑 ADB 安装）**：电脑连接手表 ADB 后，运行 `adb install -r tws-control-wear-debug.apk`。
+   * **方式 B（电脑 ADB 安装）**：电脑连接手表 ADB 后，运行 `adb install -r wearears-debug.apk`。
    * **方式 C（完全不会装表？复制下面这段话丢给 AI 手把手教你）**：
 
 ```text
 我是一名智能手表小白，手里刚下载了一个 Wear OS 手表应用的 APK 安装包。
-这个应用的 GitHub 仓库是 https://github.com/hdzw1155/tws-control-for-wear
+这个应用的 GitHub 仓库是 https://github.com/hdzw1155/WearEars
 （APK 就是从它的 Releases 页面下载的）。
 我的手机型号是：【填你的手机型号】，我的手表型号是：【填你的手表型号，如三星 Galaxy Watch7】。
 请用零基础也能看懂的大白话，一步步教我怎么在手表上开启"开发者选项"和"无线调试"，
@@ -93,8 +95,8 @@
 打开任意 AI 编程助手（如 Cursor、Trae、Windsurf、Claude、ChatGPT、DeepSeek 等）。如果 AI 读不到 GitHub 仓库，只需把**本页 README 全文** + 仓库里的 **`src/com/hdz/wearcontrol/skeleton/SkeletonClient.java`** + **你找到的耳机协议资料**一起粘贴给它，并发送以下指令：
 
 ```text
-我要给 Wear OS 开源项目 tws-control-for-wear 适配一个新品牌耳机驱动：【在这里填你的耳机品牌与型号】。
-项目仓库地址：https://github.com/hdzw1155/tws-control-for-wear
+我要给 Wear OS 开源项目 WearEars 适配一个新品牌耳机驱动：【在这里填你的耳机品牌与型号】。
+项目仓库地址：https://github.com/hdzw1155/WearEars
 （能联网读仓库的话，请自行读取仓库里的 README 与 src/com/hdz/wearcontrol/skeleton/SkeletonClient.java）
 
 我给你提供三份材料：

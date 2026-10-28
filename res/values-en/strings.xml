@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">TWS Control</string>
+    <string name="app_name">WearEars</string>
     <string name="status_idle">Not connected</string>
     <string name="status_connecting">Connecting…</string>
     <string name="noise_title">Noise control</string>
