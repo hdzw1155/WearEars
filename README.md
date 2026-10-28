@@ -35,14 +35,17 @@
 
 <table>
   <tr>
-    <td><img src="docs/main-classic.jpg" width="200"/><br><div align="center">经典主界面</div></td>
-    <td><img src="docs/main-minimal.jpg" width="200"/><br><div align="center">极简主界面</div></td>
-    <td><img src="docs/settings.jpg" width="200"/><br><div align="center">设置页</div></td>
+    <td><img src="docs/main-classic-v2.jpg" width="200"/><br><div align="center">经典主界面</div></td>
+    <td><img src="docs/main-minimal-v2.jpg" width="200"/><br><div align="center">极简主界面</div></td>
+    <td><img src="docs/main-liquid-v2.jpg" width="200"/><br><div align="center">液位主界面</div></td>
   </tr>
   <tr>
     <td><img src="docs/tile-classic-v2.jpg" width="200"/><br><div align="center">经典磁贴</div></td>
-    <td><img src="docs/tile-liquid.jpg" width="200"/><br><div align="center">液位磁贴</div></td>
-    <td><img src="docs/tile-minimal.jpg" width="200"/><br><div align="center">极简磁贴</div></td>
+    <td><img src="docs/tile-liquid-v2.jpg" width="200"/><br><div align="center">液位磁贴</div></td>
+    <td><img src="docs/tile-minimal-v2.jpg" width="200"/><br><div align="center">极简磁贴</div></td>
+  </tr>
+  <tr>
+    <td colspan="3" align="center"><img src="docs/settings-v2.jpg" width="200"/><br/><div align="center">设置页</div></td>
   </tr>
 </table>
 
