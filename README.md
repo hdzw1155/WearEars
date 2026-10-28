@@ -1,4 +1,4 @@
-# WearEars 🎧⌚
+﻿# WearEars 🎧⌚
 
 > 项目原名 `tws-control-for-wear`，2026-10 起更名为 **WearEars**；旧的仓库链接会自动跳转到新地址。
 
@@ -40,7 +40,7 @@
     <td><img src="docs/settings.jpg" width="200"/><br><div align="center">设置页</div></td>
   </tr>
   <tr>
-    <td><img src="docs/tile-classic.jpg" width="200"/><br><div align="center">经典磁贴</div></td>
+    <td><img src="docs/tile-classic-v2.jpg" width="200"/><br><div align="center">经典磁贴</div></td>
     <td><img src="docs/tile-liquid.jpg" width="200"/><br><div align="center">液位磁贴</div></td>
     <td><img src="docs/tile-minimal.jpg" width="200"/><br><div align="center">极简磁贴</div></td>
   </tr>
