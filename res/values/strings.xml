@@ -101,12 +101,26 @@
     <string name="disclaimer_heading_risk">风险自担</string>
     <string name="disclaimer_body_risk">听力健康无法挽回，请谨慎操作。使用本应用的一切风险由您自行承担。</string>
 
+    <!-- 音量(三种界面风格共用的一张卡) -->
+    <string name="volume_title">音量</string>
+
+    <!-- 空间音频开关标题 -->
+    <string name="spatial_title_short">空间音频</string>
+    <string name="volume_switch_hint">在主界面显示音量条，开启后永久保留</string>
+    <!-- 至上风格: 刷新按钮文字 -->
+    <string name="suprem_refresh">刷新</string>
+    <string name="suprem_refresh_short">刷</string>
+    <string name="label_left_short">左</string>
+    <string name="label_right_short">右</string>
+    <string name="label_case_short">盒</string>
+
     <!-- 设置页 -->
     <string name="settings_title">设置</string>
     <string name="settings_ui_style">界面风格</string>
     <string name="settings_style_new">极简</string>
     <string name="settings_style_liquid">液位</string>
     <string name="settings_style_classic">经典</string>
+    <string name="settings_style_suprem">至上</string>
     <string name="settings_language">语言</string>
     <string name="settings_lang_zh">中文</string>
     <string name="settings_lang_en">English</string>

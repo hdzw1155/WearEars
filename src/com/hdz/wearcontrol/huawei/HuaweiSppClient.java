@@ -1,9 +1,11 @@
 package com.hdz.wearcontrol.huawei;
 
+import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
-import android.bluetooth.BluetoothHeadset;
 import android.bluetooth.BluetoothSocket;
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 
 import com.hdz.wearcontrol.TwsClient;
@@ -11,83 +13,65 @@ import com.hdz.wearcontrol.TwsClient;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * 华为 FreeBuds / HONOR 的 SPP 协议客户端(RFCOMM)。
- * 协议来源: TWS-Pods-PC huawei 目录(HuaweiPods 逆向文档)。
- * 帧格式: 5A 00 06 00 [group] [cmd] [p1] [p2] [value] [crc16/xmodem 2B]。
- * 降噪: group 0x2B, 开关 cmd 0x04; 通透模式协议未见文档, 暂不支持。
- * 电量走 HFP AT 通道(+HUAWEIBATTERY=): 优先经系统的蓝牙 Headset 服务发 AT,
- * SPP 上的裸 AT 询问保留为兜底(多数机型无回包)。
+ *
+ * 帧格式: 5A | len(2B BE) | 00 | group(1) | cmd(1) | params | CRC16-XMODEM(2B BE)
+ *   len = 参数区长度 + 3, 总长 = len + 5, CRC 覆盖 CRC 之前的全部字节。
+ *   TLV: type(1) | len(1) | value。
+ *
+ * 电量: group 01 cmd 08 查询(参数为空 TLV 01/02/03), 上报 cmd 27。
+ *   TLV01 = 整机电量; TLV02 = [左, 右, 仓](0 表示未连接); TLV03 = 充电位(整机级)。
+ *
+ * 降噪: group 2B cmd 04 写, 参数 TLV1 = [01, 02, mode, level]
+ *   mode: 00 关 / 01 降噪 / 02 通透; level: mode=0 用 00, 否则 FF。
+ *   group 2B cmd 2A 读, 参数 TLV1/02; 应答 TLV1 = [level, mode](mode 在第二字节)。
+ *   写没有回执, 400ms 后补一次 2A 读回确认; 耳机按键改档会主动发 2B 03。
+ *
+ * SE4 的 SPP 监听在信道 1(旧款 5i/4i 在 16), SDP 找不到时反射 createRfcommSocket 兜底。
  */
 public class HuaweiSppClient implements TwsClient {
 
     private static final UUID SPP_UUID =
             UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
 
+    private static final int GROUP_BATTERY = 0x01;
     private static final int GROUP_ANC = 0x2B;
+
+    private static final int CMD_BATTERY_QUERY = 0x08;
+    private static final int CMD_BATTERY_REPORT = 0x27;
     private static final int CMD_ANC_SWITCH = 0x04;
+    private static final int CMD_ANC_QUERY = 0x2A;
+    private static final int CMD_ANC_REPORT = 0x03;
+
+    private static final int CHANNEL_SE4 = 1;
+    private static final int CHANNEL_LEGACY = 16;
+
+    private static final int MAX_FRAME = 1024;
+
+    private static final byte[] BATTERY_QUERY_PARAMS = {
+            0x01, 0x00, 0x02, 0x00, 0x03, 0x00
+    };
+    private static final byte[] ANC_QUERY_PARAMS = {
+            0x01, 0x00, 0x02, 0x00
+    };
 
     private final List<Listener> listeners = new CopyOnWriteArrayList<Listener>();
+    private final Handler main = new Handler(Looper.getMainLooper());
     private volatile BluetoothSocket socket;
     private volatile OutputStream out;
     private volatile boolean closing = false;
-    // HFP 电量通道: 系统的 Headset 代理(需手表已连耳机的 HFP)
-    private android.bluetooth.BluetoothAdapter hfAdapter;
-    private BluetoothHeadset headset;
-    private Context appCtx;
-    private final android.content.BroadcastReceiver atReceiver =
-            new android.content.BroadcastReceiver() {
-                @Override public void onReceive(Context ctx, android.content.Intent i) {
-                    // 耳机经 HFP 主动上报的 AT 行(含电量)
-                    if (BluetoothHeadset.ACTION_VENDOR_SPECIFIC_HEADSET_EVENT.equals(
-                            i.getAction())) {
-                        String cmd = i.getStringExtra(BluetoothHeadset.EXTRA_VENDOR_SPECIFIC_HEADSET_EVENT_ARGS);
-                        if (cmd != null) handleLine(cmd);
-                    }
-                }
-            };
+    /** 当前连接设备名, 用于按型号如实标注验证等级 */
+    private volatile String connectedName = "";
 
-    /** TwsClient.init: 记下上下文和 Headset 代理, 用于走 HFP 通道问电量 */
     @Override
     public void init(Context ctx) {
-        if (ctx == null) return;
-        appCtx = ctx.getApplicationContext();
-        try {
-            hfAdapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
-            hfAdapter.getProfileProxy(appCtx, new android.bluetooth.BluetoothProfile.ServiceListener() {
-                @Override public void onServiceConnected(int profile, android.bluetooth.BluetoothProfile proxy) {
-                    headset = (BluetoothHeadset) proxy;
-                }
-
-                @Override public void onServiceDisconnected(int profile) {
-                    headset = null;
-                }
-            }, android.bluetooth.BluetoothProfile.HEADSET);
-            android.content.IntentFilter f = new android.content.IntentFilter(
-                    BluetoothHeadset.ACTION_VENDOR_SPECIFIC_HEADSET_EVENT);
-            appCtx.registerReceiver(atReceiver, f);
-        } catch (Exception e) {
-            Log.d("HwClient", "headset proxy fail: " + e);
-        }
-    }
-
-    private void teardownHfp() {
-        if (appCtx == null) return;
-        try {
-            appCtx.unregisterReceiver(atReceiver);
-        } catch (Exception ignored) {
-        }
-        if (headset != null && hfAdapter != null) {
-            try {
-                hfAdapter.closeProfileProxy(android.bluetooth.BluetoothProfile.HEADSET, headset);
-            } catch (Exception ignored) {
-            }
-            headset = null;
-        }
+        // SPP 协议自包含, 不需要系统 Profile 代理
     }
 
     @Override
@@ -100,13 +84,18 @@ public class HuaweiSppClient implements TwsClient {
         return CAP_NOISE | CAP_BATTERY;
     }
 
-    /** SPP 帧未在真机验证; HFP 电量通道也待真机确认 */
     @Override
     public int verifLevel() {
+        // FreeBuds 6i 已在本项目真机验证(电量 + 降噪/通透/关闭三态);
+        // 其他华为/荣耀型号沿用同一 SPP 协议族, 但未逐型号实测, 如实标实验性。
+        String n = connectedName == null ? "" : connectedName.toLowerCase();
+        if (n.contains("6i")) {
+            return VERIF_REAL;
+        }
         return VERIF_UNTESTED;
     }
 
-    // ---- 实验能力: 华为协议无这些命令, 空实现 ----
+    // ---- 华为协议没有实验能力命令 ----
 
     @Override
     public void querySpatial() {
@@ -136,23 +125,38 @@ public class HuaweiSppClient implements TwsClient {
 
     @Override
     public boolean isConnected() {
-        return socket != null && socket.isConnected();
+        BluetoothSocket s = socket;
+        return s != null && s.isConnected();
     }
+
+    // ---- 连接 ----
 
     @Override
     public void connect(final BluetoothDevice device) {
         closing = false;
+        connectedName = device != null && device.getName() != null ? device.getName() : "";
         new Thread(new Runnable() {
             @Override public void run() {
+                BluetoothSocket s = null;
                 try {
-                    socket = device.createRfcommSocketToServiceRecord(SPP_UUID);
-                    socket.connect();
-                    out = socket.getOutputStream();
+                    BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
+                    if (adapter != null) {
+                        try {
+                            adapter.cancelDiscovery();
+                        } catch (Exception ignored) {
+                        }
+                    }
+                    s = openSocket(device);
+                    if (s == null) throw new IOException("找不到 SPP 服务(信道 1/16)");
+                    socket = s;
+                    out = s.getOutputStream();
                 } catch (Exception e) {
+                    closeQuietly(s);
                     safeClose();
-                    if (closing) return; // 已被新连接替代,不再打扰 UI
-                    for (Listener l : listeners)
+                    if (closing) return;
+                    for (Listener l : listeners) {
                         l.onError("连接失败: " + e.getMessage() + "\n(耳机需先与手表配对)");
+                    }
                     return;
                 }
                 if (closing) {
@@ -160,102 +164,138 @@ public class HuaweiSppClient implements TwsClient {
                     return;
                 }
                 for (Listener l : listeners) l.onConnected(device.getName());
-                queryBattery(); // 尽力而为的 AT 询问
                 startReader();
+                // 初始化: 电量 + 降噪状态
+                queryBattery();
+                main.postDelayed(new Runnable() {
+                    @Override public void run() {
+                        queryNoise();
+                    }
+                }, 250);
             }
         }, "hw-connect").start();
+    }
+
+    /** 先 SDP, 再反射固定信道(SE4=1, 旧款=16) */
+    private BluetoothSocket openSocket(BluetoothDevice device) {
+        BluetoothSocket s = null;
+        try {
+            s = device.createRfcommSocketToServiceRecord(SPP_UUID);
+            s.connect();
+            return s;
+        } catch (Exception e) {
+            closeQuietly(s);
+            Log.d("HwClient", "SDP connect fail: " + e);
+        }
+        int[] channels = {CHANNEL_SE4, CHANNEL_LEGACY};
+        for (int ch : channels) {
+            if (closing) return null;
+            try {
+                s = channelSocket(device, ch);
+                s.connect();
+                Log.d("HwClient", "connected via channel " + ch);
+                return s;
+            } catch (Exception e) {
+                closeQuietly(s);
+                Log.d("HwClient", "channel " + ch + " fail: " + e);
+            }
+        }
+        return null;
+    }
+
+    private static BluetoothSocket channelSocket(BluetoothDevice device, int channel)
+            throws Exception {
+        Method m = device.getClass().getMethod("createRfcommSocket", int.class);
+        return (BluetoothSocket) m.invoke(device, channel);
     }
 
     @Override
     public void disconnect() {
         closing = true;
-        teardownHfp();
+        main.removeCallbacksAndMessages(null);
         safeClose();
     }
 
     private void safeClose() {
         try {
-            if (socket != null) socket.close();
+            BluetoothSocket s = socket;
+            if (s != null) s.close();
         } catch (IOException ignored) {
         }
+        socket = null;
+        out = null;
+    }
+
+    private static void closeQuietly(BluetoothSocket s) {
+        if (s == null) return;
+        try {
+            s.close();
+        } catch (IOException ignored) {
+        }
+    }
+
+    private void fireError(String msg) {
+        for (Listener l : listeners) l.onError(msg);
     }
 
     // ---- 命令 ----
 
     @Override
     public void queryBattery() {
-        // 电量在 HFP AT 通道: 优先走系统 Headset 代理对已连的 HFP 设备发 AT,
-        // 手表若只配对未连 HFP 则退回 SPP 裸询问(多数机型无回包)
-        boolean sent = false;
-        if (headset != null) {
-            try {
-                for (BluetoothDevice d : headset.getConnectedDevices()) {
-                    if (headset.sendVendorSpecificResultCode(d,
-                            "AT+HUAWEIBATTERY?", "+HUAWEIBATTERY")) {
-                        sent = true;
-                        Log.d("HwClient", "battery asked via HFP to " + d.getName());
-                    }
-                }
-            } catch (Exception e) {
-                Log.d("HwClient", "HFP ask fail: " + e);
-            }
-        }
-        if (!sent) writeAscii("AT+HUAWEIBATTERY?\r\n");
+        writeFrame(GROUP_BATTERY, CMD_BATTERY_QUERY, BATTERY_QUERY_PARAMS);
     }
 
     @Override
     public void queryNoise() {
-        // 协议文档中未见降噪状态查询命令, 不发
+        writeFrame(GROUP_ANC, CMD_ANC_QUERY, ANC_QUERY_PARAMS);
     }
 
     @Override
     public void setNoiseMode(int mode) {
-        if (mode == MODE_TRANS) {
-            for (Listener l : listeners)
-                l.onError("华为机型暂不支持通透切换(协议未公开)");
-            return;
-        }
-        writeFrame(GROUP_ANC, CMD_ANC_SWITCH, 0x01, 0x01, mode == MODE_ANC ? 0x01 : 0x00);
+        if (mode != MODE_ANC && mode != MODE_OFF && mode != MODE_TRANS) return;
+        int wire;
+        if (mode == MODE_ANC) wire = 0x01;
+        else if (mode == MODE_TRANS) wire = 0x02;
+        else wire = 0x00;
+        byte level = (byte) (wire == 0x00 ? 0x00 : 0xFF);
+        byte[] params = {0x01, 0x02, (byte) wire, level};
+        writeFrame(GROUP_ANC, CMD_ANC_SWITCH, params);
+        // 写命令没有回执, 补一次读回确认
+        main.postDelayed(new Runnable() {
+            @Override public void run() {
+                queryNoise();
+            }
+        }, 400);
     }
 
-    /** 5A 00 06 00 group cmd p1 p2 value + CRC16/XMODEM(对前 9 字节) */
-    private synchronized void writeFrame(int group, int cmd, int p1, int p2, int value) {
-        if (out == null) return;
-        byte[] f = new byte[11];
-        f[0] = 0x5A;
-        f[1] = 0x00;
-        f[2] = 0x06;
-        f[3] = 0x00;
+    /** 组帧并发送: 5A len(2B BE) 00 group cmd params CRC16(大端) */
+    private synchronized void writeFrame(int group, int cmd, byte[] params) {
+        OutputStream o = out;
+        if (o == null) return;
+        int plen = params == null ? 0 : params.length;
+        int len = plen + 3;
+        byte[] f = new byte[6 + plen + 2];
+        f[0] = (byte) 0x5A;
+        f[1] = (byte) (len >> 8);
+        f[2] = (byte) len;
+        f[3] = (byte) 0x00;
         f[4] = (byte) group;
         f[5] = (byte) cmd;
-        f[6] = (byte) p1;
-        f[7] = (byte) p2;
-        f[8] = (byte) value;
-        int crc = crc16Xmodem(f, 9);
-        f[9] = (byte) (crc >> 8);
-        f[10] = (byte) crc;
+        if (plen > 0) System.arraycopy(params, 0, f, 6, plen);
+        int crc = crc16Xmodem(f, 0, 6 + plen);
+        f[6 + plen] = (byte) (crc >> 8);
+        f[7 + plen] = (byte) crc;
         try {
-            out.write(f);
-            out.flush();
+            o.write(f);
+            o.flush();
+            Log.d("HwClient", "tx g=0x" + Integer.toHexString(group)
+                    + " c=0x" + Integer.toHexString(cmd) + " " + toHex(f));
         } catch (IOException e) {
-            for (Listener l : listeners) l.onError("发送失败: " + e.getMessage());
-        }
-    }
-
-    private synchronized void writeAscii(String s) {
-        if (out == null) return;
-        try {
-            out.write(s.getBytes("ASCII"));
-            out.flush();
-        } catch (IOException ignored) {
+            fireError("发送失败: " + e.getMessage());
         }
     }
 
     /** CRC16/XMODEM: poly=0x1021, init=0, 无反射, 无最终 XOR */
-    static int crc16Xmodem(byte[] data, int len) {
-        return crc16Xmodem(data, 0, len);
-    }
-
     static int crc16Xmodem(byte[] data, int off, int len) {
         int crc = 0;
         for (int i = 0; i < len; i++) {
@@ -268,144 +308,178 @@ public class HuaweiSppClient implements TwsClient {
         return crc;
     }
 
-    // ---- 接收: 二进制 SPP 帧 + ASCII AT 行混合流 ----
-    // 注意 0x5A 是可打印字符 'Z', 不能先按字符行解析, 必须先做字节级帧提取
-
-    private static final int FRAME_LEN = 11; // 5A 00 06 00 group cmd p1 p2 value crc(2B)
+    // ---- 接收 ----
 
     private void startReader() {
         new Thread(new Runnable() {
             @Override public void run() {
+                byte[] stage = new byte[2048];
+                int stageLen = 0;
+                byte[] chunk = new byte[512];
                 try {
                     InputStream in = socket.getInputStream();
-                    java.io.ByteArrayOutputStream pending =
-                            new java.io.ByteArrayOutputStream();
-                    StringBuilder ascii = new StringBuilder();
-                    byte[] b = new byte[256];
                     while (!closing) {
-                        int r = in.read(b);
+                        int r = in.read(chunk);
                         if (r < 0) break;
-                        pending.write(b, 0, r);
-                        byte[] all = pending.toByteArray();
-                        pending.reset();
+                        if (stageLen + r > stage.length) {
+                            stageLen = 0; // 防异常数据撑爆
+                            continue;
+                        }
+                        System.arraycopy(chunk, 0, stage, stageLen, r);
+                        stageLen += r;
+
                         int off = 0;
-                        while (off < all.length) {
-                            int head = findFrameHead(all, off);
+                        while (true) {
+                            int head = findHead(stage, off, stageLen);
                             if (head < 0) {
-                                // 没有帧头: 尾部最多留 3 字节防截断, 其余按字符行解析
-                                int keep = Math.min(3, all.length - off);
-                                int asciiEnd = all.length - keep;
-                                for (int i = off; i < asciiEnd; i++) {
-                                    feedAscii(ascii, all[i] & 0xFF);
-                                }
-                                if (keep > 0) pending.write(all, all.length - keep, keep);
+                                off = stageLen;
                                 break;
                             }
-                            // 帧头前的杂字节按字符行解析
-                            for (int i = off; i < head; i++) {
-                                feedAscii(ascii, all[i] & 0xFF);
-                            }
-                            if (head + FRAME_LEN > all.length) { // 帧不完整, 等下一段
-                                pending.write(all, head, all.length - head);
+                            if (head + 5 > stageLen) {
+                                off = head;
                                 break;
                             }
-                            int crc = ((all[head + 9] & 0xFF) << 8) | (all[head + 10] & 0xFF);
-                            if (crc == crc16Xmodem(all, head, 9)) {
-                                dispatchFrame(all, head);
-                                off = head + FRAME_LEN;
+                            int len = ((stage[head + 1] & 0xFF) << 8) | (stage[head + 2] & 0xFF);
+                            int total = len + 5;
+                            if (len < 3 || total > MAX_FRAME) {
+                                off = head + 1;
+                                continue;
+                            }
+                            if (head + total > stageLen) {
+                                off = head;
+                                break;
+                            }
+                            int expect = ((stage[head + total - 2] & 0xFF) << 8)
+                                    | (stage[head + total - 1] & 0xFF);
+                            boolean ok = (stage[head + 3] & 0xFF) == 0x00
+                                    && crc16Xmodem(stage, head, total - 2) == expect;
+                            if (ok) {
+                                dispatchFrame(stage, head, total);
+                                off = head + total;
                             } else {
-                                // CRC 对不上: 假帧头(正文里的 'Z'), 只跳过这 1 字节
-                                feedAscii(ascii, all[head] & 0xFF);
                                 off = head + 1;
                             }
+                            if (off >= stageLen) break;
                         }
+                        if (off > 0) {
+                            if (off < stageLen) {
+                                System.arraycopy(stage, off, stage, 0, stageLen - off);
+                                stageLen -= off;
+                            } else {
+                                stageLen = 0;
+                            }
+                        }
+                        if (stageLen == stage.length) stageLen = 0;
                     }
-                    flushAscii(ascii);
-                    if (!closing) for (Listener l : listeners) l.onDisconnected("连接已关闭");
+                    if (!closing) {
+                        for (Listener l : listeners) l.onDisconnected("连接已关闭");
+                    }
                 } catch (IOException e) {
-                    if (!closing) for (Listener l : listeners) l.onDisconnected("连接断开: " + e.getMessage());
+                    if (!closing) {
+                        for (Listener l : listeners) l.onDisconnected("连接断开: " + e.getMessage());
+                    }
                 }
                 safeClose();
             }
         }, "hw-reader").start();
     }
 
-    private static int findFrameHead(byte[] b, int from) {
-        for (int i = from; i + 4 <= b.length; i++) {
-            if ((b[i] & 0xFF) == 0x5A && (b[i + 1] & 0xFF) == 0x00
-                    && (b[i + 2] & 0xFF) == 0x06 && (b[i + 3] & 0xFF) == 0x00) {
-                return i;
-            }
+    private static int findHead(byte[] b, int from, int len) {
+        for (int i = from; i < len; i++) {
+            if ((b[i] & 0xFF) == 0x5A) return i;
         }
         return -1;
     }
 
-    private void feedAscii(StringBuilder ascii, int c) {
-        if (c == 0x0A) {
-            handleLine(ascii.toString().trim());
-            ascii.setLength(0);
-        } else if (c >= 0x20 && c < 0x7F) {
-            ascii.append((char) c);
-            if (ascii.length() > 160) ascii.setLength(0); // 防二进制撑爆
-        }
-    }
-
-    private void flushAscii(StringBuilder ascii) {
-        if (ascii.length() > 0) handleLine(ascii.toString().trim());
-    }
-
-    /** 二进制帧分发: 降噪组(0x2B)的应答回给 UI 高亮 */
-    private void dispatchFrame(byte[] b, int head) {
+    private void dispatchFrame(byte[] b, int head, int total) {
         int group = b[head + 4] & 0xFF;
         int cmd = b[head + 5] & 0xFF;
-        int value = b[head + 8] & 0xFF;
+        int paramsOff = head + 6;
+        int paramsLen = total - 8;
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < FRAME_LEN; i++) sb.append(String.format("%02X ", b[head + i]));
-        Log.d("HwClient", "frame group=0x" + Integer.toHexString(group)
-                + " cmd=0x" + Integer.toHexString(cmd) + " value=" + value
-                + " [" + sb.toString().trim() + "]");
-        if (group == GROUP_ANC && cmd == CMD_ANC_SWITCH) {
-            for (Listener li : listeners) {
-                li.onNoiseMode(value == 0x01 ? MODE_ANC : MODE_OFF);
-            }
+        for (int i = 0; i < total; i++) {
+            sb.append(String.format("%02X ", b[head + i]));
+        }
+        Log.d("HwClient", "rx g=0x" + Integer.toHexString(group)
+                + " c=0x" + Integer.toHexString(cmd) + " [" + sb.toString().trim() + "]");
+
+        if (group == GROUP_BATTERY
+                && (cmd == CMD_BATTERY_QUERY || cmd == CMD_BATTERY_REPORT)) {
+            parseBattery(b, paramsOff, paramsLen);
+        } else if (group == GROUP_ANC && cmd == CMD_ANC_QUERY) {
+            parseAncState(b, paramsOff, paramsLen);
+        } else if (group == GROUP_ANC && cmd == CMD_ANC_REPORT) {
+            // 耳机按键改了档位, 重新查询一次
+            queryNoise();
         }
     }
 
-    /** 解析 +HUAWEIBATTERY= 行: 首个数字为对数, 其后 count 对 (key, value) */
-    private void handleLine(String line) {
-        if (line == null || line.isEmpty()) return;
-        Log.d("HwClient", "line: " + line);
-        final String TAG = "+HUAWEIBATTERY=";
-        int idx = line.indexOf(TAG);
-        if (idx < 0) return;
-        String[] parts = line.substring(idx + TAG.length()).trim().split(",");
-        if (parts.length < 1) return;
-        int count = -1;
-        try {
-            count = Integer.parseInt(parts[0].trim());
-        } catch (NumberFormatException ignored) {
+    /** 电量 TLV: 01 整机电量 / 02 左右仓电量 / 03 充电位(整机级) */
+    private void parseBattery(byte[] b, int off, int len) {
+        int end = off + len;
+        int p = off;
+        int overall = -1;
+        int l = 0xFF, r = 0xFF, c = 0xFF;
+        int flags = 0;
+        while (p + 2 <= end) {
+            int type = b[p] & 0xFF;
+            int tlen = b[p + 1] & 0xFF;
+            int v = p + 2;
+            if (v + tlen > end) break;
+            if (type == 1 && tlen >= 1) {
+                overall = b[v] & 0xFF;
+            } else if (type == 2 && tlen >= 3) {
+                l = b[v] & 0xFF;
+                r = b[v + 1] & 0xFF;
+                c = b[v + 2] & 0xFF;
+            } else if (type == 3) {
+                for (int i = 0; i < tlen; i++) {
+                    if ((b[v + i] & 0x01) != 0) {
+                        flags = 1 | 2 | 4;
+                        break;
+                    }
+                }
+            }
+            p = v + tlen;
         }
-        if (count <= 0) return;
+        Log.d("HwClient", "battery overall=" + overall + " L/R/C=" + l + "/" + r + "/" + c
+                + " flags=" + flags);
+        for (Listener li : listeners) {
+            li.onBattery(normPct(l), normPct(r), normPct(c), flags);
+        }
+    }
 
-        int l = 0xFF, r = 0xFF, c = 0xFF, flags = 0;
-        for (int k = 0; k + 1 < parts.length && k / 2 < count; k += 2) {
-            int key = -1, val = -1;
-            try {
-                key = Integer.parseInt(parts[k].trim());
-                val = Integer.parseInt(parts[k + 1].trim());
-            } catch (NumberFormatException ignored) {
+    /** ANC 读回应答: TLV1 = [level, mode], mode 在第二字节 */
+    private void parseAncState(byte[] b, int off, int len) {
+        int end = off + len;
+        int p = off;
+        while (p + 2 <= end) {
+            int type = b[p] & 0xFF;
+            int tlen = b[p + 1] & 0xFF;
+            int v = p + 2;
+            if (v + tlen > end) break;
+            if (type == 1 && tlen >= 2) {
+                int mode = b[v + 1] & 0xFF;
+                int ui;
+                if (mode == 0x01) ui = MODE_ANC;
+                else if (mode == 0x02) ui = MODE_TRANS;
+                else ui = MODE_OFF;
+                Log.d("HwClient", "anc level=" + (b[v] & 0xFF) + " mode=" + mode + " ui=" + ui);
+                for (Listener li : listeners) li.onNoiseMode(ui);
+                return;
             }
-            if (key < 0) continue;
-            switch (key) {
-                case 2: l = val; break;
-                case 3: if (val != 0) flags |= 1; break;
-                case 4: r = val; break;
-                case 5: if (val != 0) flags |= 2; break;
-                case 6: c = val; break;
-                case 7: if (val != 0) flags |= 4; break;
-                default:
-            }
+            p = v + tlen;
         }
-        for (Listener li : listeners) li.onBattery(l, r, c, flags);
+    }
+
+    private static int normPct(int v) {
+        if (v >= 1 && v <= 100) return v;
+        return 0xFF;
+    }
+
+    static String toHex(byte[] b) {
+        StringBuilder sb = new StringBuilder();
+        for (byte x : b) sb.append(String.format("%02X", x));
+        return sb.toString();
     }
 }

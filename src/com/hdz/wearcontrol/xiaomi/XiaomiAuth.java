@@ -40,17 +40,23 @@ public final class XiaomiAuth {
                     + "5ff9d4550bdc37311674d777a7e607dba42f46f3614567e30ca23b1c8518041d"
                     + "29a08fb25ad8a67eee8d534ba19ac10e7a49a52c81c4c7362b7f439533f26c68"
                     + "6df00228cedd9bea5e997c1486cfe542b840782d3ae9641f92907d396fe08930";
-    // 默认 linkKey: 第三方客户端从不调 setLinkKey, 恒为此值
+    // 默认 linkKey: 第三方客户端从不调 setLinkKey, 恒为此值。
+    // 注意: linkKey 只喂给被丢弃的 E1test, 不参与 E21 的 OUT 初值(见 e21)。
     private static final String LINKKEY_HEX = "06775f87918dd423005df1d8cf0c142b";
+
+    // E21 的 OUT 初值固定取占位地址 11:22:33:33:22:11, 与真实蓝牙 link key 无关。
+    // 旧实现误用 LINKKEY_DEFAULT 前 6 字节, 导致应答码在任何机型上都必然对不上。
+    private static final String PLACEHOLDER_ADDR_HEX = "112233332211";
 
     public static final byte[] SBOX = hex(SBOX_HEX);
     public static final byte[] T1 = hex(T1_HEX);
     public static final byte[] T2 = hex(T2_HEX);
     public static final byte[] LINKKEY_DEFAULT = hex(LINKKEY_HEX);
+    public static final byte[] PLACEHOLDER_ADDR = hex(PLACEHOLDER_ADDR_HEX);
 
-    // 已知测试向量(ground_truth 首组): 全零输入
-    public static final String VEC_IN = "00000000000000000000000000000000";
-    public static final String VEC_OUT = "d7aa553b54d77bb0c9db70fcc959a405";
+    // 已知测试向量(redmi-buds-linux 实机抓包): 占位地址版本
+    public static final String VEC_IN = "385c2aecb03bfb32af3c54ec18db5c02";
+    public static final String VEC_OUT = "99a16782b8e05df000099bc2cb3417bf";
 
     private static byte[] hex(String s) {
         byte[] out = new byte[s.length() / 2];
@@ -259,7 +265,7 @@ public final class XiaomiAuth {
      * inp16: 16B 挑战; 输出 16B 应答码 realCode。
      */
     public static byte[] e21(byte[] inp16) {
-        byte[] ctx = LINKKEY_DEFAULT;
+        byte[] ctx = PLACEHOLDER_ADDR;
         // OUT 初始化 = CTX[0:6] ++ CTX[0:6] ++ CTX[0:4]
         int[] out = new int[16];
         for (int i = 0; i < 6; i++) out[i] = ctx[i] & 0xFF;

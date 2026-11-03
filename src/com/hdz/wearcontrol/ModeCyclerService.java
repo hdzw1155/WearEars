@@ -24,7 +24,13 @@ public class ModeCyclerService extends Service implements TwsClient.Listener {
 
     private TwsClient client;
     private int nextMode;
+    private int prevMode = TwsClient.MODE_OFF;
     private boolean done = false;
+    /** 磁贴跳板已经做了乐观更新(先显示新档位), 失败/超时需要回滚 */
+    private boolean optimistic = false;
+    /** 耳机真的回执了新模式, 不回滚 */
+    private boolean confirmed = false;
+    private boolean reverted = false;
     /** 连点磁贴会把服务再拉起来一次, 用代数防止上一把的迟到回调改坏状态 */
     private int session = 0;
 
@@ -62,6 +68,23 @@ public class ModeCyclerService extends Service implements TwsClient.Listener {
         int wanted = intent != null ? intent.getIntExtra("target_mode", -1) : -1;
         nextMode = (wanted >= 0 && wanted <= 2) ? wanted : (last + 1) % 3;
 
+        // 乐观更新: 跳板 Activity 已先把新档位写进磁贴并 push; 这里接住 prev/optimistic 做兜底与回滚
+        prevMode = intent != null ? intent.getIntExtra("prev_mode", last) : last;
+        if (prevMode < TwsClient.MODE_ANC || prevMode > TwsClient.MODE_TRANS) {
+            prevMode = last;
+        }
+        optimistic = intent != null && intent.getBooleanExtra("optimistic", false);
+        confirmed = false;
+        reverted = false;
+        if (!optimistic && nextMode != prevMode && TileStore.read(this).mode == prevMode) {
+            // 没有跳板(或旧版本磁贴)直接拉起服务: 这里补一次乐观显示, 保证按下即亮
+            optimistic = true;
+        }
+        if (optimistic && nextMode != prevMode && TileStore.read(this).mode != nextMode) {
+            TileStore.saveMode(this, nextMode);
+            TileStore.push(this);
+        }
+
         // 磁贴连点第二下会再进这里: 灭掉上一把没收工的连接, 别让两个客户端抢耳机
         done = false;
         session++;
@@ -71,12 +94,12 @@ public class ModeCyclerService extends Service implements TwsClient.Listener {
                 ((BluetoothManager) getSystemService(BLUETOOTH_SERVICE)).getAdapter();
         BluetoothDevice target = adapter != null ? DriverRegistry.findTarget(adapter) : null;
         if (target == null) {
-            stopSelf();
+            complete();
             return START_NOT_STICKY;
         }
         TwsClient c = DriverRegistry.create(this, target);
         if (c == null) {
-            stopSelf();
+            complete();
             return START_NOT_STICKY;
         }
         c.addListener(this);
@@ -86,13 +109,27 @@ public class ModeCyclerService extends Service implements TwsClient.Listener {
         return START_NOT_STICKY;
     }
 
-    /** 收工: 清掉超时、断开连接、自杀。幂等 */
+    /** 收工: 清掉超时、回滚未确认的乐观更新、断开连接、自杀。幂等 */
     private void complete() {
         if (done) return;
         done = true;
         h.removeCallbacksAndMessages(null);
+        rollbackOptimistic();
         dropClient();
         stopSelf();
+    }
+
+    /**
+     * 乐观更新兜底: 连接失败/超时/耳机没有降噪能力时, 如果磁贴还停在刚点的新档位
+     * (说明期间用户没再点别的档), 就退回真实档位, 避免"显示降噪其实没切过去"。
+     */
+    private void rollbackOptimistic() {
+        if (!optimistic || confirmed || reverted) return;
+        reverted = true;
+        if (nextMode == prevMode) return;
+        if (TileStore.read(this).mode != nextMode) return;
+        TileStore.saveMode(this, prevMode);
+        TileStore.push(this);
     }
 
     /** 先摘监听再断连, 免得 disconnect 里回调进来又改状态 */
@@ -141,6 +178,7 @@ public class ModeCyclerService extends Service implements TwsClient.Listener {
         // 耳机确认了新模式, 记下来让磁贴和主界面显示正确
         if (done) return;
         if (mode < 0 || mode > 2 || mode != nextMode) return;
+        confirmed = true;
         boolean changed = TileStore.saveMode(this, mode);
         TileStore.noteOk(this);
         if (changed) {

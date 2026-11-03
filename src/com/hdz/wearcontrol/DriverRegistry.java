@@ -7,6 +7,7 @@ import android.content.Context;
 import android.os.ParcelUuid;
 
 import com.hdz.wearcontrol.huawei.HuaweiSppClient;
+import com.hdz.wearcontrol.oppo.OppoOpoClient;
 import com.hdz.wearcontrol.vivo.VivoGaiaClient;
 import com.hdz.wearcontrol.xiaomi.XiaomiMmaClient;
 
@@ -58,6 +59,16 @@ public final class DriverRegistry {
         @Override public TwsClient create() { return new XiaomiMmaClient(); }
     };
 
+    // OPPO / Enco / realme / OnePlus: OPOv1(HeyMelody)协议, 经典蓝牙 RFCOMM
+    private static final DriverInfo OPPO = new DriverInfo() {
+        @Override public String brandName() { return "oppo"; }
+        @Override public String[] matchWords() {
+            return new String[]{"oppo", "enco", "oneplus", "realme"};
+        }
+        @Override public boolean isFallback() { return false; }
+        @Override public TwsClient create() { return new OppoOpoClient(); }
+    };
+
     // 弱水时砂: RoseLink 协议(逆向文档 + 社区实机), 实验性
     private static final DriverInfo ROSE = new DriverInfo() {
         @Override public String brandName() { return "弱水时砂"; }
@@ -96,7 +107,8 @@ public final class DriverRegistry {
         @Override public TwsClient create() { return new StandardClient(); }
     };
 
-    private static final DriverInfo[] DRIVERS = {VIVO, HUAWEI, XIAOMI, EDIFIER, ROSE, NICEHCK, STANDARD};
+    private static final DriverInfo[] DRIVERS =
+            {VIVO, HUAWEI, XIAOMI, OPPO, EDIFIER, ROSE, NICEHCK, STANDARD};
 
     /**
      * 蓝牙名里的品牌词 → 展示名。只用于界面/日志识别"这可能是哪家的耳机",

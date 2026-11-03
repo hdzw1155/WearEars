@@ -43,6 +43,8 @@ public class NiceHckClient implements TwsClient {
     private BluetoothDevice device;
     private volatile boolean closing;
     private volatile boolean connected;
+    /** 当前连接设备名, 用于按型号如实标注验证等级 */
+    private volatile String connectedName = "";
     private BluetoothSocket socket;
     private OutputStream out;
     private Thread worker;
@@ -65,6 +67,7 @@ public class NiceHckClient implements TwsClient {
 
     @Override public void connect(BluetoothDevice target) {
         device = target;
+        connectedName = target != null && target.getName() != null ? target.getName() : "";
         closing = false;
         connected = false;
         batt[0] = -1;
@@ -391,6 +394,12 @@ public class NiceHckClient implements TwsClient {
     }
 
     @Override public int verifLevel() {
+        // 原道 OriG in(原点) 已在本项目真机验证(电量 + 降噪/通透/关闭三态);
+        // 其他原道型号沿用同一 4E 帧协议, 但未逐型号实测, 如实标实验性。
+        String n = connectedName == null ? "" : connectedName.toLowerCase();
+        if (n.contains("orig") || n.contains("原点")) {
+            return VERIF_REAL;
+        }
         return VERIF_UNTESTED;
     }
 

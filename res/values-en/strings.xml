@@ -98,12 +98,26 @@
     <string name="disclaimer_heading_risk">At your own risk</string>
     <string name="disclaimer_body_risk">Hearing damage is irreversible. Please be careful. You use this app entirely at your own risk.</string>
 
+    <!-- volume (shared card for all three UI styles) -->
+    <string name="volume_title">Volume</string>
+
+    <!-- spatial audio switch title -->
+    <string name="spatial_title_short">Spatial audio</string>
+    <string name="volume_switch_hint">Show the volume bar on the main screen. Stays on once enabled.</string>
+    <!-- Suprematism: refresh label -->
+    <string name="suprem_refresh">Refresh</string>
+    <string name="suprem_refresh_short">R</string>
+    <string name="label_left_short">L</string>
+    <string name="label_right_short">R</string>
+    <string name="label_case_short">C</string>
+
     <!-- settings -->
     <string name="settings_title">Settings</string>
     <string name="settings_ui_style">Interface</string>
     <string name="settings_style_new">Minimal</string>
     <string name="settings_style_liquid">Liquid</string>
     <string name="settings_style_classic">Classic</string>
+    <string name="settings_style_suprem">Suprematism</string>
     <string name="settings_language">Language</string>
     <string name="settings_lang_zh">中文</string>
     <string name="settings_lang_en">English</string>

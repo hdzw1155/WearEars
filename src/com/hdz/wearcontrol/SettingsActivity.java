@@ -17,6 +17,7 @@ public class SettingsActivity extends Activity {
     private TextView styleNew;
     private TextView styleClassic;
     private TextView styleLiquid;
+    private TextView styleSuprem;
     private TextView tileNew;
     private TextView tileLiquid;
     private TextView tileClassic;
@@ -36,6 +37,7 @@ public class SettingsActivity extends Activity {
         styleNew = (TextView) findViewById(R.id.style_new);
         styleClassic = (TextView) findViewById(R.id.style_classic);
         styleLiquid = (TextView) findViewById(R.id.style_liquid);
+        styleSuprem = (TextView) findViewById(R.id.style_suprem);
         tileNew = (TextView) findViewById(R.id.tile_new);
         tileLiquid = (TextView) findViewById(R.id.tile_liquid);
         tileClassic = (TextView) findViewById(R.id.tile_classic);
@@ -63,6 +65,17 @@ public class SettingsActivity extends Activity {
                 refreshChips();
             }
         });
+        styleSuprem.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                AppPrefs.setUiStyle(SettingsActivity.this, AppPrefs.STYLE_SUPREM);
+                refreshChips();
+            }
+        });
+        // 至上界面在当前版本先封存(交互仍有 bug), 设置页不展示入口
+        if (!AppPrefs.SUPREM_ENABLED) {
+            styleSuprem.setVisibility(View.GONE);
+        }
         tileNew.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -110,6 +123,7 @@ public class SettingsActivity extends Activity {
         setChoice(styleNew, style == AppPrefs.STYLE_NEW);
         setChoice(styleClassic, style == AppPrefs.STYLE_CLASSIC);
         setChoice(styleLiquid, style == AppPrefs.STYLE_LIQUID);
+        setChoice(styleSuprem, style == AppPrefs.STYLE_SUPREM);
         int tileStyle = AppPrefs.tileStyle(this);
         setChoice(tileNew, tileStyle == AppPrefs.STYLE_NEW);
         setChoice(tileLiquid, tileStyle == AppPrefs.STYLE_LIQUID);

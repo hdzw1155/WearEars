@@ -488,6 +488,48 @@
                 </LinearLayout>
             </LinearLayout>
 
+            <!-- 音量: 默认隐藏, 开发者设置里开启后永久保留; 放在整个电量区之后 -->
+            <LinearLayout
+                android:id="@+id/volume_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/gap_3"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="12dp"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/volume_title"
+                        android:textColor="@color/text_faint"
+                        android:textSize="@dimen/text_caption" />
+
+                    <TextView
+                        android:id="@+id/volume_value"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFeatureSettings="tnum"
+                        android:textColor="@color/text"
+                        android:textSize="@dimen/text_caption" />
+                </LinearLayout>
+
+                <com.hdz.wearcontrol.VolumeBarView
+                    android:id="@+id/volume_bar"
+                    android:layout_width="match_parent"
+                    android:layout_height="16dp"
+                    android:layout_marginTop="@dimen/gap_2"
+                    android:contentDescription="@string/volume_title" />
+            </LinearLayout>
+
             <!-- noise control card -->
             <LinearLayout
                 android:layout_width="match_parent"
@@ -711,6 +753,46 @@
                         </LinearLayout>
                     </com.hdz.wearcontrol.SnapChipRow>
                 </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/gap_3"
+                    android:background="@drawable/bg_card"
+                    android:orientation="vertical"
+                    android:padding="@dimen/card_pad">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/volume_title"
+                            android:textColor="@color/text"
+                            android:textSize="@dimen/text_body" />
+
+                        <Switch
+                            android:id="@+id/switch_volume"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:showText="false"
+                            android:thumbTint="@color/switch_thumb"
+                            android:trackTint="@color/switch_track" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/gap_1"
+                        android:text="@string/volume_switch_hint"
+                        android:textColor="@color/text_faint"
+                        android:textSize="@dimen/text_caption" />
+                </LinearLayout>
             </LinearLayout>
 
             <!-- disclaimer: full text on page bottom, three short sections -->
@@ -794,6 +876,14 @@
                 android:layout_height="40dp" />
         </LinearLayout>
     </com.hdz.wearcontrol.AppScrollView>
+
+    <!-- 至上风格: 单屏静态构成, 不滚动; 只在 STYLE_SUPREM 时显示 -->
+    <com.hdz.wearcontrol.SupremView
+        android:id="@+id/suprem_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@string/settings_style_suprem"
+        android:visibility="gone" />
 
     <!-- fixed scroll indicator: pinned to the right edge of the round screen -->
     <com.hdz.wearcontrol.ArcIndicatorView

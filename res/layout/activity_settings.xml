@@ -49,36 +49,48 @@
                     android:id="@+id/style_new"
                     android:layout_width="0dp"
                     android:layout_height="34dp"
-                    android:layout_marginEnd="8dp"
+                    android:layout_marginEnd="5dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_choice"
                     android:gravity="center"
                     android:text="@string/settings_style_new"
                     android:textColor="@color/text_dim"
-                    android:textSize="12sp" />
+                    android:textSize="11sp" />
 
                 <TextView
                     android:id="@+id/style_classic"
                     android:layout_width="0dp"
                     android:layout_height="34dp"
-                    android:layout_marginEnd="8dp"
+                    android:layout_marginEnd="5dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_choice"
                     android:gravity="center"
                     android:text="@string/settings_style_classic"
                     android:textColor="@color/text_dim"
-                    android:textSize="12sp" />
+                    android:textSize="11sp" />
 
                 <TextView
                     android:id="@+id/style_liquid"
                     android:layout_width="0dp"
                     android:layout_height="34dp"
+                    android:layout_marginEnd="5dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_choice"
                     android:gravity="center"
                     android:text="@string/settings_style_liquid"
                     android:textColor="@color/text_dim"
-                    android:textSize="12sp" />
+                    android:textSize="11sp" />
+
+                <TextView
+                    android:id="@+id/style_suprem"
+                    android:layout_width="0dp"
+                    android:layout_height="34dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_choice"
+                    android:gravity="center"
+                    android:text="@string/settings_style_suprem"
+                    android:textColor="@color/text_dim"
+                    android:textSize="11sp" />
             </LinearLayout>
         </LinearLayout>
 

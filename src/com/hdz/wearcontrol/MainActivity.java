@@ -13,6 +13,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.media.AudioManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -25,6 +26,7 @@ import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.LinearLayout;
@@ -114,6 +116,22 @@ public class MainActivity extends Activity implements TwsClient.Listener {
     private NoiseSegmentedView noiseSeg;
     private SnapChipRow deepxScroller;
 
+    /** 音量条: 三种界面风格共用的公共卡片, 默认隐藏, 开发者设置里开启后永久保留 */
+    private VolumeBarView volumeBar;
+    private TextView volumeValue;
+    private View volumeCard;
+    private Switch switchVolume;
+    private boolean volumeGuard;
+    private AudioManager audioManager;
+    private BroadcastReceiver volumeReceiver;
+    private long lastVolumeHapticAt;
+
+    /** 至上风格(Wear OS 第四套 UI): 整页自绘覆盖层, 只在 STYLE_SUPREM 时显示 */
+    private AppScrollView supremScroll;
+    private SupremView supremBox;
+    private SupremTicksView supremTicks;
+    private int capsMask;
+
     /** 经典界面: 备份版布局 + 旧配色, 唯一差别是电量从圆环压扁成圆角矩形轮廓 */
     private boolean classic;
     private static final int CL_DIM = 0xFF8E8E93;
@@ -196,6 +214,51 @@ public class MainActivity extends Activity implements TwsClient.Listener {
             indicator.attachTo(scrollView);
         }
 
+        // 至上风格: 单屏静态构成, 不再有滚动容器与刻度尺
+        supremBox = (SupremView) findViewById(R.id.suprem_view);
+        if (supremBox != null) {
+            supremBox.setListener(new SupremView.Listener() {
+                @Override
+                public void onRefresh() {
+                    onRefreshTapped();
+                }
+
+                @Override
+                public void onModeSelected(int mode) {
+                    setMode(mode);
+                }
+
+                @Override
+                public void onVolumeChanged(int level, int max) {
+                    applyVolume(level, max);
+                }
+
+                @Override
+                public void onDeepxSelected(int index) {
+                    setDeepX(index);
+                }
+
+                @Override
+                public void onSpatialToggled(boolean on) {
+                    onSpatialToggled(on);
+                }
+
+                @Override
+                public void onVolumeToggle(boolean show) {
+                    AppPrefs.setShowVolume(MainActivity.this, show);
+                    haptic(HapticFeedbackConstants.KEYBOARD_TAP);
+                    applyVolumeVisibility();
+                    pushSupremStatus();
+                }
+
+                @Override
+                public void onSettings() {
+                    haptic(HapticFeedbackConstants.KEYBOARD_TAP);
+                    startActivity(SettingsActivity.intent(MainActivity.this));
+                }
+            });
+        }
+
         dot = (StatusDotView) findViewById(R.id.status_dot);
         dot.setContentDescription(getString(R.string.status_idle));
         status = (TextView) findViewById(R.id.status);
@@ -238,6 +301,22 @@ public class MainActivity extends Activity implements TwsClient.Listener {
         cardL = findViewById(R.id.card_l);
         cardR = findViewById(R.id.card_r);
         cardC = findViewById(R.id.card_c);
+
+        // 音量: 和系统媒体音量双向同步; 默认隐藏, 开发者设置里开启后永久保留
+        volumeBar = (VolumeBarView) findViewById(R.id.volume_bar);
+        volumeValue = (TextView) findViewById(R.id.volume_value);
+        volumeCard = findViewById(R.id.volume_card);
+        switchVolume = (Switch) findViewById(R.id.switch_volume);
+        audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
+        if (volumeBar != null) {
+            volumeBar.setOnLevelChangeListener(new VolumeBarView.OnLevelChangeListener() {
+                @Override
+                public void onLevelChanged(int level, int max) {
+                    applyVolume(level, max);
+                }
+            });
+        }
+        applyVolumeVisibility();
 
         noiseSeg = (NoiseSegmentedView) findViewById(R.id.noise_seg);
         deepxScroller = (SnapChipRow) findViewById(R.id.deepx_scroller);
@@ -436,6 +515,22 @@ public class MainActivity extends Activity implements TwsClient.Listener {
                 onSpatialToggled(isChecked);
             }
         });
+
+        // 开发者设置: 音量条开关(默认关; 打开后写进 SharedPreferences, 永久保留)
+        if (switchVolume != null) {
+            switchVolume.setOnCheckedChangeListener(
+                    new android.widget.CompoundButton.OnCheckedChangeListener() {
+                        @Override
+                        public void onCheckedChanged(android.widget.CompoundButton b, boolean isChecked) {
+                            if (volumeGuard) return;
+                            AppPrefs.setShowVolume(MainActivity.this, isChecked);
+                            if (volumeCard != null) {
+                                volumeCard.setVisibility(isChecked ? View.VISIBLE : View.GONE);
+                            }
+                            haptic(HapticFeedbackConstants.KEYBOARD_TAP);
+                        }
+                    });
+        }
     }
 
     /** 卡片一次性的入场: alpha + 轻微上移, 只在首次创建时跑, onResume 不重播 */
@@ -458,12 +553,16 @@ public class MainActivity extends Activity implements TwsClient.Listener {
         resumed = true;
         tryConnect();
         startRefresher();
+        refreshVolumeUi();
+        pushSupremStatus();
+        registerVolumeReceiver();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
         resumed = false;
+        unregisterVolumeReceiver();
         ui.removeCallbacksAndMessages(null);
         connecting = false;
         dot.setBreathing(false);
@@ -492,15 +591,47 @@ public class MainActivity extends Activity implements TwsClient.Listener {
      */
     @Override
     public boolean onGenericMotionEvent(MotionEvent ev) {
-        if (ev.getActionMasked() == MotionEvent.ACTION_SCROLL) {
+        int action = ev.getActionMasked();
+        if (action == MotionEvent.ACTION_SCROLL || action == MotionEvent.ACTION_HOVER_MOVE) {
             float delta = ev.getAxisValue(MotionEvent.AXIS_SCROLL);
-            // 临时调试: 确认真表圈/触摸表圈的旋转事件有没有送进来(发版前删)
-            Log.d(TAG, "rotary delta=" + delta + " src=" + ev.getSource());
-            if (delta != 0f && scrollView != null && scrollView.handleRotary(delta)) {
+            if (delta == 0f) {
+                // 部分国产魔改表把滚轮投在 AXIS_VSCROLL 而不是 AXIS_SCROLL 上
+                delta = ev.getAxisValue(MotionEvent.AXIS_VSCROLL);
+            }
+            if (delta != 0f && curUiStyle == AppPrefs.STYLE_SUPREM && supremBox != null) {
+                // 至上界面是多屏海报: 表圈/滚轮改成上下翻屏
+                supremBox.turnPage(delta > 0 ? 1 : -1);
+                return true;
+            }
+            AppScrollView target = activeScroll();
+            if (delta != 0f && target != null && target.handleRotary(delta)) {
                 return true;
             }
         }
         return super.onGenericMotionEvent(ev);
+    }
+
+    /**
+     * 国产安卓手表的实体表冠/旋钮很多是发 KEYCODE_NAVIGATE_PREVIOUS/NEXT(260/261) 或
+     * PAGE_UP/PAGE_DOWN 而不是滚动轴, 这里统一转给滚动容器, 保证真表冠也能滚。
+     */
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (curUiStyle == AppPrefs.STYLE_SUPREM && supremBox != null) {
+            if (keyCode == KeyEvent.KEYCODE_NAVIGATE_PREVIOUS || keyCode == KeyEvent.KEYCODE_PAGE_UP) {
+                supremBox.turnPage(-1);
+                return true;
+            }
+            if (keyCode == KeyEvent.KEYCODE_NAVIGATE_NEXT || keyCode == KeyEvent.KEYCODE_PAGE_DOWN) {
+                supremBox.turnPage(1);
+                return true;
+            }
+        }
+        AppScrollView target = activeScroll();
+        if (target != null && target.handleRotaryKey(keyCode)) {
+            return true;
+        }
+        return super.onKeyDown(keyCode, event);
     }
 
     /** 阶梯轮询省电: 连上先快查两轮拿首屏, 之后 30 秒慢轮询; 空间音频/DeepX 每 4 轮问一次 */
@@ -554,6 +685,7 @@ public class MainActivity extends Activity implements TwsClient.Listener {
         if (textRes == R.string.status_connected) {
             dot.pop();
         }
+        pushSupremStatus();
     }
 
     private void setSub(String text) {
@@ -561,6 +693,7 @@ public class MainActivity extends Activity implements TwsClient.Listener {
         if (!t.contentEquals(sub.getText())) {
             sub.setText(t);
         }
+        pushSupremStatus();
     }
 
     /** 临时副行(切换成功/失败/未连接提示), 到时自动回到当前状态的基础副行 */
@@ -639,6 +772,7 @@ public class MainActivity extends Activity implements TwsClient.Listener {
 
     private void onRefreshTapped() {
         haptic(HapticFeedbackConstants.CLOCK_TICK);
+        refreshVolumeUi();
         if (client != null && client.isConnected()) {
             showTempSub(getString(R.string.sub_refreshing), 3000L);
             client.queryBattery();
@@ -827,6 +961,9 @@ public class MainActivity extends Activity implements TwsClient.Listener {
                 if (noiseSeg != null) {
                     noiseSeg.setMode(mode, true);
                 }
+                if (supremBox != null) {
+                    supremBox.setMode(mode);
+                }
             }
         });
     }
@@ -848,11 +985,15 @@ public class MainActivity extends Activity implements TwsClient.Listener {
                 } else {
                     deepxCurrent.setText("--");
                 }
+                if (supremBox != null) {
+                    supremBox.setDeepx(deepxMode);
+                }
             }
         });
     }
 
     private void setBatteryUi(int left, int right, int box, int chargeFlags) {
+        Log.d(TAG, "setBatteryUi " + left + "/" + right + "/" + box + " flags=" + chargeFlags);
         if (ringL != null) ringL.setBattery(left, (chargeFlags & 0x01) != 0);
         if (ringR != null) ringR.setBattery(right, (chargeFlags & 0x02) != 0);
         if (ringC != null) ringC.setBattery(box, (chargeFlags & 0x04) != 0);
@@ -862,11 +1003,18 @@ public class MainActivity extends Activity implements TwsClient.Listener {
         setCell(pctL, barL, boltL, left, (chargeFlags & 0x01) != 0, false);
         setCell(pctR, barR, boltR, right, (chargeFlags & 0x02) != 0, true);
         setCell(pctC, barC, boltC, box, (chargeFlags & 0x04) != 0, true);
+        if (supremBox != null) {
+            supremBox.setSingle(false);
+            supremBox.setBattery(left, right, box, chargeFlags);
+        }
     }
 
     /** 单电池设备(标准协议兜底/单电池头戴): 只有一格总电量, 借左耳位显示 */
     private void setSingleBatteryUi(int total) {
         setCell(pctL, barL, boltL, total, false, false);
+        if (supremBox != null) {
+            supremBox.setSingleBattery(total);
+        }
     }
 
     /**
@@ -879,9 +1027,14 @@ public class MainActivity extends Activity implements TwsClient.Listener {
         final boolean deepx = (caps & TwsClient.CAP_DEEPX) != 0;
         final boolean single = (caps & TwsClient.CAP_BATTERY_SINGLE) != 0;
         singleBatt = single;
+        capsMask = caps;
         ui.post(new Runnable() {
             @Override
             public void run() {
+                if (supremBox != null) {
+                    supremBox.setCaps(caps);
+                    supremBox.setSingle(single);
+                }
                 if (noiseCard != null) {
                     noiseCard.setVisibility(noise ? View.VISIBLE : View.GONE);
                 }
@@ -986,6 +1139,14 @@ public class MainActivity extends Activity implements TwsClient.Listener {
                 spatialGuard = false;
                 setChip(null);
                 lowReported = false;
+                if (supremBox != null) {
+                    if (singleBatt) {
+                        supremBox.setSingleBattery(-1);
+                    } else {
+                        supremBox.setBattery(-1, -1, -1, 0);
+                    }
+                    supremBox.setMode(-1);
+                }
             }
         });
     }
@@ -1027,6 +1188,8 @@ public class MainActivity extends Activity implements TwsClient.Listener {
         final TwsClient c = client;
         final boolean single = singleBatt
                 || (c != null && (c.caps() & TwsClient.CAP_BATTERY_SINGLE) != 0);
+        Log.d(TAG, "onBattery " + left + "/" + right + "/" + box
+                + " flags=" + chargeFlags + " single=" + single);
         ui.post(new Runnable() {
             @Override
             public void run() {
@@ -1079,6 +1242,9 @@ public class MainActivity extends Activity implements TwsClient.Listener {
                 spatialGuard = true;
                 swSpatial.setChecked(state);
                 spatialGuard = false;
+                if (supremBox != null) {
+                    supremBox.setSpatial(state);
+                }
             }
         });
     }
@@ -1215,16 +1381,180 @@ public class MainActivity extends Activity implements TwsClient.Listener {
         }
     }
 
+    // ---------------- 音量条(三种界面风格共用) ----------------
+
+    /** 拖动音量条: 写系统媒体音量 + 刷新百分比 + 轻震(80ms 节流) */
+    private void applyVolume(int level, int max) {
+        updateVolumeText(level, max);
+        if (audioManager == null) {
+            return;
+        }
+        try {
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, level, 0);
+        } catch (RuntimeException e) {
+            return;
+        }
+        long now = SystemClock.uptimeMillis();
+        if (now - lastVolumeHapticAt > 80L) {
+            lastVolumeHapticAt = now;
+            haptic(HapticFeedbackConstants.CLOCK_TICK);
+        }
+    }
+
+    /** 从系统读当前媒体音量, 同步到音量条和百分比文本 */
+    private void refreshVolumeUi() {
+        if (audioManager == null) {
+            return;
+        }
+        int max;
+        int cur;
+        try {
+            max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+            cur = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+        } catch (RuntimeException e) {
+            return;
+        }
+        if (volumeBar != null) {
+            volumeBar.setLevel(cur, max);
+        }
+        updateVolumeText(cur, max);
+        if (supremBox != null) {
+            supremBox.setVolume(cur, max);
+        }
+    }
+
+    private void updateVolumeText(int level, int max) {
+        if (volumeValue == null) {
+            return;
+        }
+        int pct = max > 0 ? Math.round(level * 100f / max) : 0;
+        volumeValue.setText(pct + "%");
+    }
+
+    /** 音量被实体按键/其他应用改掉时, 让这里的音量条跟着动 */
+    private void registerVolumeReceiver() {
+        if (volumeReceiver != null) {
+            return;
+        }
+        volumeReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                refreshVolumeUi();
+            }
+        };
+        try {
+            registerReceiver(volumeReceiver,
+                    new IntentFilter("android.media.VOLUME_CHANGED_ACTION"));
+        } catch (RuntimeException e) {
+            volumeReceiver = null;
+        }
+    }
+
+    private void unregisterVolumeReceiver() {
+        if (volumeReceiver == null) {
+            return;
+        }
+        try {
+            unregisterReceiver(volumeReceiver);
+        } catch (IllegalArgumentException ignored) {
+        }
+        volumeReceiver = null;
+    }
+
+    // ---------------- 至上风格(Wear OS 第四套 UI) ----------------
+
+    /** 音量条默认隐藏, 开发者设置里开启后永久显示; 至上界面里同步显隐 */
+    private void applyVolumeVisibility() {
+        boolean show = AppPrefs.showVolume(this);
+        if (volumeCard != null) {
+            volumeCard.setVisibility(show ? View.VISIBLE : View.GONE);
+        }
+        if (switchVolume != null) {
+            volumeGuard = true;
+            switchVolume.setChecked(show);
+            volumeGuard = false;
+        }
+        if (supremBox != null) {
+            supremBox.setShowVolume(show);
+        }
+    }
+
+    /** 把连接状态行同步到至上界面: 危险状态用珊瑚红, 其余用炭黑 */
+    private void pushSupremStatus() {
+        if (supremBox == null) {
+            return;
+        }
+        String st = status == null || status.getText() == null
+                ? "" : status.getText().toString();
+        String sb = sub == null || sub.getText() == null
+                ? "" : sub.getText().toString();
+        int color = stateColor == COL_DANGER ? SupremView.COLOR_ERROR : SupremView.COLOR_INK;
+        supremBox.setStatus(st, sb, color);
+    }
+
+    /** 至上界面右侧刻度指示: 按内容滚动比例定位 */
+    private void updateSupremTicks() {
+        if (supremScroll == null || supremTicks == null) {
+            return;
+        }
+        View child = supremScroll.getChildAt(0);
+        if (child == null) {
+            return;
+        }
+        int max = child.getHeight() - supremScroll.getHeight();
+        float f = max > 0 ? supremScroll.getScrollY() / (float) max : 0f;
+        if (f < 0f) {
+            f = 0f;
+        } else if (f > 1f) {
+            f = 1f;
+        }
+        supremTicks.setFraction(f);
+    }
+
+    /** 当前界面该用哪个滚动容器: 至上风格用覆盖层, 其余用旧界面 */
+    private AppScrollView activeScroll() {
+        if (curUiStyle == AppPrefs.STYLE_SUPREM && supremScroll != null) {
+            return supremScroll;
+        }
+        return scrollView;
+    }
+
     private float dp(float v) {
         return v * getResources().getDisplayMetrics().density;
     }
     /** 新版=横向进度条(数字行+条), 经典=压扁圆环(数字在环里). 只切电量区, 其余 UI 相同.
      *  单电池设备统一按"单张进度卡"显示, 不套三格布局. */
     private void applyBatteryStyle() {
+        boolean suprem = curUiStyle == AppPrefs.STYLE_SUPREM;
         boolean showCards = curUiStyle == AppPrefs.STYLE_NEW;
         boolean showRing = curUiStyle == AppPrefs.STYLE_CLASSIC;
         boolean showBlocks = curUiStyle == AppPrefs.STYLE_LIQUID;
         boolean single = singleBatt;
+        if (volumeBar != null) {
+            // 音量条画法跟着界面风格走: 极简=细渐变条 / 经典=轮廓环 / 液位=液位块
+            volumeBar.setStyle(suprem ? AppPrefs.STYLE_NEW : curUiStyle);
+        }
+        // 至上风格是整页自绘覆盖层: 盖住旧界面, 只留刻度指示
+        if (scrollView != null) {
+            scrollView.setVisibility(suprem ? View.GONE : View.VISIBLE);
+        }
+        if (indicator != null) {
+            indicator.setVisibility(suprem ? View.GONE : View.VISIBLE);
+        }
+        if (supremScroll != null) {
+            supremScroll.setVisibility(suprem ? View.VISIBLE : View.GONE);
+        }
+        if (supremTicks != null) {
+            // 至上风格自带构图与弧线，不再叠一条竖直刻度尺
+            supremTicks.setVisibility(View.GONE);
+        }
+        if (supremBox != null) {
+            // 至上风格现在是单屏静态构成, 不再包在滚动容器里, 直接控制自己显隐
+            supremBox.setVisibility(suprem ? View.VISIBLE : View.GONE);
+            supremBox.setShowVolume(AppPrefs.showVolume(this));
+            supremBox.setCaps(capsMask);
+            supremBox.setSingle(singleBatt);
+        }
         if (cardL != null) cardL.setVisibility(showCards || single ? View.VISIBLE : View.GONE);
         if (cardR != null) cardR.setVisibility(showCards && !single ? View.VISIBLE : View.GONE);
         if (cardC != null) cardC.setVisibility(showCards && !single ? View.VISIBLE : View.GONE);

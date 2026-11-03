@@ -23,12 +23,12 @@
 
 * **手表端**：实测三星 Galaxy Watch7（Wear OS），其他 **Wear OS 3+** 手表理论通用。
 * **核心功能**：
-  * **降噪三态切换**：降噪 / 关闭 / 通透三档一键切换（当前模式高亮显示；华为机型暂不支持通透）。
+  * **降噪三态切换**：降噪 / 关闭 / 通透三档一键切换（当前模式高亮显示）。
   * **三端电量显示**：实时显示左耳、右耳、充电盒电量及充电状态。
-  * **省心连接体验**：断线状态自动清空、回到前台自动重连；适配手表旋转表冠与省电策略。
+  * **省心连接体验**：断线状态自动清空、回到前台自动重连；适配手表旋转表圈/实体表冠——转动时绵密分段震动、顶到边界有一下明显的挡墙反馈；屏幕右缘滚动指示条上下双拼色，滚动时带 Q 弹阻尼回弹。
   * **磁贴快捷控制**：不用打开 App，在手表磁贴里就能切降噪模式，顺便看一眼上一次连接的电量；三段电量与整机总电量（单电池设备）自适应显示，磁贴样式可跟随界面或单独指定。
   * **三种界面风格 + 设置页**：极简（横向进度条）/ 液位（胶囊块）/ 经典（压扁圆环）三种电量视图，设置页即时切换；界面语言可跟随系统或手动切中 / 英。
-  * **多品牌与标准兜底**：除 vivo / 华为 / 小米外，新增漫步者、弱水时砂、原道三条社区协议驱动（均标注「实验性」）；认不出私有协议的耳机自动走「标准协议」兜底，不碰耳机私有指令，只读系统聚合电量。
+  * **多品牌与标准兜底**：除 vivo / 华为 / 小米外，还新增 OPPO 系（OPPO / 一加 / realme / Enco，HeyMelody 协议）与漫步者、弱水时砂、原道三条社区协议驱动；认不出私有协议的耳机自动走「标准协议」兜底，不碰耳机私有指令，只读系统聚合电量。华为 FreeBuds 6i 与原道 OriG in（原点）已在真机实测通过。
   * **vivo 专属实验功能**：连点 5 下应用内"开发者设置"，可开启空间音频 / DeepX 音效调节（目前仅限 vivo TWS Air3 Pro，详见应用内免责声明）。
 
 ## 📸 界面预览
@@ -52,11 +52,12 @@
 | 耳机品牌 | 蓝牙传输协议 | 降噪控制 | 电量显示 | 当前验证状态 |
 | --- | --- | --- | --- | --- |
 | **vivo / iQOO TWS 家族** | RFCOMM (GAIA) | 开 / 关 / 通透三态 | 左 / 右 / 盒 | ✅ **已真机实测**（Galaxy Watch7 + Air3 Pro 全功能正常） |
-| **华为 FreeBuds / 荣耀** | RFCOMM (SPP) | 开 / 关（通透协议未公开） | 多数机型暂查不到（走 HFP 通道） | ⚠️ **实验性支持**（按协议文档实现，待真机实测） |
+| **华为 FreeBuds / 荣耀** | RFCOMM (SPP) | 开 / 关 / 通透三态 | 左 / 右 / 盒（含充电状态） | ✅ **部分真机验证**（FreeBuds 6i：三态 + 电量实测通过；其他 FreeBuds / 荣耀型号 ⚠️ 实验性） |
 | **小米 / Redmi Buds** | RFCOMM (MMA) | 开 / 关 / 通透三态 | 左 / 右 / 盒（含充电状态） | ⚠️ **实验性支持**（认证算法通过 36/36 离线真值验证，待上耳机实测） |
+| **OPPO / 一加 / realme / Enco** | RFCOMM (OPOv1 / HeyMelody) | 开 / 关 / 通透三态 | 左 / 右 / 盒（含充电状态） | ⚠️ **实验性支持**（协议来自社区公开逆向，未真机实测） |
 | **漫步者 EDIFIER** | RFCOMM (SPP) / BLE GATT | 开 / 关 / 通透（按型号 group 映射；未知 group 只读不写） | 左 / 右 / 盒（头戴型号为总电量） | ⚠️ **实验性支持**（协议来自社区公开逆向，未真机实测） |
 | **弱水时砂 RoseLink** | BLE GATT / RFCOMM (SPP) | 开 / 关 / 通透（风噪档不映射） | 左 / 右 / 盒 | ⚠️ **实验性支持**（协议来自社区公开逆向，未真机实测） |
-| **原道 NiceHCK** | RFCOMM (SPP) | 开 / 关 / 通透（含普通/深度降噪） | 左 / 右 / 盒 | ⚠️ **实验性支持**（协议来自社区公开逆向，未真机实测） |
+| **原道 NiceHCK** | RFCOMM (SPP) | 开 / 关 / 通透（含普通/深度降噪） | 左 / 右 / 盒 | ✅ **部分真机验证**（OriG in 原点：三态 + 电量实测通过；其他原道型号 ⚠️ 实验性） |
 | **其他品牌（标准协议兜底）** | 系统蓝牙（A2DP/HFP + HF Indicator 广播） | — | 仅整机总电量（系统聚合，分体电量系统不公开） | ⚠️ **实验性支持**（只读电量，不碰耳机私有协议） |
 
 > 📌 **取设备规则**：先按蓝牙 Class 排除手机/平板，再优先「名字像品牌耳机 + 有 A2DP Sink 角色」的设备，最后才退回名字匹配。个别 ROM 对手机 Class 上报不规范时仍可能选错——真遇到就把手机从手表蓝牙列表里删掉，或把耳机名加上品牌词（如 `vivo TWS Air3 Pro`）。
@@ -133,11 +134,12 @@
 ```text
 TwsClient                    统一接口(驱动标准: 连接/电量/降噪三态 + 能力位 + 验证等级)
 ├── vivo/VivoGaiaClient      GAIA 私有协议(真机验证)
-├── huawei/HuaweiSppClient   SPP + CRC16/XMODEM 帧(未真机验证)
+├── huawei/HuaweiSppClient   SPP + CRC16/XMODEM 帧(FreeBuds 6i 真机验证, 其他型号实验性)
 ├── xiaomi/XiaomiMmaClient   MMA 帧 + 挑战-应答认证(未真机验证，XiaomiAuth.java 经 36/36 Unicorn oracle 真值逐字节验证)
+├── oppo/OppoOpoClient       OPOv1 / HeyMelody 帧(OPPO/一加/realme, 未真机验证)
 ├── EdifierClient           漫步者 Bes 帧(SPP/BLE, 未真机验证)
 ├── RoseLinkClient          弱水时砂 V2/RS 帧(BLE/SPP, 未真机验证)
-├── NiceHckClient           原道 4E 帧(SPP, 未真机验证)
+├── NiceHckClient           原道 4E 帧(SPP, OriG in 原点真机验证, 其他型号实验性)
 ├── StandardClient          标准协议兜底(系统 A2DP/HFP + HF Indicator, 只读电量)
 └── DriverRegistry           按蓝牙设备名自动挑品牌, 匹配规则内聚在各驱动里
 
@@ -263,7 +265,19 @@ FF | VERB | 00 | LEN | VENDOR(2B 大端) | CMD(2B 大端) | PAYLOAD(LEN 字节)
 
 ## 🔎 已适配品牌协议速查（贡献者参考）
 
-下表是三条实验性驱动的协议骨架，细节以实现为准；给新耳机写驱动前，建议先按上面的「协议表模板」把资料填成同样格式，再动手。
+下表是几条实验性驱动的协议骨架，细节以实现为准；给新耳机写驱动前，建议先按上面的「协议表模板」把资料填成同样格式，再动手。
+
+### OPPO / 一加 / realme（OPOv1 · HeyMelody）
+
+| 项 | 值 |
+| --- | --- |
+| 匹配词 | oppo / enco / oneplus / realme |
+| 传输层 | RFCOMM (SPP)，SDP UUID `0000079A-D102-11E1-9B23-00025B00A5A5` / 回退 `00001107-D102-11E1-9B23-00025B00A5A5` / 反射信道 15；无 BLE 路径 |
+| 握手 | 连上 300ms 发 `0x0100`（空 payload），随后初始化轮询：`0103` 产品 ID → `0200` → `0205` 订阅 → `010D` → `010C` 降噪查询 → `0106` 电量 → `0109` 佩戴 → `0108` → `0105` |
+| 帧 | `AA | TotalLen(LEB128) | Slice | 00 | Cmd(2B 小端) | Seq | PayLen(2B 小端) | Payload`，TotalLen = 7 + PayLen，无校验 |
+| 电量 | `0x0106`（seq F0）→ `0x8106` 回包 `[00][count](part,raw)…`：part 1/2/3 = 左/右/盒，raw bit7 = 充电、低 7 位 = 百分比，0 = 未知；`0x0204` 主动上报 subtype 01 = 电量 |
+| 降噪 | 设置 `0x0404` payload `01 01 mask`：关 `0x01` / 降噪 `0x02` / 通透 `0x04`；查询 `0x010C`，状态回包 `0x810C` 的位与 SET 位不同：关 `0x0008` / 降噪 `0x0002` / 通透 `0x0100`；`0x0204` subtype 03 = 降噪状态（`03 02 01` 为回声，忽略） |
+| 来源 | spizganed/QuickBuds（Wire/Battery/Anc 解析）；HeyMelody / OPOv1 社区整理 |
 
 ### 漫步者 EDIFIER
 
@@ -315,7 +329,7 @@ FF | VERB | 00 | LEN | VENDOR(2B 大端) | CMD(2B 大端) | PAYLOAD(LEN 字节)
 
 App 首次启动有确认弹窗，页面底部常驻免责声明。核心内容：
 
-* 本项目为第三方非官方社区工具，仅供个人学习研究和技术交流，与 vivo / 华为 / 小米 / 漫步者 / 弱水时砂 / 原道及其关联公司无任何关联，未获其授权或背书；商标归各自权利人所有，仅作兼容性说明。
+* 本项目为第三方非官方社区工具，仅供个人学习研究和技术交流，与 vivo / 华为 / 小米 / OPPO / 一加 / realme / 漫步者 / 弱水时砂 / 原道及其关联公司无任何关联，未获其授权或背书；商标归各自权利人所有，仅作兼容性说明。
 * 按现状提供，不提供任何明示或默示担保；私有协议可能随固件更新变更。
 * 实验性功能切换瞬间可能出现突发爆音、音量突变，操作前务必摘下耳机并调低音量，听力损伤不可逆；勿在驾驶、骑行等场景使用。
 * 使用风险（含听力不适、财产损失、固件异常、数据丢失、软件安全风险、保修失效、违反第三方条款）由使用者自行承担，法律强制不得排除的责任除外。
@@ -332,9 +346,11 @@ App 首次启动有确认弹窗，页面底部常驻免责声明。核心内容�
 * **[IRDecoyFlare/roseselsa-RoseLink-Protocol](https://github.com/IRDecoyFlare/roseselsa-RoseLink-Protocol)** — 弱水时砂 RoseLink 全系机型族协议逆向
 * **[OPerepadia/rosebuds](https://github.com/OPerepadia/rosebuds)** — 弱水时砂 BLE GATT 控制路径参考（MIT）
 * **[ZaeXT/NiceHCK_Controller](https://github.com/ZaeXT/NiceHCK_Controller)** — 原道 SPP 控制协议（Java / MIT）；**[HELPMEEADICE/NiceHCK_Controller_Windows](https://github.com/HELPMEEADICE/NiceHCK_Controller_Windows)** — 同协议 Rust 实现
+* **[creeperkafasi/redmi-buds-linux](https://github.com/creeperkafasi/redmi-buds-linux)** — Redmi Buds RCSP 协议与 E21 认证真值；**[thetriu/OpenXia](https://github.com/thetriu/OpenXia)** — 同协议 Kotlin 实现参考
+* **[spizganed/QuickBuds](https://github.com/spizganed/QuickBuds)** — OPPO / HeyMelody OPOv1 帧、电量与降噪解析参考
 * 前作 **[vivo-tws-watch-control](https://github.com/hdzw1155/vivo-tws-watch-control)** 的全部实机调优经验
 
-**关于华为部分与 GPL-3.0 的边界**：本项目的华为实现是阅读上述仓库的**协议描述文档**（帧格式 / CRC 算法 / 命令号）后独立编写的 Java 代码，未复制、未参考其 GPL 代码实现；协议规格本身属于功能性事实，不受版权保护。小米部分同理（认证算法为按公开算法描述的独立移植，并与公开真值对拍验证）。漫步者 / 弱水时砂 / 原道三条实验性驱动同样只读上游仓库的协议文档与 MIT 实现描述，独立编写 Java 代码，未复制任何 GPL/AGPL 实现。因此本项目整体保持 MIT 许可。
+**关于华为部分与 GPL-3.0 的边界**：本项目的华为实现是阅读上述仓库的**协议描述文档**（帧格式 / CRC 算法 / 命令号）后独立编写的 Java 代码，未复制、未参考其 GPL 代码实现；协议规格本身属于功能性事实，不受版权保护。小米部分同理（认证算法为按公开算法描述的独立移植，并与公开真值对拍验证）。漫步者 / 弱水时砂 / 原道 / OPPO 系实验性驱动同样只读上游仓库的协议文档与 MIT 实现描述，独立编写 Java 代码，未复制任何 GPL/AGPL 实现。因此本项目整体保持 MIT 许可。
 
 ## 📢 授权与反倒卖声明
 

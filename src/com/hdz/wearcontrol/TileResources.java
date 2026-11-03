@@ -24,7 +24,7 @@ final class TileResources {
     static final String ID_IC_ANC = "ic_anc";
 
     /** 画法版本: 视觉规格一变就 bump(旧值 a1.0 对应三个独立圆环的旧磁贴) */
-    static final String ART_REV = "a4.0";
+    static final String ART_REV = "a4.1";
 
     /**
      * 上一份生成的 PNG 与它的版本号。onResourcesRequest 每次都被系统要求给"全量资源表",
@@ -50,6 +50,11 @@ final class TileResources {
         if (s.chargeFlags != TileSnapshot.UNKNOWN) {
             v = v + "_c" + s.chargeFlags;
         }
+        // 档位必须进版本号: 宿主会整份复用同版本的磁贴快照, 不带 mode 时
+        // 点完降噪/通透容易继续显示旧的选中态(用户反馈的"按了不显示对应状态").
+        if (s.mode >= 0) {
+            v = v + "_m" + s.mode;
+        }
         return v;
     }
 
@@ -58,6 +63,9 @@ final class TileResources {
         String v = ART_REV + "-one-" + s.batteryVersion();
         if (s.chargeFlags != TileSnapshot.UNKNOWN) {
             v = v + "_c" + s.chargeFlags;
+        }
+        if (s.mode >= 0) {
+            v = v + "_m" + s.mode;
         }
         return v;
     }
