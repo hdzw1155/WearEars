@@ -993,7 +993,6 @@ public class MainActivity extends Activity implements TwsClient.Listener {
     }
 
     private void setBatteryUi(int left, int right, int box, int chargeFlags) {
-        Log.d(TAG, "setBatteryUi " + left + "/" + right + "/" + box + " flags=" + chargeFlags);
         if (ringL != null) ringL.setBattery(left, (chargeFlags & 0x01) != 0);
         if (ringR != null) ringR.setBattery(right, (chargeFlags & 0x02) != 0);
         if (ringC != null) ringC.setBattery(box, (chargeFlags & 0x04) != 0);
@@ -1188,8 +1187,6 @@ public class MainActivity extends Activity implements TwsClient.Listener {
         final TwsClient c = client;
         final boolean single = singleBatt
                 || (c != null && (c.caps() & TwsClient.CAP_BATTERY_SINGLE) != 0);
-        Log.d(TAG, "onBattery " + left + "/" + right + "/" + box
-                + " flags=" + chargeFlags + " single=" + single);
         ui.post(new Runnable() {
             @Override
             public void run() {
