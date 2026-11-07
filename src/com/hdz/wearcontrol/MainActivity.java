@@ -195,8 +195,6 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
         setContentView(R.layout.activity_main);
 
         scrollView = (AppScrollView) findViewById(R.id.scroll);
-        scrollView.setFocusableInTouchMode(true);
-        scrollView.requestFocus();
         indicator = (ArcIndicatorView) findViewById(R.id.indicator);
         if (indicator != null) {
             indicator.attachTo(scrollView);
@@ -491,37 +489,22 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
     }
 
     /**
-     * 旋转表冠 / 触摸表圈: 系统把转动的刻度作为 ACTION_SCROLL 投递, 焦点视图没消费时会冒泡到
-     * Activity 这一层(0.3.7 就是在这里接住的), 统一转给滚动容器做带缓动的滚动.
+     * 旋转表冠 / 触摸表圈: 与 SettingsActivity 保持完全一致的震动与滚动代理逻辑，
+     * 直接转交给 AppScrollView 处理（内含 AXIS_SCROLL / AXIS_VSCROLL / AXIS_RELATIVE_Y 完整分发与触感反馈）。
      */
     @Override
     public boolean onGenericMotionEvent(MotionEvent ev) {
-        int action = ev.getActionMasked();
-        if (action == MotionEvent.ACTION_SCROLL || action == MotionEvent.ACTION_HOVER_MOVE) {
-            float delta = ev.getAxisValue(MotionEvent.AXIS_SCROLL);
-            if (delta == 0f) {
-                // 部分国产魔改表把滚轮投在 AXIS_VSCROLL 而不是 AXIS_SCROLL 上
-                delta = ev.getAxisValue(MotionEvent.AXIS_VSCROLL);
-            }
-            AppScrollView target = activeScroll();
-            if (delta != 0f && target != null && target.handleRotary(delta)) {
-                return true;
-            }
-        }
-        return super.onGenericMotionEvent(ev);
+        AppScrollView target = activeScroll();
+        return target != null && target.onGenericMotionEvent(ev) || super.onGenericMotionEvent(ev);
     }
 
     /**
-     * 国产安卓手表的实体表冠/旋钮很多是发 KEYCODE_NAVIGATE_PREVIOUS/NEXT(260/261) 或
-     * PAGE_UP/PAGE_DOWN 而不是滚动轴, 这里统一转给滚动容器, 保证真表冠也能滚。
+     * 国产安卓手表的实体表冠/旋钮按键: 与 SettingsActivity 保持完全一致，统一由 AppScrollView 处理按键翻页与触感。
      */
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         AppScrollView target = activeScroll();
-        if (target != null && target.handleRotaryKey(keyCode)) {
-            return true;
-        }
-        return super.onKeyDown(keyCode, event);
+        return target != null && target.handleRotaryKey(keyCode) || super.onKeyDown(keyCode, event);
     }
 
 
