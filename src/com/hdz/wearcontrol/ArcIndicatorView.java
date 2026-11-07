@@ -14,23 +14,49 @@ import android.view.ViewGroup;
 import android.view.ViewConfiguration;
 import android.widget.ScrollView;
 
-/** 固定在屏幕右缘的炫彩弹性圆弧，只观察滚动，不拦截触摸或表圈输入。 */
+/**
+ * 固定在屏幕右缘的紧凑弹性圆弧指示器。
+ * 导轨总跨度占右半圆的约 1/4 (45度)，随页面滚动在顶绿、中科技炫彩、底蓝之间动态渐变，
+ * 也支持在设置中切换为经典青蓝配色。只观察滚动，不拦截触摸或表圈输入。
+ */
 public class ArcIndicatorView extends View {
-    private static final float ARC_SPAN = 104f;
+    /** 导轨总跨度：45度（刚好占屏幕右侧180度半圆的 1/4） */
+    private static final float ARC_SPAN = 45f;
     private static final float INSET_DP = 3f;
     private static final float REST_LEVEL = 0.55f;
     private static final long FADE_DELAY = 850L;
     private static final long FADE_DURATION = 220L;
+
+    // ---- 动态科技流光色系 ----
+    // 顶部 (pos = 0.0): 科技翠绿
+    private static final int[] TOP_COLORS = new int[]{
+            0xFF00E5A3, 0xFF00E5A3, 0xFF00D287, 0xFF00D287
+    };
+    // 中部 (pos = 0.5): 科技炫彩 (翠绿 -> 电光青 -> 赛博紫 -> 科技蓝，克制科技美学)
+    private static final int[] MID_COLORS = new int[]{
+            0xFF00E5A3, 0xFF00E5FF, 0xFF9333EA, 0xFF3B82F6
+    };
+    // 底部 (pos = 1.0): 科技深蓝
+    private static final int[] BOT_COLORS = new int[]{
+            0xFF3B82F6, 0xFF3B82F6, 0xFF1D4ED8, 0xFF1D4ED8
+    };
+    private static final float[] DYNAMIC_STOPS = new float[]{0f, 0.33f, 0.67f, 1f};
 
     private final Paint rail = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint thumb = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF arc = new RectF();
     private final Matrix gradientMatrix = new Matrix();
     private final ScrollIndicatorMotion motion = new ScrollIndicatorMotion();
-    private final LinearGradient gradient = new LinearGradient(0f, 0f, 0f, 1f,
+
+    // 经典青蓝静态渐变 (用于设置切换)
+    private final LinearGradient classicGradient = new LinearGradient(0f, 0f, 0f, 1f,
             new int[]{0xFF35D6ED, 0xFF41B5FF, 0xFF4E86F7, 0xFF8C99DF,
                     0xFFDDF5FF, 0xFF65BDF2, 0xFF35D6ED},
             new float[]{0f, 0.20f, 0.43f, 0.57f, 0.67f, 0.82f, 1f}, Shader.TileMode.MIRROR);
+
+    private final int[] dynamicColors = new int[4];
+    private int colorStyle = AppPrefs.SCROLL_COLOR_DYNAMIC;
+
     private final float inset;
     private ScrollView target;
     private View content;
@@ -84,16 +110,15 @@ public class ArcIndicatorView extends View {
         TypedArray sizes = context.obtainStyledAttributes(new int[]{android.R.attr.scrollbarSize});
         try { stroke = sizes.getDimension(0, stroke); }
         finally { sizes.recycle(); }
-        // 使用设备默认主题的滚动条宽度，而不是再次猜一个固定 dp；导轨和滑块一致。
         inset = Math.max(INSET_DP * density, stroke / 2f + density);
         rail.setStyle(Paint.Style.STROKE);
         rail.setStrokeCap(Paint.Cap.ROUND);
         rail.setStrokeWidth(stroke);
-        rail.setColor(0xFF7AADC8);
+        rail.setColor(0xFF2A3B4C);
         thumb.setStyle(Paint.Style.STROKE);
         thumb.setStrokeCap(Paint.Cap.ROUND);
         thumb.setStrokeWidth(stroke);
-        thumb.setShader(gradient);
+        colorStyle = AppPrefs.scrollColorStyle(context);
         setClickable(false);
         setFocusable(false);
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -107,9 +132,17 @@ public class ArcIndicatorView extends View {
         syncPosition();
     }
 
-    /** 页面暂停时同时停止装饰动画；回来直接同步当前位置。 */
+    public void refreshColorStyle() {
+        colorStyle = AppPrefs.scrollColorStyle(getContext());
+        invalidate();
+    }
+
+    /** 页面暂停时同时停止装饰动画；回来直接同步当前位置和配色。 */
     void setActive(boolean enabled) {
         active = enabled;
+        if (enabled) {
+            colorStyle = AppPrefs.scrollColorStyle(getContext());
+        }
         syncPosition();
     }
 
@@ -202,7 +235,7 @@ public class ArcIndicatorView extends View {
         int height = viewport();
         if (max <= 0 || height <= 0 || arc.isEmpty()) return;
         float pos = motion.position();
-        float baseSweep = Math.max(22f, ARC_SPAN * height / (height + (float) max));
+        float baseSweep = Math.max(12f, ARC_SPAN * height / (height + (float) max));
         float sweep = Math.min(ARC_SPAN, baseSweep * motion.stretch());
         float start = -ARC_SPAN / 2f;
         float from = start + (ARC_SPAN - sweep) * pos;
@@ -210,15 +243,47 @@ public class ArcIndicatorView extends View {
         float top = arc.centerY() + radius * (float) Math.sin(Math.toRadians(from));
         float bottom = arc.centerY() + radius * (float) Math.sin(Math.toRadians(from + sweep));
         float length = Math.max(1f, bottom - top);
-        // 渐变绑定滑块自身，短滑块也能看到多种颜色；页面位置改变时平移色带。
-        gradientMatrix.setScale(1f, length);
-        gradientMatrix.postTranslate(0f, top - length * pos * 0.8f);
-        gradient.setLocalMatrix(gradientMatrix);
+
+        if (colorStyle == AppPrefs.SCROLL_COLOR_CLASSIC) {
+            gradientMatrix.setScale(1f, length);
+            gradientMatrix.postTranslate(0f, top - length * pos * 0.8f);
+            classicGradient.setLocalMatrix(gradientMatrix);
+            thumb.setShader(classicGradient);
+            rail.setColor(0xFF7AADC8);
+        } else {
+            // 顶绿 -> 中科技炫彩 -> 底蓝 的动态插值
+            float colorPos = Math.max(0f, Math.min(1f, pos));
+            if (colorPos <= 0.5f) {
+                float t = colorPos / 0.5f;
+                for (int i = 0; i < 4; i++) {
+                    dynamicColors[i] = lerpColor(TOP_COLORS[i], MID_COLORS[i], t);
+                }
+            } else {
+                float t = (colorPos - 0.5f) / 0.5f;
+                for (int i = 0; i < 4; i++) {
+                    dynamicColors[i] = lerpColor(MID_COLORS[i], BOT_COLORS[i], t);
+                }
+            }
+            LinearGradient dynGrad = new LinearGradient(
+                    0f, top, 0f, bottom, dynamicColors, DYNAMIC_STOPS, Shader.TileMode.CLAMP);
+            thumb.setShader(dynGrad);
+            rail.setColor(0xFF2A3B4C);
+        }
+
         rail.setAlpha(Math.round(46f * level));
         thumb.setAlpha(Math.round(240f * level));
-        // 每帧仅两条圆弧；透明度不会再被随后设置的颜色覆盖。
         canvas.drawArc(arc, start, ARC_SPAN, false, rail);
         canvas.drawArc(arc, from, sweep, false, thumb);
+    }
+
+    private static int lerpColor(int c0, int c1, float t) {
+        if (t <= 0f) return c0;
+        if (t >= 1f) return c1;
+        int a = (int) (((c0 >>> 24) & 0xFF) + t * (((c1 >>> 24) & 0xFF) - ((c0 >>> 24) & 0xFF)));
+        int r = (int) (((c0 >>> 16) & 0xFF) + t * (((c1 >>> 16) & 0xFF) - ((c0 >>> 16) & 0xFF)));
+        int g = (int) (((c0 >>> 8) & 0xFF) + t * (((c1 >>> 8) & 0xFF) - ((c0 >>> 8) & 0xFF)));
+        int b = (int) ((c0 & 0xFF) + t * ((c1 & 0xFF) - (c0 & 0xFF)));
+        return (a << 24) | (r << 16) | (g << 8) | b;
     }
 
     @Override protected void onAttachedToWindow() {

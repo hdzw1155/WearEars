@@ -44,6 +44,8 @@ public class SettingsActivity extends Activity {
         bindLanguage(R.id.lang_zh, AppPrefs.LANG_ZH);
         bindLanguage(R.id.lang_en, AppPrefs.LANG_EN);
         bindLanguage(R.id.lang_system, "system");
+        bindScrollColor(R.id.scroll_color_dynamic, AppPrefs.SCROLL_COLOR_DYNAMIC);
+        bindScrollColor(R.id.scroll_color_classic, AppPrefs.SCROLL_COLOR_CLASSIC);
         findViewById(R.id.device_choice).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View view) { chooseDevice(); }
         });
@@ -90,6 +92,16 @@ public class SettingsActivity extends Activity {
         });
     }
 
+    private void bindScrollColor(int id, final int colorStyle) {
+        findViewById(id).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View view) {
+                AppPrefs.setScrollColorStyle(SettingsActivity.this, colorStyle);
+                if (indicator != null) indicator.refreshColorStyle();
+                refreshChoices();
+            }
+        });
+    }
+
     private void refreshChoices() {
         int style = AppPrefs.uiStyle(this), tile = AppPrefs.tileStyleChoice(this);
         for (int i = 0; i < UI_IDS.length; i++) {
@@ -101,6 +113,9 @@ public class SettingsActivity extends Activity {
         setChoice(R.id.lang_zh, AppPrefs.LANG_ZH.equals(language));
         setChoice(R.id.lang_en, AppPrefs.LANG_EN.equals(language));
         setChoice(R.id.lang_system, "system".equals(language));
+        int scrollColor = AppPrefs.scrollColorStyle(this);
+        setChoice(R.id.scroll_color_dynamic, scrollColor == AppPrefs.SCROLL_COLOR_DYNAMIC);
+        setChoice(R.id.scroll_color_classic, scrollColor == AppPrefs.SCROLL_COLOR_CLASSIC);
         boolean volume = AppPrefs.showVolume(this);
         setChoice(R.id.volume_choice, volume);
         ((TextView) findViewById(R.id.volume_choice)).setText(

@@ -15,12 +15,16 @@ final class AppPrefs {
 
     static final int STYLE_FOLLOW = -1;
 
+    static final int SCROLL_COLOR_DYNAMIC = 0;
+    static final int SCROLL_COLOR_CLASSIC = 1;
+
     static final String LANG_ZH = "zh";
     static final String LANG_EN = "en";
 
     private static final String KEY_UI_STYLE = "ui_style";
     private static final String KEY_LANG = "app_lang";
     private static final String KEY_TILE_STYLE = "tile_style";
+    private static final String KEY_SCROLL_COLOR = "scroll_color_style";
     /** 主界面音量条: 默认隐藏, 在设置页或原开发者设置中切换 */
     private static final String KEY_SHOW_VOLUME = "show_volume";
 
@@ -75,6 +79,16 @@ final class AppPrefs {
 
     static void setShowVolume(Context ctx, boolean show) {
         prefs(ctx).edit().putBoolean(KEY_SHOW_VOLUME, show).apply();
+    }
+
+    static int scrollColorStyle(Context ctx) {
+        int style = prefs(ctx).getInt(KEY_SCROLL_COLOR, SCROLL_COLOR_DYNAMIC);
+        return (style == SCROLL_COLOR_CLASSIC) ? SCROLL_COLOR_CLASSIC : SCROLL_COLOR_DYNAMIC;
+    }
+
+    static void setScrollColorStyle(Context ctx, int style) {
+        prefs(ctx).edit().putInt(KEY_SCROLL_COLOR,
+                (style == SCROLL_COLOR_CLASSIC) ? SCROLL_COLOR_CLASSIC : SCROLL_COLOR_DYNAMIC).apply();
     }
 
     private static boolean isSystemChinese(Context ctx) {

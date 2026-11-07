@@ -124,6 +124,9 @@
     <string name="settings_lang_en">English</string>
     <string name="settings_tile_style">磁贴样式</string>
     <string name="settings_style_follow">跟随界面</string>
+    <string name="settings_scroll_color">滚动条配色</string>
+    <string name="settings_scroll_color_dynamic">科技炫彩</string>
+    <string name="settings_scroll_color_classic">经典青蓝</string>
     <string name="settings_hint">改完立即生效</string>
     <string name="cta_settings">设置</string>
     <string name="settings_lang_system">跟随系统</string>
