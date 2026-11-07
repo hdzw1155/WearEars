@@ -19,7 +19,6 @@ final class AppLocale {
     static Context wrap(Context base) {
         String lang = AppPrefs.lang(base);
         Locale locale = AppPrefs.LANG_EN.equals(lang) ? Locale.ENGLISH : Locale.SIMPLIFIED_CHINESE;
-        Locale.setDefault(locale);
         Configuration config = new Configuration(base.getResources().getConfiguration());
         config.setLocale(locale);
         config.setLocales(new LocaleList(locale));
@@ -27,7 +26,10 @@ final class AppLocale {
     }
 
     static Context localizedContext(Context ctx) {
-        String lang = AppPrefs.lang(ctx);
+        return forLanguage(ctx, AppPrefs.lang(ctx));
+    }
+
+    static Context forLanguage(Context ctx, String lang) {
         Locale locale = AppPrefs.LANG_EN.equals(lang) ? Locale.ENGLISH : Locale.SIMPLIFIED_CHINESE;
         Configuration config = new Configuration(ctx.getResources().getConfiguration());
         config.setLocale(locale);

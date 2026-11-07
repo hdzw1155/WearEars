@@ -1,6 +1,7 @@
 package com.hdz.wearcontrol.vivo;
 
 import com.hdz.wearcontrol.TwsClient;
+import com.hdz.wearcontrol.ProtocolWriter;
 
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
@@ -82,6 +83,9 @@ public class VivoGaiaClient implements TwsClient {
     private volatile BluetoothSocket socket;
     private volatile OutputStream out;
     private volatile boolean closing = false;
+    private final ProtocolWriter writer = new ProtocolWriter();
+    private String connectedName = "";
+    private volatile boolean noiseConfirmed, spatialConfirmed, deepxConfirmed;
     private int cfg = CFG_FAMILY_V4;
 
     public VivoGaiaClient() {
@@ -126,28 +130,6 @@ public class VivoGaiaClient implements TwsClient {
         for (TwsClient.Listener l : listeners) l.onDeepX(mode);
     }
 
-    /**
-     * 空间音频应答解析(实验): 参照开关类 [..][state] 模式(0=关,非0=开),
-     * 解析不了就返回 null,原始字节已在 logcat 里留档。
-     */
-    private static Boolean parseSpatial(byte[] p) {
-        if (p == null || p.length == 0) return null;
-        if (p.length == 1) return (p[0] & 0xFF) != 0;
-        if ((p[0] & 0xFF) == 0) return (p[p.length - 1] & 0xFF) != 0;
-        return null;
-    }
-
-    /**
-     * DeepX 应答解析: 格式已真机验证为 [00, mode](ACK 0x8118 与查询 0x8218 均是),
-     * payload[0]==0 且长度>=2 时取 payload[1] 为模式,解析不了返回 null,
-     * 原始字节已在 logcat 里留档。
-     */
-    private static Integer parseDeepX(byte[] p) {
-        if (p == null || p.length < 2) return null;
-        if ((p[0] & 0xFF) == 0) return p[1] & 0xFF;
-        return null;
-    }
-
     private static String toHex(byte[] b) {
         StringBuilder sb = new StringBuilder();
         for (byte x : b) sb.append(String.format("%02X ", x));
@@ -166,12 +148,15 @@ public class VivoGaiaClient implements TwsClient {
 
     @Override
     public int caps() {
-        return CAP_NOISE | CAP_BATTERY | CAP_SPATIAL | CAP_DEEPX;
+        return CAP_BATTERY | (noiseConfirmed ? CAP_NOISE : 0)
+                | (spatialConfirmed ? CAP_SPATIAL : 0) | (deepxConfirmed ? CAP_DEEPX : 0);
     }
 
     @Override
     public int verifLevel() {
-        return VERIF_REAL;
+        String name = connectedName.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9]", "");
+        return name.equals("vivotwsair3pro") || name.equals("twsair3pro") || name.equals("air3pro")
+                ? VERIF_REAL : VERIF_UNTESTED;
     }
 
     @Override
@@ -181,7 +166,11 @@ public class VivoGaiaClient implements TwsClient {
 
     /** 注意: Listener 回调发生在后台线程,UI 侧需自行切线程。 */
     public void connect(final BluetoothDevice device) {
+        disconnect();
+        writer.start();
         closing = false;
+        noiseConfirmed = spatialConfirmed = deepxConfirmed = false;
+        connectedName = device.getName() == null ? "" : device.getName();
         VivoProbe.attach(this);
         cfg = cfgForName(device.getName());
         new Thread(new Runnable() {
@@ -189,19 +178,23 @@ public class VivoGaiaClient implements TwsClient {
                 try {
                     try {
                         socket = device.createRfcommSocketToServiceRecord(GAIA_UUID);
+                        if (closing) { safeClose(); return; }
                         socket.connect();
                     } catch (IOException e) {
                         try {
                             if (socket != null) socket.close();
                         } catch (IOException ignored) {
                         }
+                        if (closing) return;
                         // SDP 找不到服务时退回固定 channel 13
                         socket = fallbackChannel(device, 13);
+                        if (closing) { safeClose(); return; }
                         socket.connect();
                     }
                     out = socket.getOutputStream();
                 } catch (Exception e) {
                     safeClose();
+                    if (closing) return;
                     // 连不上先歇 2 秒再报错: 上一个进程被硬杀后,耳机侧连接位要几秒才释放,
                     // 立刻重试会陷入连-断循环(表现为"第二次进入卡死")
                     try {
@@ -237,6 +230,7 @@ public class VivoGaiaClient implements TwsClient {
 
     public void disconnect() {
         closing = true;
+        writer.stop();
         VivoProbe.detach(this);
         safeClose();
     }
@@ -251,14 +245,18 @@ public class VivoGaiaClient implements TwsClient {
             if (socket != null) socket.close();
         } catch (IOException ignored) {
         }
+        socket = null;
+        out = null;
     }
 
     // ---- 发送 ----
 
     private synchronized void writeFrame(int verb, int vendor, int cmd, byte[] payload) {
-        if (out == null) return;
+        final OutputStream stream = out;
+        if (closing || stream == null) return;
         int len = payload == null ? 0 : payload.length;
-        byte[] f = new byte[8 + len];
+        if (len > 255) { fireError("控制指令长度超出协议上限"); return; }
+        final byte[] f = new byte[8 + len];
         f[0] = (byte) 0xFF;
         f[1] = (byte) verb;
         f[2] = 0x00;
@@ -268,12 +266,13 @@ public class VivoGaiaClient implements TwsClient {
         f[6] = (byte) (cmd >> 8);
         f[7] = (byte) cmd;
         if (payload != null && len > 0) System.arraycopy(payload, 0, f, 8, len);
-        try {
-            out.write(f);
-            out.flush();
-        } catch (IOException e) {
-            fireError("发送失败: " + e.getMessage());
-        }
+        if (!writer.post(new Runnable() {
+            @Override public void run() {
+                if (closing || stream != out) return;
+                try { stream.write(f); stream.flush(); }
+                catch (IOException e) { if (!closing && stream == out) fireError("发送失败: " + e.getMessage()); }
+            }
+        }) && !closing) fireError("控制指令过多，请稍后重试");
     }
 
     public void sendHandshake() {
@@ -290,6 +289,7 @@ public class VivoGaiaClient implements TwsClient {
     }
 
     public void setNoiseMode(int mode) {
+        if (mode < 0 || mode > 2) return;
         byte[] suffix;
         if (cfg == CFG_AIR3_PRO) suffix = new byte[]{0x04, 0x00};
         else if (cfg == CFG_TWS_3E) suffix = new byte[]{0x03};
@@ -367,13 +367,15 @@ public class VivoGaiaClient implements TwsClient {
     // ---- 接收 ----
 
     private void startReader() {
+        final BluetoothSocket source = socket;
+        if (closing || source == null) return;
         new Thread(new Runnable() {
             @Override public void run() {
                 try {
-                    InputStream in = socket.getInputStream();
+                    InputStream in = source.getInputStream();
                     // 单字节流: 头不对只吐 1 字节重试,真帧头藏在 8 字节块中间也不会漏
                     int first = in.read();
-                    while (!closing && first >= 0) {
+                    while (!closing && socket == source && first >= 0) {
                         if ((first & 0xFF) != 0xFF) {
                             first = in.read();
                             continue;
@@ -390,27 +392,31 @@ public class VivoGaiaClient implements TwsClient {
                         }
                         byte[] payload = new byte[len];
                         if (len > 0 && !readFully(in, payload, len)) break;
+                        if (closing || socket != source) break;
 
 
-                        if (vendor == VENDOR_VIVO && cmd == RESP_BATT && payload.length >= 5) {
-                            fireBattery(payload[1] & 0xFF, payload[2] & 0xFF,
-                                    payload[3] & 0xFF, payload[4] & 0xFF);
+                        if (vendor == VENDOR_VIVO && cmd == RESP_BATT) {
+                            int[] value = VivoProtocol.battery(payload);
+                            if (value != null) fireBattery(value[0], value[1], value[2], value[3]);
                         } else if (vendor == VENDOR_VIVO
                                 && (cmd == RESP_NOISE_QUERY || cmd == RESP_NOISE_SET)
                                 && payload.length >= 2) {
-                            fireMode(payload[1] & 0xFF);
+                            Integer mode = VivoProtocol.noise(payload);
+                            if (mode != null) { noiseConfirmed = true; fireMode(mode.intValue()); }
                         } else if (vendor == VENDOR_VIVO
                                 && (cmd == RESP_SPATIAL || cmd == RESP_SPATIAL_ACK)) {
                             android.util.Log.d("GaiaClient",
                                     "spatial cmd=0x" + Integer.toHexString(cmd)
                                             + " payload=" + toHex(payload));
-                            fireSpatial(parseSpatial(payload));
+                            Boolean state = VivoProtocol.spatial(payload);
+                            if (state != null) { spatialConfirmed = true; fireSpatial(state); }
                         } else if (vendor == VENDOR_VIVO
                                 && (cmd == RESP_DEEPX || cmd == RESP_DEEPX_ACK)) {
                             android.util.Log.d("GaiaClient",
                                     "deepx cmd=0x" + Integer.toHexString(cmd)
                                             + " payload=" + toHex(payload));
-                            fireDeepX(parseDeepX(payload));
+                            Integer mode = VivoProtocol.deepX(payload);
+                            if (mode != null) { deepxConfirmed = true; fireDeepX(mode); }
                         } else if (vendor == VENDOR_VIVO) {
                             // 未知帧全量记录,留作协议分析 ground truth
                             android.util.Log.d("GaiaClient",
@@ -418,12 +424,12 @@ public class VivoGaiaClient implements TwsClient {
                                             + " payload=" + toHex(payload));
                         }
                     }
-                    if (!closing) fireDisconnected("连接已关闭");
+                    if (!closing && socket == source) fireDisconnected("连接已关闭");
                 } catch (IOException e) {
-                    if (!closing) fireDisconnected("连接断开: " + e.getMessage());
+                    if (!closing && socket == source) fireDisconnected("连接断开: " + e.getMessage());
                 }
                 // 断开后真正关闭 socket,让 isConnected() 反映真实状态
-                safeClose();
+                if (socket == source) safeClose();
             }
         }, "gaia-reader").start();
     }

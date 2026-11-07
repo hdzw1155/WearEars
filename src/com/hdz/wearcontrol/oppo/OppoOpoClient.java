@@ -9,6 +9,7 @@ import android.os.Looper;
 import android.util.Log;
 
 import com.hdz.wearcontrol.TwsClient;
+import com.hdz.wearcontrol.ProtocolWriter;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -68,16 +69,15 @@ public class OppoOpoClient implements TwsClient {
     private static final int MASK_ANC_SET_ANC = 0x02;
     private static final int MASK_ANC_SET_TRANS = 0x04;
 
-    private static final int MASK_ANC_STATE_OFF = 0x0008;
-    private static final int MASK_ANC_STATE_ANC = 0x0002;
-    private static final int MASK_ANC_STATE_TRANS = 0x0100;
 
     private final List<Listener> listeners = new CopyOnWriteArrayList<Listener>();
     private final Handler main = new Handler(Looper.getMainLooper());
+    private final ProtocolWriter writer = new ProtocolWriter();
     private volatile BluetoothSocket socket;
     private volatile OutputStream out;
     private volatile boolean closing = false;
     private volatile boolean ready = false;
+    private volatile boolean noiseConfirmed;
     private int seq = 1;
     private int pendingMode = -1;
 
@@ -92,7 +92,7 @@ public class OppoOpoClient implements TwsClient {
 
     @Override
     public int caps() {
-        return CAP_NOISE | CAP_BATTERY;
+        return CAP_BATTERY | (noiseConfirmed ? CAP_NOISE : 0);
     }
 
     @Override
@@ -138,8 +138,11 @@ public class OppoOpoClient implements TwsClient {
 
     @Override
     public void connect(final BluetoothDevice device) {
+        disconnect();
+        writer.start();
         closing = false;
         ready = false;
+        noiseConfirmed = false;
         pendingMode = -1;
         seq = 1;
         new Thread(new Runnable() {
@@ -182,7 +185,10 @@ public class OppoOpoClient implements TwsClient {
             if (closing) return null;
             try {
                 s = device.createRfcommSocketToServiceRecord(u);
+                socket = s;
+                if (closing) { closeQuietly(s); return null; }
                 s.connect();
+                if (closing) { closeQuietly(s); return null; }
                 Log.d("OppoClient", "connected via " + u);
                 return s;
             } catch (Exception e) {
@@ -191,7 +197,10 @@ public class OppoOpoClient implements TwsClient {
             }
             try {
                 s = device.createInsecureRfcommSocketToServiceRecord(u);
+                socket = s;
+                if (closing) { closeQuietly(s); return null; }
                 s.connect();
+                if (closing) { closeQuietly(s); return null; }
                 Log.d("OppoClient", "connected insecure via " + u);
                 return s;
             } catch (Exception e) {
@@ -201,7 +210,10 @@ public class OppoOpoClient implements TwsClient {
         }
         try {
             s = channelSocket(device, RFCOMM_CHANNEL);
+            socket = s;
+            if (closing) { closeQuietly(s); return null; }
             s.connect();
+            if (closing) { closeQuietly(s); return null; }
             Log.d("OppoClient", "connected via channel " + RFCOMM_CHANNEL);
             return s;
         } catch (Exception e) {
@@ -245,7 +257,7 @@ public class OppoOpoClient implements TwsClient {
         writeFrame(cmd, nextSeq(), payload);
     }
 
-    private int nextSeq() {
+    private synchronized int nextSeq() {
         int s = seq & 0xFF;
         seq = (seq + 1) & 0xFF;
         if (seq == 0) seq = 1;
@@ -255,6 +267,7 @@ public class OppoOpoClient implements TwsClient {
     @Override
     public void disconnect() {
         closing = true;
+        writer.stop();
         main.removeCallbacksAndMessages(null);
         safeClose();
     }
@@ -279,6 +292,7 @@ public class OppoOpoClient implements TwsClient {
     }
 
     private void fireError(String msg) {
+        if (closing) return;
         for (Listener l : listeners) l.onError(msg);
     }
 
@@ -309,6 +323,7 @@ public class OppoOpoClient implements TwsClient {
 
     @Override
     public void setNoiseMode(int mode) {
+        if (mode != MODE_ANC && mode != MODE_OFF && mode != MODE_TRANS) return;
         if (!ready) {
             pendingMode = mode;
             return;
@@ -327,12 +342,12 @@ public class OppoOpoClient implements TwsClient {
 
     /** 组帧: AA TotalLen(LEB128) 00 00 cmd(2B LE) seq payLen(2B LE) payload */
     private synchronized void writeFrame(int cmd, int seqNo, byte[] payload) {
-        OutputStream o = out;
-        if (o == null) return;
+        final OutputStream o = out;
+        if (closing || o == null) return;
         int payLen = payload == null ? 0 : payload.length;
         int totalLen = 7 + payLen;
         int lebLen = totalLen < 0x80 ? 1 : 2;
-        byte[] f = new byte[1 + lebLen + 7 + payLen];
+        final byte[] f = new byte[1 + lebLen + 7 + payLen];
         int p = 0;
         f[p++] = (byte) 0xAA;
         if (lebLen == 1) {
@@ -349,127 +364,59 @@ public class OppoOpoClient implements TwsClient {
         f[p++] = (byte) (payLen & 0xFF);     // payLen LE
         f[p++] = (byte) ((payLen >> 8) & 0xFF);
         if (payLen > 0) System.arraycopy(payload, 0, f, p, payLen);
-        try {
-            o.write(f);
-            o.flush();
-            Log.d("OppoClient", "tx " + toHex(f));
-        } catch (IOException e) {
-            fireError("发送失败: " + e.getMessage());
-        }
+        if (!writer.post(new Runnable() {
+            @Override public void run() {
+                if (closing || o != out) return;
+                try {
+                    o.write(f); o.flush();
+                    Log.d("OppoClient", "tx " + toHex(f));
+                } catch (IOException e) { if (!closing && o == out) fireError("发送失败: " + e.getMessage()); }
+            }
+        }) && !closing) fireError("控制指令过多，请稍后重试");
     }
 
     // ---- 接收 ----
 
     private void startReader() {
+        final BluetoothSocket source = socket;
+        if (closing || source == null) return;
         new Thread(new Runnable() {
             @Override public void run() {
-                byte[] stage = new byte[4096];
-                int stageLen = 0;
+                OppoProtocol.Decoder decoder = new OppoProtocol.Decoder();
                 byte[] chunk = new byte[512];
                 try {
-                    InputStream in = socket.getInputStream();
-                    while (!closing) {
-                        int r = in.read(chunk);
-                        if (r < 0) break;
-                        if (stageLen + r > stage.length) {
-                            stageLen = 0;
-                            continue;
+                    InputStream in = source.getInputStream();
+                    while (!closing && socket == source) {
+                        int count = in.read(chunk);
+                        if (closing || socket != source) break;
+                        if (count < 0) break;
+                        for (OppoProtocol.Frame frame : decoder.feed(chunk, count)) {
+                            if (closing) break;
+                            dispatch(frame);
                         }
-                        System.arraycopy(chunk, 0, stage, stageLen, r);
-                        stageLen += r;
-
-                        int off = 0;
-                        while (true) {
-                            int head = findByte(stage, off, stageLen, 0xAA);
-                            if (head < 0) {
-                                off = stageLen;
-                                break;
-                            }
-                            // 解 LEB128 长度
-                            int p = head + 1;
-                            int len = 0;
-                            int shift = 0;
-                            int lb = 0;
-                            boolean complete = false;
-                            while (p < stageLen && lb < 3) {
-                                int v = stage[p] & 0xFF;
-                                len |= (v & 0x7F) << shift;
-                                shift += 7;
-                                p++;
-                                lb++;
-                                if ((v & 0x80) == 0) {
-                                    complete = true;
-                                    break;
-                                }
-                            }
-                            if (!complete) {
-                                off = head;
-                                break; // 等更多字节
-                            }
-                            int total = 1 + lb + len;
-                            if (len < 7 || total > stage.length) {
-                                off = head + 1;
-                                continue;
-                            }
-                            if (head + total > stageLen) {
-                                off = head;
-                                break;
-                            }
-                            int sliceOff = head + 1 + lb;
-                            int slice = stage[sliceOff] & 0xFF;
-                            int zero = stage[sliceOff + 1] & 0xFF;
-                            if (slice == 0 && zero == 0x00) {
-                                dispatch(stage, sliceOff + 2, total);
-                            } else {
-                                Log.d("OppoClient", "skip sliced frame slice=" + slice);
-                            }
-                            off = head + total;
-                            if (off >= stageLen) break;
-                        }
-                        if (off > 0) {
-                            if (off < stageLen) {
-                                System.arraycopy(stage, off, stage, 0, stageLen - off);
-                                stageLen -= off;
-                            } else {
-                                stageLen = 0;
-                            }
-                        }
-                        if (stageLen == stage.length) stageLen = 0;
                     }
-                    if (!closing) {
+                    if (!closing && socket == source) {
                         for (Listener l : listeners) l.onDisconnected("连接已关闭");
                     }
                 } catch (IOException e) {
-                    if (!closing) {
+                    if (!closing && socket == source) {
                         for (Listener l : listeners) l.onDisconnected("连接断开: " + e.getMessage());
                     }
                 }
-                safeClose();
+                if (socket == source) safeClose();
             }
         }, "oppo-reader").start();
     }
 
-    private static int findByte(byte[] b, int from, int len, int target) {
-        for (int i = from; i < len; i++) {
-            if ((b[i] & 0xFF) == target) return i;
-        }
-        return -1;
-    }
-
-    /** msg 起点: cmd(2B LE) seq payLen(2B LE) payload */
-    private void dispatch(byte[] b, int msgOff, int total) {
-        int cmd = (b[msgOff] & 0xFF) | ((b[msgOff + 1] & 0xFF) << 8);
-        int seqNo = b[msgOff + 2] & 0xFF;
-        int payLen = (b[msgOff + 3] & 0xFF) | ((b[msgOff + 4] & 0xFF) << 8);
-        byte[] payload = new byte[payLen];
-        if (msgOff + 5 + payLen <= b.length && payLen > 0) {
-            System.arraycopy(b, msgOff + 5, payload, 0, payLen);
-        }
+    private void dispatch(OppoProtocol.Frame frame) {
+        int cmd = frame.command;
+        int seqNo = frame.sequence;
+        byte[] payload = frame.payload;
         Log.d("OppoClient", "rx cmd=0x" + Integer.toHexString(cmd)
                 + " seq=" + seqNo + " " + toHex(payload));
 
         if (cmd == RSP_BATTERY) {
-            parseBattery(payload);
+            parseBattery(payload, false);
         } else if (cmd == RSP_ANC) {
             parseAncState(payload);
         } else if (cmd == CMD_EVENT) {
@@ -485,32 +432,10 @@ public class OppoOpoClient implements TwsClient {
         }
     }
 
-    private void parseBattery(byte[] payload) {
-        if (payload.length < 2) return;
-        int count = payload[1] & 0xFF;
-        int p = 2;
-        int l = 0xFF, r = 0xFF, c = 0xFF;
-        int flags = 0;
-        for (int i = 0; i < count && p + 1 < payload.length; i++) {
-            int part = payload[p] & 0xFF;
-            int raw = payload[p + 1] & 0xFF;
-            p += 2;
-            boolean charging = (raw & 0x80) != 0;
-            int level = raw & 0x7F;
-            if (level < 1 || level > 100) level = 0xFF;
-            if (part == 1) {
-                l = level;
-                if (charging) flags |= 1;
-            } else if (part == 2) {
-                r = level;
-                if (charging) flags |= 2;
-            } else if (part == 3) {
-                c = level;
-                if (charging) flags |= 4;
-            }
-        }
-        Log.d("OppoClient", "battery L/R/C=" + l + "/" + r + "/" + c + " flags=" + flags);
-        for (Listener li : listeners) li.onBattery(l, r, c, flags);
+    private void parseBattery(byte[] payload, boolean event) {
+        int[] value = OppoProtocol.battery(payload, event);
+        if (value == null) return;
+        for (Listener li : listeners) li.onBattery(value[0], value[1], value[2], value[3]);
     }
 
     private void parseEvent(byte[] payload) {
@@ -518,38 +443,26 @@ public class OppoOpoClient implements TwsClient {
         int subtype = payload[0] & 0xFF;
         if (subtype == 0x03) {
             // ANC 事件: 03 01 01 <mask LE>; 03 02 01 ... 是查询回声, 忽略
-            if (payload.length >= 5 && (payload[1] & 0xFF) == 0x01) {
+            if (payload.length == 5 && payload[1] == 0x01 && payload[2] == 0x01) {
                 int mask = (payload[3] & 0xFF) | ((payload[4] & 0xFF) << 8);
                 fireAncMask(mask);
             }
         } else if (subtype == 0x01) {
-            parseBattery(payload);
+            parseBattery(payload, true);
         } else if (subtype == 0x02) {
             Log.d("OppoClient", "wear event " + toHex(payload));
         }
     }
 
     private void parseAncState(byte[] payload) {
-        // 应答 payload 形如 01 01 <mask LE>; 兼容不同长度, 取末尾 2 字节
-        if (payload.length >= 4 && (payload[0] & 0xFF) == 0x01 && (payload[1] & 0xFF) == 0x01) {
-            int mask = (payload[2] & 0xFF) | ((payload[3] & 0xFF) << 8);
-            fireAncMask(mask);
-        } else if (payload.length >= 2) {
-            int mask = (payload[payload.length - 2] & 0xFF)
-                    | ((payload[payload.length - 1] & 0xFF) << 8);
-            fireAncMask(mask);
-        }
+        int mask = OppoProtocol.noiseMask(payload);
+        if (mask >= 0) fireAncMask(mask);
     }
 
     private void fireAncMask(int mask) {
-        int ui;
-        if ((mask & MASK_ANC_STATE_TRANS) != 0) ui = MODE_TRANS;
-        else if ((mask & MASK_ANC_STATE_ANC) != 0) ui = MODE_ANC;
-        else if ((mask & MASK_ANC_STATE_OFF) != 0) ui = MODE_OFF;
-        else {
-            Log.d("OppoClient", "anc mask unknown: 0x" + Integer.toHexString(mask));
-            return;
-        }
+        int ui = OppoProtocol.noiseMode(mask);
+        if (ui < 0) return;
+        noiseConfirmed = true;
         Log.d("OppoClient", "anc mask=0x" + Integer.toHexString(mask) + " ui=" + ui);
         for (Listener li : listeners) li.onNoiseMode(ui);
     }

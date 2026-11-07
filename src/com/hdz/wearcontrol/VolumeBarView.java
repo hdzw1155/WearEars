@@ -3,12 +3,9 @@ package com.hdz.wearcontrol;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
-import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
-import android.graphics.PathMeasure;
 import android.graphics.RectF;
-import android.graphics.Shader;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
@@ -17,7 +14,7 @@ import android.view.View;
  * 音量条: 按当前界面风格画成对应的样子, 和电量区视觉统一.
  *
  * <ul>
- *   <li>极简(STYLE_NEW): 深灰细槽 + 蓝渐变填充 + 白色圆点, 与其他进度条一致;</li>
+ *   <li>极简(STYLE_NEW): 深灰细槽 + 电量条同款绿色填充 + 白色圆点;</li>
  *   <li>液位(STYLE_LIQUID): 整块圆角槽 + 半透明琥珀绿"液位"填充 + 液面亮线, 对应液位电量块;</li>
  *   <li>经典(STYLE_CLASSIC): 深灰 stadium 轨道 + 从左侧水平推进的绿色填充 + 白色小圆点, 和经典电量环同一套配色;</li>
  * </ul>
@@ -37,8 +34,7 @@ public class VolumeBarView extends View {
 
     // 极简
     private static final int COLOR_TRACK = 0xFF1E1E21;
-    private static final int COLOR_FILL_START = 0xFF2B6CB0;
-    private static final int COLOR_FILL_END = 0xFF4FA6E8;
+    private static final int COLOR_FILL = 0xFF4CC38A;
     private static final int COLOR_KNOB = 0xFFF2F2F5;
     // 液位
     private static final int COLOR_LIQUID_BLOCK = 0xFF1E1E21;
@@ -59,9 +55,6 @@ public class VolumeBarView extends View {
     private final Paint classicFillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF trackRect = new RectF();
     private final Path clipPath = new Path();
-    private final Path ringPath = new Path();
-    private final Path segment = new Path();
-    private final PathMeasure measure = new PathMeasure();
 
     private final float trackHeight;
     private final float knobRadius;
@@ -74,7 +67,6 @@ public class VolumeBarView extends View {
     private ValueAnimator animator;
     private OnLevelChangeListener listener;
     private boolean dragging;
-    private LinearGradient fillGradient;
 
     public VolumeBarView(Context context) {
         this(context, null);
@@ -107,7 +99,6 @@ public class VolumeBarView extends View {
             return;
         }
         style = uiStyle;
-        fillGradient = null;
         invalidate();
     }
 
@@ -151,12 +142,6 @@ public class VolumeBarView extends View {
     }
 
     @Override
-    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
-        super.onSizeChanged(w, h, oldw, oldh);
-        fillGradient = null;
-    }
-
-    @Override
     protected void onDraw(Canvas canvas) {
         int w = getWidth();
         int h = getHeight();
@@ -174,7 +159,7 @@ public class VolumeBarView extends View {
         }
     }
 
-    /** 极简: 细槽 + 蓝渐变 + 圆点 */
+    /** 极简: 细槽 + 电量绿 + 圆点 */
     private void drawNew(Canvas canvas, int w, int h, float frac) {
         float cy = h / 2f;
         float left = knobRadius;
@@ -188,12 +173,8 @@ public class VolumeBarView extends View {
 
         float fillRight = left + (right - left) * frac;
         if (frac > 0.002f) {
-            if (fillGradient == null) {
-                fillGradient = new LinearGradient(left, 0f, right, 0f,
-                        new int[]{COLOR_FILL_START, COLOR_FILL_END},
-                        null, Shader.TileMode.CLAMP);
-                fillPaint.setShader(fillGradient);
-            }
+            fillPaint.setShader(null);
+            fillPaint.setColor(COLOR_FILL);
             clipPath.reset();
             clipPath.addRoundRect(trackRect, half, half, Path.Direction.CW);
             canvas.save();

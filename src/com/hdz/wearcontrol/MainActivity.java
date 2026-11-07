@@ -43,19 +43,16 @@ import java.util.Set;
  * 主状态行只由"连接域"决定(连接中/已连接/未连接/蓝牙未开/无权限/没找到耳机/连接失败),
  * 机型、低电量、充电、切换成功等都只改副行或小芯片, 不顶掉主行.
  */
-public class MainActivity extends Activity implements TwsClient.Listener {
+public class MainActivity extends Activity implements TwsClient.Listener, HeadsetController.UiListener {
 
     private static final String TAG = "MainActivity";
 
     private static final int REQ_PERM = 1;
     private static final long TAP_RESET_MS = 2000L;
     private static final long ECHO_GUARD_MS = 4000L;
-    private static final long MODE_ACK_TIMEOUT_MS = 2500L;
     private static final long TEMP_SUB_MS = 1600L;
-    private static final long RECONNECT_DELAY_MS = 3000L;
     /** 开发者功能(空间音频/DeepX)的点击冷却: 1000ms 内重复点击直接忽略, 用代码防抖替代常驻文字警告 */
     private static final long DEBOUNCE_MS = 1000L;
-    private static final int MAX_AUTO_RECONNECT = 3;
 
     // 视觉令牌 (与 res/values/colors.xml 保持一致; 代码里要动态给自绘控件上色)
     private static final int COL_ACCENT = 0xFF2B6CB0;
@@ -75,7 +72,7 @@ public class MainActivity extends Activity implements TwsClient.Listener {
     private final Handler ui = new Handler(Looper.getMainLooper());
     private TwsClient client;
     /** 监听蓝牙开关: 用户从快捷面板打开蓝牙后立刻重连, 不用等 30 秒轮询 */
-    private BroadcastReceiver btReceiver;
+
     /** 旋转表冠/触摸表圈的滚动容器(事件若没人消费会冒泡到 Activity, 由这里接住) */
     private AppScrollView scrollView;
     /** 贴屏幕右缘的弧形指示条: 独立覆盖层, 不随内容滚动 */
@@ -126,10 +123,6 @@ public class MainActivity extends Activity implements TwsClient.Listener {
     private BroadcastReceiver volumeReceiver;
     private long lastVolumeHapticAt;
 
-    /** 至上风格(Wear OS 第四套 UI): 整页自绘覆盖层, 只在 STYLE_SUPREM 时显示 */
-    private AppScrollView supremScroll;
-    private SupremView supremBox;
-    private SupremTicksView supremTicks;
     private int capsMask;
 
     /** 经典界面: 备份版布局 + 旧配色, 唯一差别是电量从圆环压扁成圆角矩形轮廓 */
@@ -151,12 +144,7 @@ public class MainActivity extends Activity implements TwsClient.Listener {
 
     private int lastMode = -1;
     private int pendingMode = -1;
-    private long connectStartAt = 0;
-    private Runnable refresher;
-    private Runnable reconnectTask;
     private Runnable tempSubTask;
-    private Runnable modeAckTimeout;
-    private int reconnectAttempts = 0;
     private boolean connecting;
     private String deviceName = "";
     private boolean lowReported = false;
@@ -214,50 +202,6 @@ public class MainActivity extends Activity implements TwsClient.Listener {
             indicator.attachTo(scrollView);
         }
 
-        // 至上风格: 单屏静态构成, 不再有滚动容器与刻度尺
-        supremBox = (SupremView) findViewById(R.id.suprem_view);
-        if (supremBox != null) {
-            supremBox.setListener(new SupremView.Listener() {
-                @Override
-                public void onRefresh() {
-                    onRefreshTapped();
-                }
-
-                @Override
-                public void onModeSelected(int mode) {
-                    setMode(mode);
-                }
-
-                @Override
-                public void onVolumeChanged(int level, int max) {
-                    applyVolume(level, max);
-                }
-
-                @Override
-                public void onDeepxSelected(int index) {
-                    setDeepX(index);
-                }
-
-                @Override
-                public void onSpatialToggled(boolean on) {
-                    onSpatialToggled(on);
-                }
-
-                @Override
-                public void onVolumeToggle(boolean show) {
-                    AppPrefs.setShowVolume(MainActivity.this, show);
-                    haptic(HapticFeedbackConstants.KEYBOARD_TAP);
-                    applyVolumeVisibility();
-                    pushSupremStatus();
-                }
-
-                @Override
-                public void onSettings() {
-                    haptic(HapticFeedbackConstants.KEYBOARD_TAP);
-                    startActivity(SettingsActivity.intent(MainActivity.this));
-                }
-            });
-        }
 
         dot = (StatusDotView) findViewById(R.id.status_dot);
         dot.setContentDescription(getString(R.string.status_idle));
@@ -360,38 +304,8 @@ public class MainActivity extends Activity implements TwsClient.Listener {
 
         wireListeners();
         entryAnimation();
-        registerBtReceiver();
     }
 
-    private void registerBtReceiver() {
-        btReceiver = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-                if (intent == null
-                        || !BluetoothAdapter.ACTION_STATE_CHANGED.equals(intent.getAction())) {
-                    return;
-                }
-                int btState = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE,
-                        BluetoothAdapter.ERROR);
-                if (btState == BluetoothAdapter.STATE_ON) {
-                    if (resumed && (client == null || !client.isConnected())) {
-                        tryConnect();
-                    }
-                } else if (btState == BluetoothAdapter.STATE_OFF) {
-                    ui.post(new Runnable() {
-                        @Override
-                        public void run() {
-                            if (isFinishing() || isDestroyed()) return;
-                            clearData();
-                            setState(R.string.status_bt_off, COL_WARN, false, false,
-                                    getString(R.string.sub_bt_off_action));
-                        }
-                    });
-                }
-            }
-        };
-        registerReceiver(btReceiver, new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED));
-    }
 
     /** 经典布局的 DeepX 行是空的: 按新版样式在代码里补 5 个 chip, 这样两套界面共用同一套渲染逻辑 */
     private void ensureDeepxChips() {
@@ -551,10 +465,11 @@ public class MainActivity extends Activity implements TwsClient.Listener {
             return;
         }
         resumed = true;
+        scrollView.setActive(true);
+        if (indicator != null) indicator.setActive(true);
         tryConnect();
-        startRefresher();
+        applyVolumeVisibility();
         refreshVolumeUi();
-        pushSupremStatus();
         registerVolumeReceiver();
     }
 
@@ -562,27 +477,17 @@ public class MainActivity extends Activity implements TwsClient.Listener {
     protected void onPause() {
         super.onPause();
         resumed = false;
+        scrollView.setActive(false);
+        if (indicator != null) indicator.setActive(false);
         unregisterVolumeReceiver();
         ui.removeCallbacksAndMessages(null);
         connecting = false;
         dot.setBreathing(false);
-        reconnectTask = null;
         if (client != null) {
+            client.removeListener(this);
             client.disconnect();
             client = null;
         }
-    }
-
-    @Override
-    protected void onDestroy() {
-        if (btReceiver != null) {
-            try {
-                unregisterReceiver(btReceiver);
-            } catch (IllegalArgumentException ignored) {
-            }
-            btReceiver = null;
-        }
-        super.onDestroy();
     }
 
     /**
@@ -598,11 +503,6 @@ public class MainActivity extends Activity implements TwsClient.Listener {
                 // 部分国产魔改表把滚轮投在 AXIS_VSCROLL 而不是 AXIS_SCROLL 上
                 delta = ev.getAxisValue(MotionEvent.AXIS_VSCROLL);
             }
-            if (delta != 0f && curUiStyle == AppPrefs.STYLE_SUPREM && supremBox != null) {
-                // 至上界面是多屏海报: 表圈/滚轮改成上下翻屏
-                supremBox.turnPage(delta > 0 ? 1 : -1);
-                return true;
-            }
             AppScrollView target = activeScroll();
             if (delta != 0f && target != null && target.handleRotary(delta)) {
                 return true;
@@ -617,16 +517,6 @@ public class MainActivity extends Activity implements TwsClient.Listener {
      */
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (curUiStyle == AppPrefs.STYLE_SUPREM && supremBox != null) {
-            if (keyCode == KeyEvent.KEYCODE_NAVIGATE_PREVIOUS || keyCode == KeyEvent.KEYCODE_PAGE_UP) {
-                supremBox.turnPage(-1);
-                return true;
-            }
-            if (keyCode == KeyEvent.KEYCODE_NAVIGATE_NEXT || keyCode == KeyEvent.KEYCODE_PAGE_DOWN) {
-                supremBox.turnPage(1);
-                return true;
-            }
-        }
         AppScrollView target = activeScroll();
         if (target != null && target.handleRotaryKey(keyCode)) {
             return true;
@@ -634,37 +524,6 @@ public class MainActivity extends Activity implements TwsClient.Listener {
         return super.onKeyDown(keyCode, event);
     }
 
-    /** 阶梯轮询省电: 连上先快查两轮拿首屏, 之后 30 秒慢轮询; 空间音频/DeepX 每 4 轮问一次 */
-    private void startRefresher() {
-        ui.removeCallbacks(refresher);
-        refresher = new Runnable() {
-            int tick = 0;
-
-            @Override
-            public void run() {
-                if (isFinishing() || isDestroyed()) return;
-                tick++;
-                try {
-                    if (client != null && client.isConnected()) {
-                        client.queryBattery();
-                        client.queryNoise();
-                        if (tick == 1 || tick % 4 == 0) {
-                            client.querySpatial();
-                            client.queryDeepX();
-                        }
-                    } else if (!connecting
-                            && SystemClock.elapsedRealtime() - connectStartAt > 12000) {
-                        tryConnect();
-                    }
-                } catch (RuntimeException e) {
-                    // 轮询任务绝不能因为一次蓝牙异常就把整个界面崩掉: 记一笔日志, 下一轮继续
-                    Log.e(TAG, "refresher tick failed", e);
-                }
-                ui.postDelayed(this, tick <= 2 ? 5000L : 30000L);
-            }
-        };
-        ui.postDelayed(refresher, 5000);
-    }
 
     // ---------------- 状态行 ----------------
 
@@ -685,7 +544,6 @@ public class MainActivity extends Activity implements TwsClient.Listener {
         if (textRes == R.string.status_connected) {
             dot.pop();
         }
-        pushSupremStatus();
     }
 
     private void setSub(String text) {
@@ -693,7 +551,6 @@ public class MainActivity extends Activity implements TwsClient.Listener {
         if (!t.contentEquals(sub.getText())) {
             sub.setText(t);
         }
-        pushSupremStatus();
     }
 
     /** 临时副行(切换成功/失败/未连接提示), 到时自动回到当前状态的基础副行 */
@@ -732,42 +589,31 @@ public class MainActivity extends Activity implements TwsClient.Listener {
             requestPermissions(new String[]{Manifest.permission.BLUETOOTH_CONNECT}, REQ_PERM);
             return;
         }
-        if (client != null && client.isConnected()) return;
-        if (client != null) {
-            client.disconnect();
-            client = null;
-        }
-        BluetoothAdapter adapter =
-                ((BluetoothManager) getSystemService(BLUETOOTH_SERVICE)).getAdapter();
-        if (adapter == null || !adapter.isEnabled()) {
-            clearData();
-            setState(R.string.status_bt_off, COL_WARN, false, false,
-                    getString(R.string.sub_bt_off_action));
-            return;
-        }
-        BluetoothDevice target = findTarget(adapter);
-        if (target == null) {
-            clearData();
-            setState(R.string.status_no_device, COL_WARN, false, false,
-                    getString(R.string.sub_no_device_action));
-            return;
-        }
-        connecting = true;
-        String name = target.getName();
-        if (name != null) deviceName = name;
-        setState(R.string.status_connecting, COL_ACCENT, false, true,
-                deviceName.length() > 0 ? deviceName : null);
-        connectStartAt = SystemClock.elapsedRealtime();
-        // 多品牌: 驱动由名字匹配决定, 匹配不上用标准协议兜底(只读电量, 不碰私有协议)
-        TwsClient c = DriverRegistry.create(this, target);
-        if (c == null) {
-            connecting = false;
-            setState(R.string.status_conn_failed, COL_DANGER, false, false, "");
-            return;
-        }
-        c.addListener(this);
-        client = c;
-        c.connect(target);
+        if (!resumed) return;
+        HeadsetController shared = HeadsetController.get(this);
+        client = shared;
+        shared.addListener(this);
+        shared.connect(null);
+    }
+
+    @Override
+    public void onConnectionState(final int state, final int hint) {
+        if (!resumed) return;
+        connecting = state == R.string.status_connecting;
+        int color = connecting ? COL_ACCENT : state == R.string.status_bt_off ? COL_WARN : COL_IDLE;
+        setState(state, color, !connecting, connecting,
+                hint == 0 ? TileStore.readOrEmpty(this).name : getString(hint));
+        showSnapshot();
+    }
+
+    private void showSnapshot() {
+        TileSnapshot s = TileStore.readOrEmpty(this);
+        applyBatteryConfig(s.caps);
+        if (s.isSingleBattery()) setSingleBatteryUi(s.battTotal);
+        else setBatteryUi(s.battL, s.battR, s.battC, Math.max(0, s.chargeFlags));
+        lastMode = s.confirmedMode;
+        pendingMode = s.pendingMode;
+        renderMode();
     }
 
     private void onRefreshTapped() {
@@ -775,8 +621,7 @@ public class MainActivity extends Activity implements TwsClient.Listener {
         refreshVolumeUi();
         if (client != null && client.isConnected()) {
             showTempSub(getString(R.string.sub_refreshing), 3000L);
-            client.queryBattery();
-            client.queryNoise();
+            HeadsetController.get(this).perform(-1, null);
             return;
         }
         showTempSub(getString(R.string.sub_not_connected), TEMP_SUB_MS);
@@ -793,20 +638,6 @@ public class MainActivity extends Activity implements TwsClient.Listener {
         pendingMode = mode;
         renderMode();
         client.setNoiseMode(mode);
-        if (modeAckTimeout != null) {
-            ui.removeCallbacks(modeAckTimeout);
-        }
-        modeAckTimeout = new Runnable() {
-            @Override
-            public void run() {
-                modeAckTimeout = null;
-                pendingMode = -1;
-                renderMode();
-                showTempSub(getString(R.string.status_mode_failed), 2500L);
-                haptic(HapticFeedbackConstants.REJECT);
-            }
-        };
-        ui.postDelayed(modeAckTimeout, MODE_ACK_TIMEOUT_MS);
     }
 
     private void setDeepX(int index) {
@@ -961,9 +792,6 @@ public class MainActivity extends Activity implements TwsClient.Listener {
                 if (noiseSeg != null) {
                     noiseSeg.setMode(mode, true);
                 }
-                if (supremBox != null) {
-                    supremBox.setMode(mode);
-                }
             }
         });
     }
@@ -985,9 +813,6 @@ public class MainActivity extends Activity implements TwsClient.Listener {
                 } else {
                     deepxCurrent.setText("--");
                 }
-                if (supremBox != null) {
-                    supremBox.setDeepx(deepxMode);
-                }
             }
         });
     }
@@ -1002,18 +827,11 @@ public class MainActivity extends Activity implements TwsClient.Listener {
         setCell(pctL, barL, boltL, left, (chargeFlags & 0x01) != 0, false);
         setCell(pctR, barR, boltR, right, (chargeFlags & 0x02) != 0, true);
         setCell(pctC, barC, boltC, box, (chargeFlags & 0x04) != 0, true);
-        if (supremBox != null) {
-            supremBox.setSingle(false);
-            supremBox.setBattery(left, right, box, chargeFlags);
-        }
     }
 
     /** 单电池设备(标准协议兜底/单电池头戴): 只有一格总电量, 借左耳位显示 */
     private void setSingleBatteryUi(int total) {
         setCell(pctL, barL, boltL, total, false, false);
-        if (supremBox != null) {
-            supremBox.setSingleBattery(total);
-        }
     }
 
     /**
@@ -1030,10 +848,6 @@ public class MainActivity extends Activity implements TwsClient.Listener {
         ui.post(new Runnable() {
             @Override
             public void run() {
-                if (supremBox != null) {
-                    supremBox.setCaps(caps);
-                    supremBox.setSingle(single);
-                }
                 if (noiseCard != null) {
                     noiseCard.setVisibility(noise ? View.VISIBLE : View.GONE);
                 }
@@ -1138,188 +952,102 @@ public class MainActivity extends Activity implements TwsClient.Listener {
                 spatialGuard = false;
                 setChip(null);
                 lowReported = false;
-                if (supremBox != null) {
-                    if (singleBatt) {
-                        supremBox.setSingleBattery(-1);
-                    } else {
-                        supremBox.setBattery(-1, -1, -1, 0);
-                    }
-                    supremBox.setMode(-1);
-                }
             }
         });
     }
 
-    // ---------------- TwsClient.Listener (后台线程回调) ----------------
+    // ---------------- TwsClient.Listener (控制器在主线程回调) ----------------
 
     @Override
     public void onConnected(final String name) {
         connecting = false;
-        reconnectAttempts = 0;
         final TwsClient c = client;
         final int caps = c != null ? c.caps() : 0;
         final int verif = c != null ? c.verifLevel() : TwsClient.VERIF_UNTESTED;
         // 磁贴靠 caps 决定显示三段电量/降噪轨还是单电量; 未验证驱动给个小标签, 功能照常尝试
-        TileStore.saveName(this, name);
-        TileStore.saveCaps(this, caps, verif);
-        TileStore.noteOk(this);
-        TileStore.push(this);
-        ui.post(new Runnable() {
-            @Override
-            public void run() {
-                deviceName = name == null ? "" : name;
-                setState(R.string.status_connected, COL_OK, false, false, deviceName);
-                applyBatteryConfig(caps);
-                boolean untested = verif == TwsClient.VERIF_UNTESTED;
-                setChip(untested ? getString(R.string.chip_unverified) : null);
-                sub.setTextColor(untested ? COL_WARN : COL_DIM);
-                if (untested) {
-                    setSub(getString(R.string.sub_model_unverified));
-                }
-            }
-        });
+        deviceName = name == null ? "" : name;
+        setState(R.string.status_connected, COL_OK, false, false, deviceName);
+        applyBatteryConfig(caps);
+        boolean untested = verif == TwsClient.VERIF_UNTESTED;
+        setChip(untested ? getString(R.string.chip_unverified) : null);
+        sub.setTextColor(untested ? COL_WARN : COL_DIM);
+        if (untested) {
+            setSub(getString(R.string.sub_model_unverified));
+        }
     }
 
     @Override
     public void onBattery(final int left, final int right, final int box, final int chargeFlags) {
-        // 回调在驱动读线程: 电量数字的动画必须在主线程启动, 否则 ValueAnimator
-        // 会抛 "Animators may only be run on Looper threads" 直接把进程崩掉(0.3.8 初版踩过)
+        // 部分型号在合法响应后才确认电池拓扑和控制能力。
+        if (client != null) applyBatteryConfig(client.caps());
         final TwsClient c = client;
         final boolean single = singleBatt
                 || (c != null && (c.caps() & TwsClient.CAP_BATTERY_SINGLE) != 0);
-        ui.post(new Runnable() {
-            @Override
-            public void run() {
-                if (single) {
-                    setSingleBatteryUi(left);
-                } else {
-                    setBatteryUi(left, right, box, chargeFlags);
-                }
-            }
-        });
-        boolean minuteChanged = TileStore.noteOk(this);
-        boolean batteryChanged = single
-                ? TileStore.saveBatterySingle(this, left)
-                : TileStore.saveBattery(this, left, right, box, chargeFlags);
-        if (batteryChanged || minuteChanged) {
-            TileStore.push(this);
+        if (single) {
+            setSingleBatteryUi(left);
+        } else {
+            setBatteryUi(left, right, box, chargeFlags);
         }
     }
 
     @Override
     public void onNoiseMode(final int mode) {
-        ui.post(new Runnable() {
-            @Override
-            public void run() {
-                lastMode = mode;
-                if (pendingMode == mode) {
-                    pendingMode = -1;
-                    if (modeAckTimeout != null) {
-                        ui.removeCallbacks(modeAckTimeout);
-                        modeAckTimeout = null;
-                    }
-                    haptic(HapticFeedbackConstants.CONFIRM);
-                    showTempSub(getString(R.string.sub_switched, modeName(mode)), TEMP_SUB_MS);
-                }
-                renderMode();
-            }
-        });
-        if (mode >= 0 && mode < 3 && TileStore.saveMode(this, mode)) {
-            TileStore.push(this);
+        if (client != null) applyBatteryConfig(client.caps());
+        lastMode = mode;
+        if (mode >= 0 && pendingMode == mode) {
+            pendingMode = -1;
+            haptic(HapticFeedbackConstants.CONFIRM);
+            showTempSub(getString(R.string.sub_switched, modeName(mode)), TEMP_SUB_MS);
         }
+        renderMode();
     }
 
     @Override
     public void onSpatial(final Boolean state) {
         if (state == null) return;
-        ui.post(new Runnable() {
-            @Override
-            public void run() {
-                if (SystemClock.elapsedRealtime() - spatialSetAt < ECHO_GUARD_MS) return;
-                spatialGuard = true;
-                swSpatial.setChecked(state);
-                spatialGuard = false;
-                if (supremBox != null) {
-                    supremBox.setSpatial(state);
-                }
-            }
-        });
+        if (client != null) applyBatteryConfig(client.caps());
+        if (SystemClock.elapsedRealtime() - spatialSetAt < ECHO_GUARD_MS) return;
+        spatialGuard = true;
+        swSpatial.setChecked(state);
+        spatialGuard = false;
     }
 
     @Override
     public void onDeepX(final Integer mode) {
         if (mode == null) return;
-        ui.post(new Runnable() {
-            @Override
-            public void run() {
-                deepxCurrent.setText(deepxNameFor(mode));
-                if (deepxPendingTask != null) {
-                    ui.removeCallbacks(deepxPendingTask);
-                    deepxPendingTask = null;
-                }
-                if (SystemClock.elapsedRealtime() - deepxSetAt < ECHO_GUARD_MS) return;
-                for (int i = 0; i < DEEPX_MODES.length; i++) {
-                    if (DEEPX_MODES[i] == mode) {
-                        deepxMode = i;
-                        renderDeepx();
-                        return;
-                    }
-                }
+        if (client != null) applyBatteryConfig(client.caps());
+        deepxCurrent.setText(deepxNameFor(mode));
+        if (deepxPendingTask != null) {
+            ui.removeCallbacks(deepxPendingTask);
+            deepxPendingTask = null;
+        }
+        if (SystemClock.elapsedRealtime() - deepxSetAt < ECHO_GUARD_MS) return;
+        for (int i = 0; i < DEEPX_MODES.length; i++) {
+            if (DEEPX_MODES[i] == mode) {
+                deepxMode = i;
+                renderDeepx();
+                return;
             }
-        });
+        }
     }
 
     @Override
     public void onDisconnected(String reason) {
         connecting = false;
-        ui.post(new Runnable() {
-            @Override
-            public void run() {
-                clearData();
-                setState(R.string.status_idle, COL_IDLE, true, false, lastSeenSub());
-                setSub(lastSeenSub());
-            }
-        });
+        showSnapshot();
+        setState(R.string.status_idle, COL_IDLE, true, false, lastSeenSub());
+        setSub(lastSeenSub());
         TileStore.push(this);
-        if (!isFinishing() && !isDestroyed() && resumed) {
-            scheduleReconnect();
-        }
     }
 
-    private void scheduleReconnect() {
-        if (reconnectTask != null) {
-            ui.removeCallbacks(reconnectTask);
-        }
-        if (reconnectAttempts >= MAX_AUTO_RECONNECT) {
-            showTempSub(getString(R.string.sub_reconnect_paused), 3000L);
-            return;
-        }
-        reconnectTask = new Runnable() {
-            @Override
-            public void run() {
-                reconnectTask = null;
-                if (!isFinishing() && !isDestroyed()
-                        && (client == null || !client.isConnected())) {
-                    reconnectAttempts++;
-                    tryConnect();
-                }
-            }
-        };
-        ui.postDelayed(reconnectTask, RECONNECT_DELAY_MS);
-    }
 
     @Override
-    public void onError(String msg) {
-        connecting = false;
-        Log.d(TAG, "onError: " + msg);
-        ui.post(new Runnable() {
-            @Override
-            public void run() {
-                clearData();
-                setState(R.string.status_conn_failed, COL_DANGER, false, false, "");
-                setChip(null);
-            }
-        });
+    public void onError(final String msg) {
+        if (!resumed) return;
+        pendingMode = -1;
+        renderMode();
+        showTempSub(msg, 3000L);
+        haptic(HapticFeedbackConstants.REJECT);
     }
 
     // ---------------- 工具 ----------------
@@ -1415,9 +1143,6 @@ public class MainActivity extends Activity implements TwsClient.Listener {
             volumeBar.setLevel(cur, max);
         }
         updateVolumeText(cur, max);
-        if (supremBox != null) {
-            supremBox.setVolume(cur, max);
-        }
     }
 
     private void updateVolumeText(int level, int max) {
@@ -1458,9 +1183,8 @@ public class MainActivity extends Activity implements TwsClient.Listener {
         volumeReceiver = null;
     }
 
-    // ---------------- 至上风格(Wear OS 第四套 UI) ----------------
 
-    /** 音量条默认隐藏, 开发者设置里开启后永久显示; 至上界面里同步显隐 */
+    /** 音量条与统一设置页、原开发者开关共用偏好。 */
     private void applyVolumeVisibility() {
         boolean show = AppPrefs.showVolume(this);
         if (volumeCard != null) {
@@ -1471,48 +1195,11 @@ public class MainActivity extends Activity implements TwsClient.Listener {
             switchVolume.setChecked(show);
             volumeGuard = false;
         }
-        if (supremBox != null) {
-            supremBox.setShowVolume(show);
-        }
     }
 
-    /** 把连接状态行同步到至上界面: 危险状态用珊瑚红, 其余用炭黑 */
-    private void pushSupremStatus() {
-        if (supremBox == null) {
-            return;
-        }
-        String st = status == null || status.getText() == null
-                ? "" : status.getText().toString();
-        String sb = sub == null || sub.getText() == null
-                ? "" : sub.getText().toString();
-        int color = stateColor == COL_DANGER ? SupremView.COLOR_ERROR : SupremView.COLOR_INK;
-        supremBox.setStatus(st, sb, color);
-    }
 
-    /** 至上界面右侧刻度指示: 按内容滚动比例定位 */
-    private void updateSupremTicks() {
-        if (supremScroll == null || supremTicks == null) {
-            return;
-        }
-        View child = supremScroll.getChildAt(0);
-        if (child == null) {
-            return;
-        }
-        int max = child.getHeight() - supremScroll.getHeight();
-        float f = max > 0 ? supremScroll.getScrollY() / (float) max : 0f;
-        if (f < 0f) {
-            f = 0f;
-        } else if (f > 1f) {
-            f = 1f;
-        }
-        supremTicks.setFraction(f);
-    }
-
-    /** 当前界面该用哪个滚动容器: 至上风格用覆盖层, 其余用旧界面 */
+    /** 三种旧版风格共用原来的滚动容器。 */
     private AppScrollView activeScroll() {
-        if (curUiStyle == AppPrefs.STYLE_SUPREM && supremScroll != null) {
-            return supremScroll;
-        }
         return scrollView;
     }
 
@@ -1522,35 +1209,19 @@ public class MainActivity extends Activity implements TwsClient.Listener {
     /** 新版=横向进度条(数字行+条), 经典=压扁圆环(数字在环里). 只切电量区, 其余 UI 相同.
      *  单电池设备统一按"单张进度卡"显示, 不套三格布局. */
     private void applyBatteryStyle() {
-        boolean suprem = curUiStyle == AppPrefs.STYLE_SUPREM;
         boolean showCards = curUiStyle == AppPrefs.STYLE_NEW;
         boolean showRing = curUiStyle == AppPrefs.STYLE_CLASSIC;
         boolean showBlocks = curUiStyle == AppPrefs.STYLE_LIQUID;
         boolean single = singleBatt;
         if (volumeBar != null) {
             // 音量条画法跟着界面风格走: 极简=细渐变条 / 经典=轮廓环 / 液位=液位块
-            volumeBar.setStyle(suprem ? AppPrefs.STYLE_NEW : curUiStyle);
+            volumeBar.setStyle(curUiStyle);
         }
-        // 至上风格是整页自绘覆盖层: 盖住旧界面, 只留刻度指示
         if (scrollView != null) {
-            scrollView.setVisibility(suprem ? View.GONE : View.VISIBLE);
+            scrollView.setVisibility(View.VISIBLE);
         }
         if (indicator != null) {
-            indicator.setVisibility(suprem ? View.GONE : View.VISIBLE);
-        }
-        if (supremScroll != null) {
-            supremScroll.setVisibility(suprem ? View.VISIBLE : View.GONE);
-        }
-        if (supremTicks != null) {
-            // 至上风格自带构图与弧线，不再叠一条竖直刻度尺
-            supremTicks.setVisibility(View.GONE);
-        }
-        if (supremBox != null) {
-            // 至上风格现在是单屏静态构成, 不再包在滚动容器里, 直接控制自己显隐
-            supremBox.setVisibility(suprem ? View.VISIBLE : View.GONE);
-            supremBox.setShowVolume(AppPrefs.showVolume(this));
-            supremBox.setCaps(capsMask);
-            supremBox.setSingle(singleBatt);
+            indicator.setVisibility(View.VISIBLE);
         }
         if (cardL != null) cardL.setVisibility(showCards || single ? View.VISIBLE : View.GONE);
         if (cardR != null) cardR.setVisibility(showCards && !single ? View.VISIBLE : View.GONE);

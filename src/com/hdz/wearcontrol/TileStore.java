@@ -2,6 +2,8 @@ package com.hdz.wearcontrol;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.Handler;
+import android.os.Looper;
 
 import androidx.wear.tiles.TileService;
 
@@ -30,6 +32,9 @@ final class TileStore {
     /** 最近一次连接的驱动验证等级 */
     private static final String KEY_VERIF = "tile_verif";
 
+    private static final Handler UPDATES = new Handler(Looper.getMainLooper());
+    private static boolean updateQueued;
+
     private TileStore() {
     }
 
@@ -46,7 +51,7 @@ final class TileStore {
     }
 
     /** 读出磁贴要展示的全部数据(一次读齐, 磁贴请求里不会再摸第二遍 prefs) */
-    static TileSnapshot read(Context ctx) {
+    static synchronized TileSnapshot read(Context ctx) {
         SharedPreferences p = prefs(ctx);
         return new TileSnapshot(
                 p.getString(KEY_NAME, defaultName(ctx)),
@@ -58,7 +63,8 @@ final class TileStore {
                 p.getInt(KEY_CHARGE, TileSnapshot.UNKNOWN),
                 p.getInt(KEY_MODE, TileSnapshot.UNKNOWN),
                 p.getInt(KEY_CAPS, 0),
-                p.getInt(KEY_VERIF, TwsClient.VERIF_UNTESTED));
+                p.getInt(KEY_VERIF, TwsClient.VERIF_UNTESTED),
+                p.getInt("tile_pending", -1), p.getLong("tile_pending_until", 0L));
     }
 
     /**
@@ -82,10 +88,11 @@ final class TileStore {
      *
      * @return 磁贴显示的分钟数是否变了: 变了才值得 push, 否则磁贴上的时间会一直停在连上那一刻
      */
-    static boolean noteOk(Context ctx) {
+    static synchronized boolean noteOk(Context ctx) {
         long now = System.currentTimeMillis();
         SharedPreferences p = prefs(ctx);
         long prev = p.getLong(KEY_LAST_OK, 0L);
+        if (prev / 60000L == now / 60000L) return false;
         p.edit().putLong(KEY_LAST_OK, now).apply();
         return prev / 60000L != now / 60000L;
     }
@@ -97,12 +104,16 @@ final class TileStore {
      *                    未知传 {@link TileSnapshot#UNKNOWN}
      * @return 电量或充电标志是否发生变化(调用方据此决定是否 push)
      */
-    static boolean saveBattery(Context ctx, int l, int r, int c, int chargeFlags) {
+    static synchronized boolean saveBattery(Context ctx, int l, int r, int c, int chargeFlags) {
         int nl = TileSnapshot.saneBattery(l);
         int nr = TileSnapshot.saneBattery(r);
         int nc = TileSnapshot.saneBattery(c);
         int nf = TileSnapshot.saneChargeFlags(chargeFlags);
         SharedPreferences p = prefs(ctx);
+        if (nl < 0) nl = p.getInt(KEY_BATT_L, -1);
+        if (nr < 0) nr = p.getInt(KEY_BATT_R, -1);
+        if (nc < 0) nc = p.getInt(KEY_BATT_C, -1);
+        if (nf < 0) nf = p.getInt(KEY_CHARGE, -1);
         if (p.getInt(KEY_BATT_L, TileSnapshot.UNKNOWN) == nl
                 && p.getInt(KEY_BATT_R, TileSnapshot.UNKNOWN) == nr
                 && p.getInt(KEY_BATT_C, TileSnapshot.UNKNOWN) == nc
@@ -123,8 +134,9 @@ final class TileStore {
      *
      * @return 总电量是否变化
      */
-    static boolean saveBatterySingle(Context ctx, int total) {
+    static synchronized boolean saveBatterySingle(Context ctx, int total) {
         int nt = TileSnapshot.saneBattery(total);
+        if (nt < 0) return false;
         SharedPreferences p = prefs(ctx);
         if (p.getInt(KEY_BATT_TOTAL, TileSnapshot.UNKNOWN) == nt) return false;
         p.edit().putInt(KEY_BATT_TOTAL, nt).apply();
@@ -132,16 +144,16 @@ final class TileStore {
     }
 
     /** @return 档位是否发生变化 */
-    static boolean saveMode(Context ctx, int mode) {
+    static synchronized boolean saveMode(Context ctx, int mode) {
         SharedPreferences p = prefs(ctx);
-        if (mode < TwsClient.MODE_ANC || mode > TwsClient.MODE_TRANS) return false;
+        if (mode < TileSnapshot.UNKNOWN || mode > TwsClient.MODE_TRANS) return false;
         if (p.getInt(KEY_MODE, TileSnapshot.UNKNOWN) == mode) return false;
         p.edit().putInt(KEY_MODE, mode).apply();
         return true;
     }
 
     /** @return 名字是否发生变化 */
-    static boolean saveName(Context ctx, String name) {
+    static synchronized boolean saveName(Context ctx, String name) {
         String n = (name == null || name.length() == 0) ? defaultName(ctx) : name;
         SharedPreferences p = prefs(ctx);
         if (n.equals(p.getString(KEY_NAME, null))) return false;
@@ -155,7 +167,7 @@ final class TileStore {
      *
      * @return 能力位或验证等级是否变化
      */
-    static boolean saveCaps(Context ctx, int caps, int verifLevel) {
+    static synchronized boolean saveCaps(Context ctx, int caps, int verifLevel) {
         SharedPreferences p = prefs(ctx);
         if (p.getInt(KEY_CAPS, 0) == caps && p.getInt(KEY_VERIF, -1) == verifLevel) {
             return false;
@@ -164,12 +176,39 @@ final class TileStore {
         return true;
     }
 
-    /** 数据变了就叫系统立刻重画磁贴, 不等刷新周期(磁贴没添加/服务被限时静默失败) */
-    static void push(Context ctx) {
-        try {
-            TileService.getUpdater(ctx).requestUpdate(TwsTileService.class);
-        } catch (Exception ignored) {
-            // 磁贴服务不可用(未添加磁贴/权限限制)时没必要打扰用户
+    /** 换设备时原子清理旧快照，避免新名字配上旧耳机电量。 */
+    static synchronized void selectDevice(Context ctx, String address, String name, int caps, int verif) {
+        SharedPreferences p = prefs(ctx);
+        SharedPreferences.Editor e = p.edit();
+        if (!address.equals(p.getString("tile_address", ""))) {
+            e.remove(KEY_BATT_L).remove(KEY_BATT_R).remove(KEY_BATT_C).remove(KEY_BATT_TOTAL)
+                    .remove(KEY_CHARGE).remove(KEY_MODE).remove(KEY_LAST_OK)
+                    .remove("tile_pending").remove("tile_pending_until");
         }
+        e.putString("tile_address", address).putString(KEY_NAME, name == null ? defaultName(ctx) : name)
+                .putInt(KEY_CAPS, caps).putInt(KEY_VERIF, verif).apply();
+    }
+
+    /** 乐观显示单独存储；失败时只撤销 pending，不写回另一笔未确认的模式。 */
+    static synchronized void pending(Context ctx, int mode) {
+        prefs(ctx).edit().putInt("tile_pending", mode)
+                .putLong("tile_pending_until", mode < 0 ? 0L : System.currentTimeMillis() + 12000L).apply();
+        pushNow(ctx);
+    }
+
+    /** 数据变了就叫系统立刻重画磁贴, 不等刷新周期(磁贴没添加/服务被限时静默失败) */
+    static synchronized void push(Context ctx) {
+        if (updateQueued) return;
+        updateQueued = true;
+        final Context app = ctx.getApplicationContext();
+        UPDATES.postDelayed(new Runnable() { @Override public void run() {
+            synchronized (TileStore.class) { updateQueued = false; }
+            pushNow(app);
+        }}, 180L);
+    }
+
+    static void pushNow(Context ctx) {
+        try { TileService.getUpdater(ctx).requestUpdate(TwsTileService.class); }
+        catch (RuntimeException ignored) { }
     }
 }

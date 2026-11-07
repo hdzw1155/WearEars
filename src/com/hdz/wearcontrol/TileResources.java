@@ -7,13 +7,11 @@ import androidx.wear.tiles.ResourceBuilders;
 /**
  * 磁贴资源表: 1 张复合仪表盘 PNG(运行时画) + 3 个降噪图标(直接引用 drawable)。
  *
- * <p>版本号规则见 {@link #version}: {@code a4.0-s{style}-左_右_盒}。它必须同时喂给
- * Tile.Builder.setResourcesVersion 和 Resources.Builder.setVersion, 两边不一致系统会一直
- * 重发请求; 而只要版本号不变, 手表就认旧缓存 —— 所以 <b>改画法必须 bump {@link #ART_REV}</b>,
- * 否则改了 DialPainter 也看不到任何变化。
+ * <p>图片按电量、充电标志、语言和画法缓存；布局资源版本由 TileRenderSpec 还原。
+ * 改画法时递增 ART_REV，避免误用旧位图。
  *
  * <p>单电池设备(标准协议兜底/单电池头戴)没有仪表盘位图, 走 {@link #buildSingle},
- * 资源表里只放模式图标, 版本号用 {@link #singleVersion}。
+ * 资源表里只放模式图标。
  */
 final class TileResources {
 
@@ -50,28 +48,12 @@ final class TileResources {
         if (s.chargeFlags != TileSnapshot.UNKNOWN) {
             v = v + "_c" + s.chargeFlags;
         }
-        // 档位必须进版本号: 宿主会整份复用同版本的磁贴快照, 不带 mode 时
-        // 点完降噪/通透容易继续显示旧的选中态(用户反馈的"按了不显示对应状态").
-        if (s.mode >= 0) {
-            v = v + "_m" + s.mode;
-        }
         return v;
     }
 
-    /** 单电池设备(无仪表盘位图)的资源版本号 */
-    static String singleVersion(TileSnapshot s) {
-        String v = ART_REV + "-one-" + s.batteryVersion();
-        if (s.chargeFlags != TileSnapshot.UNKNOWN) {
-            v = v + "_c" + s.chargeFlags;
-        }
-        if (s.mode >= 0) {
-            v = v + "_m" + s.mode;
-        }
-        return v;
-    }
 
-    static ResourceBuilders.Resources build(Context ctx, TileSnapshot s, int style) {
-        String ver = version(s, style);
+    static synchronized ResourceBuilders.Resources build(Context ctx, TileSnapshot s, int style, String requestedVersion) {
+        String ver = version(s, style) + "_" + ctx.getResources().getConfiguration().locale.getLanguage();
         byte[] png = cachePng;
         if (png == null || !ver.equals(cacheVersion)) {
             png = pngFor(ctx, s, style);
@@ -79,7 +61,7 @@ final class TileResources {
             cacheVersion = ver;
         }
         return new ResourceBuilders.Resources.Builder()
-                .setVersion(ver)
+                .setVersion(requestedVersion)
                 .addIdToImageMapping(ID_DIAL, inline(png))
                 .addIdToImageMapping(ID_IC_OFF, androidImage(R.drawable.ic_off))
                 .addIdToImageMapping(ID_IC_TRANS, androidImage(R.drawable.ic_trans))
@@ -91,9 +73,9 @@ final class TileResources {
      * 单电池设备的资源表: 布局里没有仪表盘, 只需要 3 个模式图标。
      * 没有模式能力时图标也没人引用, 多给 3 个小 png 不占什么, 保持版本号稳定。
      */
-    static ResourceBuilders.Resources buildSingle(Context ctx, TileSnapshot s) {
+    static ResourceBuilders.Resources buildSingle(Context ctx, TileSnapshot s, String requestedVersion) {
         return new ResourceBuilders.Resources.Builder()
-                .setVersion(singleVersion(s))
+                .setVersion(requestedVersion)
                 .addIdToImageMapping(ID_IC_OFF, androidImage(R.drawable.ic_off))
                 .addIdToImageMapping(ID_IC_TRANS, androidImage(R.drawable.ic_trans))
                 .addIdToImageMapping(ID_IC_ANC, androidImage(R.drawable.ic_anc))

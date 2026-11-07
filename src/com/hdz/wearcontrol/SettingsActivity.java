@@ -1,148 +1,205 @@
 package com.hdz.wearcontrol;
 
+import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothManager;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.widget.TextView;
+import java.util.List;
 
-/**
- * 设置页: 界面风格 / 磁贴样式 / 语言. 三组都是二选一, 点了立即写偏好.
- * 主界面在 onResume 里对比偏好变化后自己 recreate, 所以这里点完直接结束即可,
- * 但语言变了需要本页也重绘一次, 所以先 recreate 再让用户点返回.
- */
+/** 所有常用选项共用旧版设置页；布局、卡片和选择态沿用 0.3.5。 */
 public class SettingsActivity extends Activity {
+    private static final int REQUEST_BLUETOOTH = 1;
+    private static final int[] UI_IDS = {R.id.style_new, R.id.style_classic, R.id.style_liquid};
+    private static final int[] TILE_IDS = {R.id.tile_new, R.id.tile_classic, R.id.tile_liquid};
+    private AppScrollView scroll;
+    private ArcIndicatorView indicator;
 
-    private TextView styleNew;
-    private TextView styleClassic;
-    private TextView styleLiquid;
-    private TextView styleSuprem;
-    private TextView tileNew;
-    private TextView tileLiquid;
-    private TextView tileClassic;
-    private TextView langZh;
-    private TextView langEn;
-
-    @Override
-    protected void attachBaseContext(Context newBase) {
+    @Override protected void attachBaseContext(Context newBase) {
         super.attachBaseContext(AppLocale.wrap(newBase));
     }
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
-
-        styleNew = (TextView) findViewById(R.id.style_new);
-        styleClassic = (TextView) findViewById(R.id.style_classic);
-        styleLiquid = (TextView) findViewById(R.id.style_liquid);
-        styleSuprem = (TextView) findViewById(R.id.style_suprem);
-        tileNew = (TextView) findViewById(R.id.tile_new);
-        tileLiquid = (TextView) findViewById(R.id.tile_liquid);
-        tileClassic = (TextView) findViewById(R.id.tile_classic);
-        langZh = (TextView) findViewById(R.id.lang_zh);
-        langEn = (TextView) findViewById(R.id.lang_en);
-
-        styleNew.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                AppPrefs.setUiStyle(SettingsActivity.this, AppPrefs.STYLE_NEW);
-                refreshChips();
-            }
-        });
-        styleClassic.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                AppPrefs.setUiStyle(SettingsActivity.this, AppPrefs.STYLE_CLASSIC);
-                refreshChips();
-            }
-        });
-        styleLiquid.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                AppPrefs.setUiStyle(SettingsActivity.this, AppPrefs.STYLE_LIQUID);
-                refreshChips();
-            }
-        });
-        styleSuprem.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                AppPrefs.setUiStyle(SettingsActivity.this, AppPrefs.STYLE_SUPREM);
-                refreshChips();
-            }
-        });
-        // 至上界面在当前版本先封存(交互仍有 bug), 设置页不展示入口
-        if (!AppPrefs.SUPREM_ENABLED) {
-            styleSuprem.setVisibility(View.GONE);
+        scroll = (AppScrollView) findViewById(R.id.settings_scroll);
+        indicator = (ArcIndicatorView) findViewById(R.id.settings_indicator);
+        indicator.attachTo(scroll);
+        for (int style = 0; style < UI_IDS.length; style++) {
+            bindStyle(UI_IDS[style], style, false);
+            bindStyle(TILE_IDS[style], style, true);
         }
-        tileNew.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                AppPrefs.setTileStyle(SettingsActivity.this, AppPrefs.STYLE_NEW);
-                refreshChips();
+        bindStyle(R.id.tile_follow, AppPrefs.STYLE_FOLLOW, true);
+        bindLanguage(R.id.lang_zh, AppPrefs.LANG_ZH);
+        bindLanguage(R.id.lang_en, AppPrefs.LANG_EN);
+        bindLanguage(R.id.lang_system, "system");
+        findViewById(R.id.device_choice).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View view) { chooseDevice(); }
+        });
+        findViewById(R.id.volume_choice).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View view) {
+                AppPrefs.setShowVolume(SettingsActivity.this, !AppPrefs.showVolume(SettingsActivity.this));
+                refreshChoices();
+            }
+        });
+        refreshChoices();
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        scroll.setActive(true);
+        indicator.setActive(true);
+    }
+
+    @Override protected void onPause() {
+        super.onPause();
+        scroll.setActive(false);
+        indicator.setActive(false);
+    }
+
+    private void bindStyle(int id, final int style, final boolean tile) {
+        findViewById(id).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View view) {
+                if (tile) AppPrefs.setTileStyle(SettingsActivity.this, style);
+                else AppPrefs.setUiStyle(SettingsActivity.this, style);
+                refreshChoices();
                 TileStore.push(SettingsActivity.this);
             }
         });
-        tileLiquid.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                AppPrefs.setTileStyle(SettingsActivity.this, AppPrefs.STYLE_LIQUID);
-                refreshChips();
+    }
+
+    private void bindLanguage(int id, final String language) {
+        findViewById(id).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View view) {
+                if (language.equals(AppPrefs.langChoice(SettingsActivity.this))) return;
+                AppPrefs.setLang(SettingsActivity.this, language);
                 TileStore.push(SettingsActivity.this);
-            }
-        });
-        tileClassic.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                AppPrefs.setTileStyle(SettingsActivity.this, AppPrefs.STYLE_CLASSIC);
-                refreshChips();
-                TileStore.push(SettingsActivity.this);
-            }
-        });
-        langZh.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                AppPrefs.setLang(SettingsActivity.this, AppPrefs.LANG_ZH);
                 recreate();
             }
         });
-        langEn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                AppPrefs.setLang(SettingsActivity.this, AppPrefs.LANG_EN);
-                recreate();
+    }
+
+    private void refreshChoices() {
+        int style = AppPrefs.uiStyle(this), tile = AppPrefs.tileStyleChoice(this);
+        for (int i = 0; i < UI_IDS.length; i++) {
+            setChoice(UI_IDS[i], style == i);
+            setChoice(TILE_IDS[i], tile == i);
+        }
+        setChoice(R.id.tile_follow, tile == AppPrefs.STYLE_FOLLOW);
+        String language = AppPrefs.langChoice(this);
+        setChoice(R.id.lang_zh, AppPrefs.LANG_ZH.equals(language));
+        setChoice(R.id.lang_en, AppPrefs.LANG_EN.equals(language));
+        setChoice(R.id.lang_system, "system".equals(language));
+        boolean volume = AppPrefs.showVolume(this);
+        setChoice(R.id.volume_choice, volume);
+        ((TextView) findViewById(R.id.volume_choice)).setText(
+                volume ? R.string.settings_volume_hide : R.string.settings_volume_show);
+        String address = AppPrefs.deviceAddress(this), label = getString(R.string.settings_device_auto);
+        if (!address.isEmpty()) {
+            label = address;
+            if (hasBluetoothPermission()) {
+                try {
+                    BluetoothAdapter adapter = adapter();
+                    if (adapter != null) {
+                        String name = adapter.getRemoteDevice(address).getName();
+                        if (name != null) label = name;
+                    }
+                } catch (RuntimeException ignored) { }
             }
-        });
-
-        refreshChips();
+        }
+        ((TextView) findViewById(R.id.device_choice)).setText(label);
     }
 
-    private void refreshChips() {
-        int style = AppPrefs.uiStyle(this);
-        setChoice(styleNew, style == AppPrefs.STYLE_NEW);
-        setChoice(styleClassic, style == AppPrefs.STYLE_CLASSIC);
-        setChoice(styleLiquid, style == AppPrefs.STYLE_LIQUID);
-        setChoice(styleSuprem, style == AppPrefs.STYLE_SUPREM);
-        int tileStyle = AppPrefs.tileStyle(this);
-        setChoice(tileNew, tileStyle == AppPrefs.STYLE_NEW);
-        setChoice(tileLiquid, tileStyle == AppPrefs.STYLE_LIQUID);
-        setChoice(tileClassic, tileStyle == AppPrefs.STYLE_CLASSIC);
-        boolean zh = AppPrefs.LANG_ZH.equals(AppPrefs.lang(this));
-        setChoice(langZh, zh);
-        setChoice(langEn, !zh);
+    private BluetoothAdapter adapter() {
+        BluetoothManager manager = (BluetoothManager) getSystemService(BLUETOOTH_SERVICE);
+        return manager == null ? null : manager.getAdapter();
     }
 
-    private void setChoice(TextView chip, boolean selected) {
-        if (chip == null) {
+    private boolean hasBluetoothPermission() {
+        return Build.VERSION.SDK_INT < 31 || checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /** 只读取已配对耳机，选择时不扫描也不建立后台连接。 */
+    private void chooseDevice() {
+        if (!hasBluetoothPermission()) {
+            requestPermissions(new String[]{Manifest.permission.BLUETOOTH_CONNECT}, REQUEST_BLUETOOTH);
             return;
         }
-        chip.setBackgroundResource(selected ? R.drawable.bg_choice_on : R.drawable.bg_choice);
-        chip.setTextColor(getResources().getColor(selected ? R.color.text : R.color.text_dim));
+        try {
+            final BluetoothAdapter adapter = adapter();
+            final List<BluetoothDevice> devices = DriverRegistry.audioDevices(adapter);
+            String[] labels = new String[devices.size() + 1];
+            labels[0] = getString(R.string.settings_device_auto);
+            String selected = AppPrefs.deviceAddress(this);
+            int checked = selected.isEmpty() ? 0 : -1;
+            for (int i = 0; i < devices.size(); i++) {
+                BluetoothDevice device = devices.get(i);
+                String name = device.getName();
+                labels[i + 1] = name == null ? device.getAddress() : name;
+                if (selected.equals(device.getAddress())) checked = i + 1;
+            }
+            new AlertDialog.Builder(this).setTitle(R.string.settings_device)
+                    .setSingleChoiceItems(labels, checked, new DialogInterface.OnClickListener() {
+                        @Override public void onClick(DialogInterface dialog, int which) {
+                            BluetoothDevice device = which == 0 ? null : devices.get(which - 1);
+                            String address = device == null ? "" : device.getAddress();
+                            if (!address.equals(AppPrefs.deviceAddress(SettingsActivity.this))) {
+                                AppPrefs.setDeviceAddress(SettingsActivity.this, address);
+                                HeadsetController.get(SettingsActivity.this).deviceChanged();
+                                // 选择不同耳机时立即清除旧快照，避免磁贴沿用另一台设备的电量。
+                                try {
+                                    if (device == null && adapter != null) device = DriverRegistry.findTarget(adapter);
+                                    String target = device == null ? "" : device.getAddress();
+                                    String old = getSharedPreferences(TileStore.PREFS, MODE_PRIVATE)
+                                            .getString("tile_address", "");
+                                    if (!target.equals(old)) {
+                                        TileStore.selectDevice(SettingsActivity.this, target,
+                                                device == null ? "" : device.getName(), 0, TwsClient.VERIF_UNTESTED);
+                                        TileStore.pushNow(SettingsActivity.this);
+                                    }
+                                } catch (SecurityException ignored) { }
+                            }
+                            refreshChoices();
+                            dialog.dismiss();
+                        }
+                    }).setNegativeButton(R.string.dialog_cancel, null).show();
+        } catch (SecurityException e) {
+            requestPermissions(new String[]{Manifest.permission.BLUETOOTH_CONNECT}, REQUEST_BLUETOOTH);
+        }
     }
 
-    /** 供入口调用: 从主界面或磁贴打开设置 */
-    static Intent intent(Context ctx) {
-        return new Intent(ctx, SettingsActivity.class);
+    @Override public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(request, permissions, results);
+        if (request == REQUEST_BLUETOOTH && results.length > 0
+                && results[0] == PackageManager.PERMISSION_GRANTED) chooseDevice();
     }
+
+    private void setChoice(int id, boolean selected) {
+        TextView chip = (TextView) findViewById(id);
+        chip.setBackgroundResource(selected ? R.drawable.bg_choice_on : R.drawable.bg_choice);
+        chip.setTextColor(getResources().getColor(selected ? R.color.text : R.color.text_dim));
+        chip.setSelected(selected);
+    }
+
+    @Override public boolean onGenericMotionEvent(MotionEvent event) {
+        return scroll != null && scroll.onGenericMotionEvent(event) || super.onGenericMotionEvent(event);
+    }
+
+    @Override public boolean onKeyDown(int keyCode, KeyEvent event) {
+        return scroll != null && scroll.handleRotaryKey(keyCode) || super.onKeyDown(keyCode, event);
+    }
+
+    static Intent intent(Context ctx) { return new Intent(ctx, SettingsActivity.class); }
 }

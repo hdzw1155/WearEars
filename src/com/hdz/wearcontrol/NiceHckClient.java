@@ -10,7 +10,6 @@ import android.util.Log;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -36,17 +35,19 @@ public class NiceHckClient implements TwsClient {
     private static final int OP_ANC_SET = 0x0201;
 
     private final Handler h = new Handler(Looper.getMainLooper());
+    private final ProtocolWriter writer = new ProtocolWriter();
     private final List<Listener> listeners = new ArrayList<Listener>();
-    private final List<byte[]> rx = new ArrayList<byte[]>();
+    private final NiceHckProtocol decoder = new NiceHckProtocol();
 
     private Context app;
     private BluetoothDevice device;
     private volatile boolean closing;
     private volatile boolean connected;
+    private volatile boolean noiseConfirmed;
     /** 当前连接设备名, 用于按型号如实标注验证等级 */
     private volatile String connectedName = "";
-    private BluetoothSocket socket;
-    private OutputStream out;
+    private volatile BluetoothSocket socket;
+    private volatile OutputStream out;
     private Thread worker;
 
     private int[] batt = {-1, -1, -1};
@@ -66,24 +67,30 @@ public class NiceHckClient implements TwsClient {
     }
 
     @Override public void connect(BluetoothDevice target) {
+        disconnect();
+        writer.start();
         device = target;
         connectedName = target != null && target.getName() != null ? target.getName() : "";
         closing = false;
         connected = false;
+        noiseConfirmed = false;
         batt[0] = -1;
         batt[1] = -1;
         batt[2] = -1;
         lastMode = -1;
         closeSocket();
+        decoder.reset();
         worker = new Thread(new Runnable() {
             @Override public void run() {
                 try {
                     if (!openSpp()) {
+                        if (closing) return;
                         if (!openSppStd()) {
                             fail("连不上原道控制通道(SPP 没开?)");
                             return;
                         }
                     }
+                    if (closing) { closeSocket(); return; }
                     connected = true;
                     postConnected();
                     // 连上先问一轮: 电量 + 当前降噪态
@@ -112,9 +119,12 @@ public class NiceHckClient implements TwsClient {
     }
 
     private boolean openSocket(UUID uuid) {
+        if (closing) return false;
         try {
             socket = device.createRfcommSocketToServiceRecord(uuid);
+            if (closing) { closeSocket(); return false; }
             socket.connect();
+            if (closing) { closeSocket(); return false; }
             out = socket.getOutputStream();
             return true;
         } catch (Throwable t) {
@@ -129,68 +139,34 @@ public class NiceHckClient implements TwsClient {
     }
 
     private void readLoop() {
+        final BluetoothSocket source = socket;
+        if (closing || source == null) return;
         try {
-            InputStream in = socket.getInputStream();
+            InputStream in = source.getInputStream();
             byte[] buf = new byte[512];
-            while (!closing) {
+            while (!closing && socket == source) {
                 int n = in.read(buf);
+                if (closing || socket != source) break;
                 if (n <= 0) break;
                 feed(buf, n);
             }
         } catch (Throwable t) {
             Log.d(TAG, "read loop end: " + t.getMessage());
         }
-        if (!closing) {
+        if (!closing && socket == source) {
             connected = false;
             h.post(new Runnable() {
                 @Override public void run() {
-                    fireDisconnected("耳机已断开");
+                    if (!closing && socket == source) { disconnect(); fireDisconnected("耳机已断开"); }
                 }
             });
         }
     }
 
     private void feed(byte[] data, int len) {
-        synchronized (rx) {
-            rx.add(Arrays.copyOfRange(data, 0, len));
-        }
-        parse();
-    }
-
-    private void parse() {
-        synchronized (rx) {
-            if (rx.isEmpty()) return;
-            int total = 0;
-            for (byte[] b : rx) total += b.length;
-            byte[] buf = new byte[total];
-            int p = 0;
-            for (byte[] b : rx) {
-                System.arraycopy(b, 0, buf, p, b.length);
-                p += b.length;
-            }
-            int i = 0;
-            int consumed = 0;
-            while (i + 2 < buf.length) {
-                if (buf[i] != 0x4E) {
-                    i++;
-                    continue;
-                }
-                int flen = (buf[i + 1] & 0xFF) | ((buf[i + 2] & 0xFF) << 8);
-                if (flen < 3 || flen > 4096) {
-                    i++;
-                    continue;
-                }
-                int need = flen + 3;
-                if (i + need > buf.length) break; // 等后续分片
-                onFrame(buf, i);
-                i += need;
-                consumed = i;
-            }
-            // 把已解析的字节丢掉, 保留残余
-            rx.clear();
-            if (consumed < buf.length) {
-                rx.add(Arrays.copyOfRange(buf, consumed, buf.length));
-            }
+        for (byte[] frame : decoder.feed(data, len)) {
+            if (closing) return;
+            onFrame(frame, 0);
         }
     }
 
@@ -206,7 +182,11 @@ public class NiceHckClient implements TwsClient {
                 int c = b[i + 8] & 0xFF;
                 deliverBattery(l, r, c);
             } else if (op == OP_ANC_QUERY && payloadLen >= 1) {
-                deliverMode(mapMode(b[i + 6] & 0xFF));
+                int wire = b[i + 6] & 0xFF;
+                if (wire <= 3 || wire == 0x10 || wire == 0x11) {
+                    noiseConfirmed = true;
+                    deliverMode(mapMode(wire));
+                }
             }
         } catch (Throwable t) {
             Log.w(TAG, "parse frame failed", t);
@@ -231,7 +211,7 @@ public class NiceHckClient implements TwsClient {
     private synchronized void sendFrame(int op, byte[] params) {
         if (!connected || out == null) return;
         int len = 3 + params.length;
-        byte[] f = new byte[len + 3];
+        final byte[] f = new byte[len + 3];
         f[0] = 0x4E;
         f[1] = (byte) (len & 0xFF);
         f[2] = (byte) ((len >> 8) & 0xFF);
@@ -239,12 +219,14 @@ public class NiceHckClient implements TwsClient {
         f[4] = (byte) (op & 0xFF);
         f[5] = (byte) ((op >> 8) & 0xFF);
         if (params.length > 0) System.arraycopy(params, 0, f, 6, params.length);
-        try {
-            out.write(f);
-            out.flush();
-        } catch (Throwable t) {
-            fail("发送失败: " + t.getMessage());
-        }
+        final OutputStream stream = out;
+        if (!writer.post(new Runnable() {
+            @Override public void run() {
+                if (closing || !connected || stream != out) return;
+                try { stream.write(f); stream.flush(); }
+                catch (Exception e) { if (!closing && stream == out) fail("发送失败: " + e.getMessage()); }
+            }
+        }) && !closing) fireError("控制指令过多，请稍后重试");
     }
 
     private void deliverBattery(int l, int r, int c) {
@@ -261,7 +243,6 @@ public class NiceHckClient implements TwsClient {
     }
 
     private void deliverMode(int mode) {
-        if (mode < 0) return;
         lastMode = mode;
         for (Listener li : snapshot()) {
             try {
@@ -274,6 +255,7 @@ public class NiceHckClient implements TwsClient {
     private void postConnected() {
         h.post(new Runnable() {
             @Override public void run() {
+                if (closing || !connected) return;
                 fireConnected(device != null && device.getName() != null ? device.getName() : "原道耳机");
                 h.removeCallbacks(confirm);
             }
@@ -281,13 +263,15 @@ public class NiceHckClient implements TwsClient {
     }
 
     private void fail(final String msg) {
+        if (closing) return;
         Log.d(TAG, msg);
         final boolean wasConnected = connected;
         Runnable r = new Runnable() {
             @Override public void run() {
+                if (closing) return;
+                disconnect();
                 if (!wasConnected) fireError(msg);
                 else fireDisconnected(msg);
-                closeSocket();
             }
         };
         // 契约 6.5: 连接失败先等耳机侧槽位释放(1.5s)再回调, 避免连-断循环
@@ -308,6 +292,8 @@ public class NiceHckClient implements TwsClient {
 
     @Override public void disconnect() {
         closing = true;
+        writer.stop();
+        h.removeCallbacksAndMessages(null);
         closeSocket();
     }
 
@@ -390,7 +376,7 @@ public class NiceHckClient implements TwsClient {
     }
 
     @Override public int caps() {
-        return CAP_BATTERY | CAP_NOISE;
+        return CAP_BATTERY | (noiseConfirmed ? CAP_NOISE : 0);
     }
 
     @Override public int verifLevel() {

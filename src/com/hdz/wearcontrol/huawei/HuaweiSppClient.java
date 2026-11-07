@@ -9,6 +9,7 @@ import android.os.Looper;
 import android.util.Log;
 
 import com.hdz.wearcontrol.TwsClient;
+import com.hdz.wearcontrol.ProtocolWriter;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -63,9 +64,11 @@ public class HuaweiSppClient implements TwsClient {
 
     private final List<Listener> listeners = new CopyOnWriteArrayList<Listener>();
     private final Handler main = new Handler(Looper.getMainLooper());
+    private final ProtocolWriter writer = new ProtocolWriter();
     private volatile BluetoothSocket socket;
     private volatile OutputStream out;
     private volatile boolean closing = false;
+    private volatile boolean noiseConfirmed;
     /** 当前连接设备名, 用于按型号如实标注验证等级 */
     private volatile String connectedName = "";
 
@@ -81,15 +84,15 @@ public class HuaweiSppClient implements TwsClient {
 
     @Override
     public int caps() {
-        return CAP_NOISE | CAP_BATTERY;
+        return CAP_BATTERY | (noiseConfirmed ? CAP_NOISE : 0);
     }
 
     @Override
     public int verifLevel() {
         // FreeBuds 6i 已在本项目真机验证(电量 + 降噪/通透/关闭三态);
         // 其他华为/荣耀型号沿用同一 SPP 协议族, 但未逐型号实测, 如实标实验性。
-        String n = connectedName == null ? "" : connectedName.toLowerCase();
-        if (n.contains("6i")) {
+        String n = connectedName.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9]", "");
+        if (n.equals("huaweifreebuds6i") || n.equals("freebuds6i")) {
             return VERIF_REAL;
         }
         return VERIF_UNTESTED;
@@ -133,7 +136,10 @@ public class HuaweiSppClient implements TwsClient {
 
     @Override
     public void connect(final BluetoothDevice device) {
+        disconnect();
+        writer.start();
         closing = false;
+        noiseConfirmed = false;
         connectedName = device != null && device.getName() != null ? device.getName() : "";
         new Thread(new Runnable() {
             @Override public void run() {
@@ -181,7 +187,10 @@ public class HuaweiSppClient implements TwsClient {
         BluetoothSocket s = null;
         try {
             s = device.createRfcommSocketToServiceRecord(SPP_UUID);
+            socket = s;
+            if (closing) { closeQuietly(s); return null; }
             s.connect();
+            if (closing) { closeQuietly(s); return null; }
             return s;
         } catch (Exception e) {
             closeQuietly(s);
@@ -192,7 +201,10 @@ public class HuaweiSppClient implements TwsClient {
             if (closing) return null;
             try {
                 s = channelSocket(device, ch);
+                socket = s;
+                if (closing) { closeQuietly(s); return null; }
                 s.connect();
+                if (closing) { closeQuietly(s); return null; }
                 Log.d("HwClient", "connected via channel " + ch);
                 return s;
             } catch (Exception e) {
@@ -212,6 +224,7 @@ public class HuaweiSppClient implements TwsClient {
     @Override
     public void disconnect() {
         closing = true;
+        writer.stop();
         main.removeCallbacksAndMessages(null);
         safeClose();
     }
@@ -235,6 +248,7 @@ public class HuaweiSppClient implements TwsClient {
     }
 
     private void fireError(String msg) {
+        if (closing) return;
         for (Listener l : listeners) l.onError(msg);
     }
 
@@ -269,12 +283,12 @@ public class HuaweiSppClient implements TwsClient {
     }
 
     /** 组帧并发送: 5A len(2B BE) 00 group cmd params CRC16(大端) */
-    private synchronized void writeFrame(int group, int cmd, byte[] params) {
-        OutputStream o = out;
-        if (o == null) return;
+    private synchronized void writeFrame(final int group, final int cmd, byte[] params) {
+        final OutputStream o = out;
+        if (closing || o == null) return;
         int plen = params == null ? 0 : params.length;
         int len = plen + 3;
-        byte[] f = new byte[6 + plen + 2];
+        final byte[] f = new byte[6 + plen + 2];
         f[0] = (byte) 0x5A;
         f[1] = (byte) (len >> 8);
         f[2] = (byte) len;
@@ -285,14 +299,16 @@ public class HuaweiSppClient implements TwsClient {
         int crc = crc16Xmodem(f, 0, 6 + plen);
         f[6 + plen] = (byte) (crc >> 8);
         f[7 + plen] = (byte) crc;
-        try {
-            o.write(f);
-            o.flush();
-            Log.d("HwClient", "tx g=0x" + Integer.toHexString(group)
-                    + " c=0x" + Integer.toHexString(cmd) + " " + toHex(f));
-        } catch (IOException e) {
-            fireError("发送失败: " + e.getMessage());
-        }
+        if (!writer.post(new Runnable() {
+            @Override public void run() {
+                if (closing || o != out) return;
+                try {
+                    o.write(f); o.flush();
+                    Log.d("HwClient", "tx g=0x" + Integer.toHexString(group)
+                            + " c=0x" + Integer.toHexString(cmd) + " " + toHex(f));
+                } catch (IOException e) { if (!closing && o == out) fireError("发送失败: " + e.getMessage()); }
+            }
+        }) && !closing) fireError("控制指令过多，请稍后重试");
     }
 
     /** CRC16/XMODEM: poly=0x1021, init=0, 无反射, 无最终 XOR */
@@ -311,15 +327,18 @@ public class HuaweiSppClient implements TwsClient {
     // ---- 接收 ----
 
     private void startReader() {
+        final BluetoothSocket source = socket;
+        if (closing || source == null) return;
         new Thread(new Runnable() {
             @Override public void run() {
                 byte[] stage = new byte[2048];
                 int stageLen = 0;
                 byte[] chunk = new byte[512];
                 try {
-                    InputStream in = socket.getInputStream();
-                    while (!closing) {
+                    InputStream in = source.getInputStream();
+                    while (!closing && socket == source) {
                         int r = in.read(chunk);
+                        if (closing || socket != source) break;
                         if (r < 0) break;
                         if (stageLen + r > stage.length) {
                             stageLen = 0; // 防异常数据撑爆
@@ -371,15 +390,15 @@ public class HuaweiSppClient implements TwsClient {
                         }
                         if (stageLen == stage.length) stageLen = 0;
                     }
-                    if (!closing) {
+                    if (!closing && socket == source) {
                         for (Listener l : listeners) l.onDisconnected("连接已关闭");
                     }
                 } catch (IOException e) {
-                    if (!closing) {
+                    if (!closing && socket == source) {
                         for (Listener l : listeners) l.onDisconnected("连接断开: " + e.getMessage());
                     }
                 }
-                safeClose();
+                if (socket == source) safeClose();
             }
         }, "hw-reader").start();
     }
@@ -463,7 +482,9 @@ public class HuaweiSppClient implements TwsClient {
                 int ui;
                 if (mode == 0x01) ui = MODE_ANC;
                 else if (mode == 0x02) ui = MODE_TRANS;
-                else ui = MODE_OFF;
+                else if (mode == 0x00) ui = MODE_OFF;
+                else ui = -1;
+                if (ui >= 0) noiseConfirmed = true;
                 Log.d("HwClient", "anc level=" + (b[v] & 0xFF) + " mode=" + mode + " ui=" + ui);
                 for (Listener li : listeners) li.onNoiseMode(ui);
                 return;

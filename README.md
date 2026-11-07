@@ -25,11 +25,15 @@
 * **核心功能**：
   * **降噪三态切换**：降噪 / 关闭 / 通透三档一键切换（当前模式高亮显示）。
   * **三端电量显示**：实时显示左耳、右耳、充电盒电量及充电状态。
-  * **省心连接体验**：断线状态自动清空、回到前台自动重连；适配手表旋转表圈/实体表冠——转动时绵密分段震动、顶到边界有一下明显的挡墙反馈；屏幕右缘滚动指示条上下双拼色，滚动时带 Q 弹阻尼回弹。
-  * **磁贴快捷控制**：不用打开 App，在手表磁贴里就能切降噪模式，顺便看一眼上一次连接的电量；三段电量与整机总电量（单电池设备）自适应显示，磁贴样式可跟随界面或单独指定。
-  * **三种界面风格 + 设置页**：极简（横向进度条）/ 液位（胶囊块）/ 经典（压扁圆环）三种电量视图，设置页即时切换；界面语言可跟随系统或手动切中 / 英。
+  * **省心连接体验**：保留上次已确认的电量、回到前台自动同步，断线最多自动重试 3 次；适配手表旋转表圈/实体表冠——按实际滚动距离提供细密微震，抵达边界时切换成明显的挡墙反馈；主页与设置页共用细线青蓝渐变滚动指示条，滚动时带轻微弹性反馈。
+  * **磁贴快捷控制**：不用打开 App，在手表磁贴里就能切降噪模式，顺便看一眼上一次连接的电量；三段电量与整机总电量（单电池设备）自适应显示，磁贴样式可跟随界面或单独指定，点按电量区域可手动刷新。
+  * **三种界面风格 + 设置页**：极简（横向进度条）/ 液位（胶囊块）/ 经典（压扁圆环）三种电量视图，沿用 0.3.5 的布局和配色。统一设置页可切换风格、选择已配对耳机、显示或隐藏音量条；界面语言可跟随系统或手动切中 / 英。
   * **多品牌与标准兜底**：除 vivo / 华为 / 小米外，还新增 OPPO 系（OPPO / 一加 / realme / Enco，HeyMelody 协议）与漫步者、弱水时砂、原道三条社区协议驱动；认不出私有协议的耳机自动走「标准协议」兜底，不碰耳机私有指令，只读系统聚合电量。华为 FreeBuds 6i 与原道 OriG in（原点）已在真机实测通过。
   * **vivo 专属实验功能**：连点 5 下应用内"开发者设置"，可开启空间音频 / DeepX 音效调节（目前仅限 vivo TWS Air3 Pro，详见应用内免责声明）。
+
+本地 0.4.0 改动和验证范围见 [改动说明](docs/0.4-integration.md)。本次已编译，尚未装表验证。2026-11-07 的国产协议修正、Sony / Technics 新增适配和型号边界见 [协议验证记录](docs/protocol-validation.md)。
+
+最新的滚动反馈调整、极简绿色音量条与全部驱动核查范围见 [本轮核查记录](docs/scroll-and-driver-review.md)。
 
 ## 📸 界面预览
 
@@ -45,7 +49,7 @@
     <td><img src="docs/tile-minimal-v2.jpg" width="200"/><br><div align="center">极简磁贴</div></td>
   </tr>
   <tr>
-    <td colspan="3" align="center"><img src="docs/settings-v2.jpg" width="200"/><br/><div align="center">设置页</div></td>
+    <td colspan="3" align="center"><img src="docs/settings-v2.jpg" width="200"/><br/><div align="center">0.3.5 设置页外观参考（0.4 沿用样式，增加选项）</div></td>
   </tr>
 </table>
 
@@ -53,14 +57,16 @@
 | --- | --- | --- | --- | --- |
 | **vivo / iQOO TWS 家族** | RFCOMM (GAIA) | 开 / 关 / 通透三态 | 左 / 右 / 盒 | ✅ **已真机实测**（Galaxy Watch7 + Air3 Pro 全功能正常） |
 | **华为 FreeBuds / 荣耀** | RFCOMM (SPP) | 开 / 关 / 通透三态 | 左 / 右 / 盒（含充电状态） | ✅ **部分真机验证**（FreeBuds 6i：三态 + 电量实测通过；其他 FreeBuds / 荣耀型号 ⚠️ 实验性） |
-| **小米 / Redmi Buds** | RFCOMM (MMA) | 开 / 关 / 通透三态 | 左 / 右 / 盒（含充电状态） | ⚠️ **实验性支持**（认证算法通过 36/36 离线真值验证，待上耳机实测） |
+| **小米 / Redmi Buds** | RFCOMM (RCSP / MMA) | 按型号及状态确认三态；6 Play / 6 Active 不开放 | 左 / 右 / 盒（含充电状态） | ⚠️ **实验性支持**（Buds 5、3 Pro、6 Lite 分开处理；本轮未真机实测） |
 | **OPPO / 一加 / realme / Enco** | RFCOMM (OPOv1 / HeyMelody) | 开 / 关 / 通透三态 | 左 / 右 / 盒（含充电状态） | ⚠️ **实验性支持**（协议来自社区公开逆向，未真机实测） |
-| **漫步者 EDIFIER** | RFCOMM (SPP) / BLE GATT | 开 / 关 / 通透（按型号 group 映射；未知 group 只读不写） | 左 / 右 / 盒（头戴型号为总电量） | ⚠️ **实验性支持**（协议来自社区公开逆向，未真机实测） |
+| **漫步者 EDIFIER** | RFCOMM (SPP) / BLE GATT | 开 / 关 / 通透（按型号 group 映射；未知 group 只读不写） | 已确认的左右耳；D0 头戴总电量，F2 盒电量未知 | ⚠️ **实验性支持**（协议来自社区公开逆向，未真机实测） |
 | **弱水时砂 RoseLink** | BLE GATT / RFCOMM (SPP) | 开 / 关 / 通透（风噪档不映射） | 左 / 右 / 盒 | ⚠️ **实验性支持**（协议来自社区公开逆向，未真机实测） |
 | **原道 NiceHCK** | RFCOMM (SPP) | 开 / 关 / 通透（含普通/深度降噪） | 左 / 右 / 盒 | ✅ **部分真机验证**（OriG in 原点：三态 + 电量实测通过；其他原道型号 ⚠️ 实验性） |
+| **Sony 指定 WH / WF 型号** | RFCOMM (MDR V1 / V2) | 合法三态回包确认后开放 | 按回包区分整机 / 左右耳 / 盒 | ⚠️ **实验性支持**（离线报文验证，未真机实测） |
+| **Technics EAH-AZ** | RFCOMM (RACE) | 合法 Outside Control 回包确认后开放 | 左 / 右 / 盒，充电状态未知 | ⚠️ **实验性支持**（不含 A800 和其他松下型号） |
 | **其他品牌（标准协议兜底）** | 系统蓝牙（A2DP/HFP + HF Indicator 广播） | — | 仅整机总电量（系统聚合，分体电量系统不公开） | ⚠️ **实验性支持**（只读电量，不碰耳机私有协议） |
 
-> 📌 **取设备规则**：先按蓝牙 Class 排除手机/平板，再优先「名字像品牌耳机 + 有 A2DP Sink 角色」的设备，最后才退回名字匹配。个别 ROM 对手机 Class 上报不规范时仍可能选错——真遇到就把手机从手表蓝牙列表里删掉，或把耳机名加上品牌词（如 `vivo TWS Air3 Pro`）。
+> 📌 **取设备规则**：可以在设置页指定已配对耳机；选“自动选择”时，先排除手机/平板，再优先选择品牌名与 A2DP Sink 角色匹配的设备，最后按名称或音频角色兜底。指定的耳机不可用时会提示，没有自动改选另一台。
 
 ## 🚀 我是普通用户：怎么装到手表上用？（3 步搞定）
 
@@ -140,6 +146,8 @@ TwsClient                    统一接口(驱动标准: 连接/电量/降噪三�
 ├── EdifierClient           漫步者 Bes 帧(SPP/BLE, 未真机验证)
 ├── RoseLinkClient          弱水时砂 V2/RS 帧(BLE/SPP, 未真机验证)
 ├── NiceHckClient           原道 4E 帧(SPP, OriG in 原点真机验证, 其他型号实验性)
+├── SonyClient              MDR V1/V2，能力经状态包确认（未真机验证）
+├── TechnicsClient          EAH-AZ RACE（未真机验证，不含 A800）
 ├── StandardClient          标准协议兜底(系统 A2DP/HFP + HF Indicator, 只读电量)
 └── DriverRegistry           按蓝牙设备名自动挑品牌, 匹配规则内聚在各驱动里
 
@@ -275,8 +283,8 @@ FF | VERB | 00 | LEN | VENDOR(2B 大端) | CMD(2B 大端) | PAYLOAD(LEN 字节)
 | 传输层 | RFCOMM (SPP)，SDP UUID `0000079A-D102-11E1-9B23-00025B00A5A5` / 回退 `00001107-D102-11E1-9B23-00025B00A5A5` / 反射信道 15；无 BLE 路径 |
 | 握手 | 连上 300ms 发 `0x0100`（空 payload），随后初始化轮询：`0103` 产品 ID → `0200` → `0205` 订阅 → `010D` → `010C` 降噪查询 → `0106` 电量 → `0109` 佩戴 → `0108` → `0105` |
 | 帧 | `AA | TotalLen(LEB128) | Slice | 00 | Cmd(2B 小端) | Seq | PayLen(2B 小端) | Payload`，TotalLen = 7 + PayLen，无校验 |
-| 电量 | `0x0106`（seq F0）→ `0x8106` 回包 `[00][count](part,raw)…`：part 1/2/3 = 左/右/盒，raw bit7 = 充电、低 7 位 = 百分比，0 = 未知；`0x0204` 主动上报 subtype 01 = 电量 |
-| 降噪 | 设置 `0x0404` payload `01 01 mask`：关 `0x01` / 降噪 `0x02` / 通透 `0x04`；查询 `0x010C`，状态回包 `0x810C` 的位与 SET 位不同：关 `0x0008` / 降噪 `0x0002` / 通透 `0x0100`；`0x0204` subtype 03 = 降噪状态（`03 02 01` 为回声，忽略） |
+| 电量 | `0x0106`（seq F0）→ `0x8106` 回包 `[00][count](part,raw)…`：part 1/2/3 = 左/右/盒，raw bit7 = 充电、低 7 位 = 百分比，FF = 未知；`0x0204` 主动上报 subtype 01 = 电量 |
+| 降噪 | 设置 `0x0404` payload `01 01 mask`：关 `0x01` / 降噪 `0x02` / 通透 `0x04`；查询 `0x010C`，状态回包 `0x810C` 的位与 SET 位不同：关 `0x0008` / 降噪 `0x0002` 或 `0x0010` / 通透 `0x0100`；`0x0204` subtype 03 = 降噪状态（`03 02 01` 为回声，忽略） |
 | 来源 | spizganed/QuickBuds（Wire/Battery/Anc 解析）；HeyMelody / OPOv1 社区整理 |
 
 ### 漫步者 EDIFIER
@@ -284,11 +292,11 @@ FF | VERB | 00 | LEN | VENDOR(2B 大端) | CMD(2B 大端) | PAYLOAD(LEN 字节)
 | 项 | 值 |
 | --- | --- |
 | 匹配词 | edifier / 漫步者 / neobuds / lollipods / fitbuds / fitclip / w820 / w860 / w260 |
-| 传输层 | RFCOMM (SPP) `EDF00000-EDFE-DFED-FEDF-EDFEDFEDFEDF`（失败回退 channel 1）/ BLE GATT 兜底 |
+| 传输层 | RFCOMM (SPP) `EDF00000-EDFE-DFED-FEDF-EDFEDFEDFEDF` / BLE GATT 兜底 |
 | 握手 | 无，连上直接查 |
-| V2 帧 | `AA EC CMD LEN_H LEN_L PAYLOAD CRC8`，payload 双向 XOR 0xA5，CRC8 = sum(前序线上字节) & 0xFF |
+| V2 帧 | `AA EC CMD LEN_H LEN_L PAYLOAD CRC8`，payload 通常双向 XOR 0xA5（FitBuds Turbo 使用明文），CRC8 = sum(前序线上字节) & 0xFF |
 | V1 帧 | `AA LEN CMD DATA CRC16_H CRC16_L`，LEN = len(DATA)+1，CRC16 = (0x2019+sum) & 0xFFFF |
-| 电量 | `D0` 单值（&0x7F，头戴/老型号）；`F2` 六字节 `[peer][左][右][盒][充电][?]`（新 TWS） |
+| 电量 | `D0` 单值 0..100；`F2` 六字节只解释偏移 1/2 的左右耳，盒与充电含义未确认 |
 | 降噪 | `CC` 查询 → `[group][mode]`；`C1` 设置 `[group][mode]`；group 0x10 / 0x1B / 0x17 与 V1 的 mode 表互不相同，未知 group 只读不写 |
 | 来源 | HyperEars 的 edifier Bes 协议文档、mEDIFIER、BudsLink |
 
@@ -296,12 +304,12 @@ FF | VERB | 00 | LEN | VENDOR(2B 大端) | CMD(2B 大端) | PAYLOAD(LEN 字节)
 
 | 项 | 值 |
 | --- | --- |
-| 匹配词 | ruoshui / roselink / 弱水 / rosebuds / ceramics / agate / sportfeel / openfun / openfeel |
+| 型号匹配 | 按 RoseProtocol 中明确列出的 RS/V2 型号选帧；不明型号、F8、ZT 走标准电量 |
 | 传输层 | BLE GATT 服务 `00FE` / 写 `00F1` / 通知 `00F2`；SPP `0cf12d31-fac3-4553-bd80-d6832e7b3931` |
 | 握手 | 无，连上发全量 getInfo |
 | V2 帧 | `FF SEQ LEN BODY CS AA`，CS = sum(FF,SEQ,LEN,BODY) & 0xFF；接收 `DD SEQ TLV… CS AA` |
-| RS Common 帧 | `FF 00 LEN BODY AA`（无 CS/SEQ），V2 不响应时自动降级 |
-| 电量 | 参数 `0C` 三字节左/右/盒，&0x7F = 百分比，bit7 = 充电，FF = 未知 |
+| RS Common 帧 | `FF 00 LEN BODY AA`（无 CS/SEQ），按型号固定使用，不从 V2 超时降级 |
+| 电量 | 参数 `0C` 三字节左/右/盒；V2 各槽低 7 位电量 / 高位充电，RS 盒槽按整字节读取；越界值显示未知 |
 | 降噪 | `09`：01=降噪 / 02=关 / 03=通透 / 04=风噪；按型号族固定选协议，不可探测 |
 | 来源 | IRDecoyFlare/roseselsa-RoseLink-Protocol、OPerepadia/rosebuds |
 
@@ -310,12 +318,16 @@ FF | VERB | 00 | LEN | VENDOR(2B 大端) | CMD(2B 大端) | PAYLOAD(LEN 字节)
 | 项 | 值 |
 | --- | --- |
 | 匹配词 | yuandao / orig / nicehck |
-| 传输层 | RFCOMM (SPP) `0000a100-1000-8000-4e48-434b4354524c`（失败降级 insecure） |
+| 传输层 | RFCOMM (SPP) `0000a100-1000-8000-4e48-434b4354524c`（失败尝试标准 SPP UUID） |
 | 握手 | 无，连上直接查 |
 | 帧 | `4E LEN_LO LEN_HI 00 OP_LO OP_HI PARAMS`，LEN = 3+params，u16 小端，无校验 |
-| 电量 | op `0x0005` 查询，响应 `[左][右][盒]`，0 = 未知 |
+| 电量 | op `0x0005` 查询，响应 `[左][右][盒]`；保留原始 0，不猜测掉线 |
 | 降噪 | `0x0101` 查询（0=关 / 1=通透 / 2=普通降噪 / 3=深度 / 0x10 试验 / 0x11 风噪）；`0x0201` 设置 `[M] 00`，无 ack |
 | 来源 | ZaeXT/NiceHCK_Controller、HELPMEEADICE/NiceHCK_Controller_Windows |
+
+### Sony / Technics
+
+两条新驱动的端点、命令、能力门禁、精确候选型号及报文证据统一记录在 [协议验证记录](docs/protocol-validation.md)。均使用独立会话、有界接收缓冲和后台串行写入，未增加后台周期扫描。
 
 ### 标准协议兜底
 
@@ -341,6 +353,9 @@ App 首次启动有确认弹窗，页面底部常驻免责声明。核心内容�
 协议知识全部来自社区公开逆向成果：
 
 * **[Zhaoyi-ya/TWS-Pods-PC](https://github.com/Zhaoyi-ya/TWS-Pods-PC)** — vivo 全套协议文档与真机抓包；华为 SPP 协议记录（上游为 HuaweiPods 项目，GPL-3.0）；小米 MMA 协议与认证算法复刻（36 组真值）
+* **[mos9527/SonyHeadphonesClient](https://github.com/mos9527/SonyHeadphonesClient)** — Sony MDR V1/V2 字段与公开报文；本项目独立实现 Java 子集。
+* **[ncr/omarchy-headphones](https://github.com/ncr/omarchy-headphones/blob/main/PROTOCOL.md)** — Redmi Buds 5 / 3 Pro、Sony WH-CH720N、Enco Air3 Pro 的实际通信记录。
+* **[creeperkafasi/redmi-buds-linux](https://github.com/creeperkafasi/redmi-buds-linux/blob/e8a9b48b7c15cd4a9dec2fc9d1779a7a1bafad6a/PROTOCOL.md)** — Redmi Buds 6 Play / 6 Lite 协议与认证验证。
 * **[silverpoetry/HyperEars](https://github.com/silverpoetry/HyperEars)** — vivo/iQOO 家族协议画像与机型线格式配置；漫步者 Bes 控制协议文档（实验性驱动依据）
 * **[Star-ZER0/Pods-Protocol-Reverse](https://github.com/Star-ZER0/Pods-Protocol-Reverse)** — vivo 公共协议画像
 * **[IRDecoyFlare/roseselsa-RoseLink-Protocol](https://github.com/IRDecoyFlare/roseselsa-RoseLink-Protocol)** — 弱水时砂 RoseLink 全系机型族协议逆向

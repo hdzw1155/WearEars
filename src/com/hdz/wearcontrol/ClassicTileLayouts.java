@@ -106,7 +106,7 @@ final class ClassicTileLayouts {
                                 .addContent(gapV(GAP_DP))
                                 .addContent(dial(ctx, s))
                                 .addContent(gapV(GAP_DP))
-                                .addContent(segmented(ctx, s))
+                                .addContent(s.hasCapability(TwsClient.CAP_NOISE) ? segmented(ctx, s) : gapV(0))
                                 .addContent(gapV(PILL_GAP_DP))
                                 .addContent(openPill(ctx.getString(R.string.tile_open)))
                                 .build())
@@ -264,8 +264,9 @@ final class ClassicTileLayouts {
     /** 复合仪表盘: 位图由 TileResources 在 onResourcesRequest 里生成, 这里只放图 */
     private static LayoutElementBuilders.Image dial(Context ctx, TileSnapshot s) {
         ModifiersBuilders.Modifiers modifiers = new ModifiersBuilders.Modifiers.Builder()
+                .setClickable(TileRenderSpec.refresh())
                 .setSemantics(new ModifiersBuilders.Semantics.Builder()
-                        .setContentDescription(dialDescription(ctx, s))
+                        .setContentDescription(dialDescription(ctx, s) + ", " + ctx.getString(R.string.tile_refresh_hint))
                         .build())
                 .build();
         return new LayoutElementBuilders.Image.Builder()

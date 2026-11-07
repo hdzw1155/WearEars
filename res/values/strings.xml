@@ -107,9 +107,8 @@
     <!-- 空间音频开关标题 -->
     <string name="spatial_title_short">空间音频</string>
     <string name="volume_switch_hint">在主界面显示音量条，开启后永久保留</string>
-    <!-- 至上风格: 刷新按钮文字 -->
-    <string name="suprem_refresh">刷新</string>
-    <string name="suprem_refresh_short">刷</string>
+
+
     <string name="label_left_short">左</string>
     <string name="label_right_short">右</string>
     <string name="label_case_short">盒</string>
@@ -120,7 +119,6 @@
     <string name="settings_style_new">极简</string>
     <string name="settings_style_liquid">液位</string>
     <string name="settings_style_classic">经典</string>
-    <string name="settings_style_suprem">至上</string>
     <string name="settings_language">语言</string>
     <string name="settings_lang_zh">中文</string>
     <string name="settings_lang_en">English</string>
@@ -128,4 +126,10 @@
     <string name="settings_style_follow">跟随界面</string>
     <string name="settings_hint">改完立即生效</string>
     <string name="cta_settings">设置</string>
+    <string name="settings_lang_system">跟随系统</string>
+    <string name="settings_device">控制的耳机</string>
+    <string name="settings_device_auto">自动选择</string>
+    <string name="settings_volume_show">显示音量条</string>
+    <string name="settings_volume_hide">隐藏音量条</string>
+    <string name="tile_refresh_hint">，点按刷新电量</string>
 </resources>

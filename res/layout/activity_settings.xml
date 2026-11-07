@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg"
+    android:background="@color/bg">
+
+<com.hdz.wearcontrol.AppScrollView android:id="@+id/settings_scroll"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
     android:fillViewport="true"
     android:scrollbars="none">
 
@@ -81,16 +85,6 @@
                     android:textColor="@color/text_dim"
                     android:textSize="11sp" />
 
-                <TextView
-                    android:id="@+id/style_suprem"
-                    android:layout_width="0dp"
-                    android:layout_height="34dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/bg_choice"
-                    android:gravity="center"
-                    android:text="@string/settings_style_suprem"
-                    android:textColor="@color/text_dim"
-                    android:textSize="11sp" />
             </LinearLayout>
         </LinearLayout>
 
@@ -150,6 +144,18 @@
                     android:textColor="@color/text_dim"
                     android:textSize="12sp" />
             </LinearLayout>
+            <TextView
+                android:id="@+id/tile_follow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="34dp"
+                android:layout_marginTop="8dp"
+                android:padding="6dp"
+                android:background="@drawable/bg_choice"
+                android:gravity="center"
+                android:text="@string/settings_style_follow"
+                android:textColor="@color/text_dim"
+                android:textSize="12sp" />
         </LinearLayout>
 
         <LinearLayout
@@ -196,6 +202,74 @@
                     android:textColor="@color/text_dim"
                     android:textSize="12sp" />
             </LinearLayout>
+            <TextView
+                android:id="@+id/lang_system"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="34dp"
+                android:layout_marginTop="8dp"
+                android:padding="6dp"
+                android:background="@drawable/bg_choice"
+                android:gravity="center"
+                android:text="@string/settings_lang_system"
+                android:textColor="@color/text_dim"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="12dp">
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_device"
+                android:textColor="@color/text_faint"
+                android:textSize="10sp" />
+
+            <TextView
+                android:id="@+id/device_choice"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="34dp"
+                android:layout_marginTop="8dp"
+                android:padding="6dp"
+                android:background="@drawable/bg_choice"
+                android:gravity="center"
+                android:text="@string/settings_device_auto"
+                android:textColor="@color/text_dim"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="12dp">
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/volume_title"
+                android:textColor="@color/text_faint"
+                android:textSize="10sp" />
+
+            <TextView
+                android:id="@+id/volume_choice"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="34dp"
+                android:layout_marginTop="8dp"
+                android:padding="6dp"
+                android:background="@drawable/bg_choice"
+                android:gravity="center"
+                android:text="@string/settings_volume_show"
+                android:textColor="@color/text_dim"
+                android:textSize="12sp" />
         </LinearLayout>
 
         <TextView
@@ -207,4 +281,10 @@
             android:textColor="@color/text_faint"
             android:textSize="10sp" />
     </LinearLayout>
-</ScrollView>
+</com.hdz.wearcontrol.AppScrollView>
+
+    <com.hdz.wearcontrol.ArcIndicatorView
+        android:id="@+id/settings_indicator"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+</FrameLayout>

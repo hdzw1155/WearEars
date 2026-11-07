@@ -25,7 +25,7 @@ import java.util.UUID;
  * 协议依据: HyperEars/docs/edifier-bes-protocol.md、mEDIFIER、BudsLink 三份开源实现 + 社区抓包.
  * V2 帧: AA | EC | CMD | LEN_H | LEN_L | PAYLOAD | CRC8 ; payload 默认 XOR 0xA5; CRC8=sum(前序线上字节)&FF
  * V1 帧: AA | LEN | CMD | DATA | CRC16_H | CRC16_L ; LEN=len(DATA)+1; CRC16=(0x2019+sum)&FFFF
- * 电量: 头戴/老型号 D0(单值), TWS F2(6 字节 [peer][左][右][盒][充电][?]).
+ * 电量: D0 单值；F2 只发布已证实的左右耳字段，盒与充电标志保持未知。
  * 降噪: CC 查询拿 [group][mode] → C1 设置; 每个 group 的 mode 含义不同, 不猜 group.
  * 传输: SPP(EDF00000-...) 优先, 失败走 BLE GATT(特征 48090001/48090002, 按 UUID 找, 不强绑服务).
  * 只发 D0/F2/CC/C1, 其余命令一律不发.
@@ -45,8 +45,9 @@ public class EdifierClient implements TwsClient {
     private static final int CMD_ANC_SET = 0xC1;
 
     private final Handler h = new Handler(Looper.getMainLooper());
+    private final ProtocolWriter writer = new ProtocolWriter();
     private final List<Listener> listeners = new ArrayList<Listener>();
-    private final List<byte[]> rx = new ArrayList<byte[]>();
+    private final EdifierProtocol.Decoder decoder = new EdifierProtocol.Decoder();
     private final Object frameLock = new Object();
     private int frameSeq;
 
@@ -54,12 +55,13 @@ public class EdifierClient implements TwsClient {
     private BluetoothDevice device;
     private volatile boolean closing;
     private volatile boolean connected;
-    private boolean v2 = true;          // false=V1 帧
-    private boolean xor = true;         // V2 payload 是否 XOR 0xA5
-    private int batteryCmd = -1;        // 0=D0 单值, 1=F2 三段
-    private int group = -1;
+    private volatile boolean v2 = true;          // false=V1 帧
+    private volatile boolean xor = true;         // V2 payload 是否 XOR 0xA5
+    private volatile int batteryCmd = -1;        // 0=D0 单值, 1=F2 三段
+    private volatile int group = -1;
+    private volatile boolean noiseConfirmed;
 
-    private BluetoothSocket sppSocket;
+    private volatile BluetoothSocket sppSocket;
     private volatile OutputStream sppOut;
     private volatile BluetoothGatt gatt;
     private volatile BluetoothGattCharacteristic writeChar;
@@ -72,11 +74,17 @@ public class EdifierClient implements TwsClient {
     }
 
     @Override public void connect(BluetoothDevice target) {
+        disconnect();
+        writer.start();
         device = target;
         closing = false;
         connected = false;
         v2 = true;
-        xor = true;
+        String name = target == null || target.getName() == null ? ""
+                : target.getName().toLowerCase(java.util.Locale.ROOT).replaceAll("[\\s_-]", "");
+        xor = !("edifierfitbudsturbo".equals(name) || "fitbudsturbo".equals(name));
+        noiseConfirmed = false;
+        decoder.reset();
         batteryCmd = -1;
         group = -1;
         batt[0] = -1;
@@ -88,6 +96,7 @@ public class EdifierClient implements TwsClient {
             @Override public void run() {
                 try {
                     if (!sppConnect()) {
+                        if (closing) return;
                         if (!bleConnect()) {
                             fail("连不上漫步者控制通道(SPP/BLE 都没应答)");
                             return;
@@ -97,6 +106,7 @@ public class EdifierClient implements TwsClient {
                         fail("漫步者耳机没回应控制帧(可能型号/固件不支持)");
                         return;
                     }
+                    if (closing) { closeAll(); return; }
                     connected = true;
                     h.post(new Runnable() {
                         @Override public void run() {
@@ -118,9 +128,12 @@ public class EdifierClient implements TwsClient {
     // ---- 传输: SPP ----
 
     private boolean sppConnect() {
+        if (closing) return false;
         try {
             sppSocket = device.createRfcommSocketToServiceRecord(SPP_UUID);
+            if (closing) { closeAll(); return false; }
             sppSocket.connect();
+            if (closing) { closeAll(); return false; }
             sppOut = sppSocket.getOutputStream();
             startSppReader(sppSocket.getInputStream());
             return true;
@@ -138,23 +151,25 @@ public class EdifierClient implements TwsClient {
     private Thread sppReader;
 
     private void startSppReader(final InputStream in) {
+        final BluetoothSocket source = sppSocket;
         sppReader = new Thread(new Runnable() {
             @Override public void run() {
                 byte[] buf = new byte[512];
                 try {
-                    while (!closing) {
+                    while (!closing && sppSocket == source) {
                         int n = in.read(buf);
+                        if (closing || sppSocket != source) break;
                         if (n <= 0) break;
                         feed(buf, n);
                     }
                 } catch (Throwable t) {
                     Log.d(TAG, "spp read end: " + t.getMessage());
                 }
-                if (!closing && connected) {
+                if (!closing && sppSocket == source && connected) {
                     connected = false;
                     h.post(new Runnable() {
                         @Override public void run() {
-                            fireDisconnected("耳机已断开");
+                            if (!closing && sppSocket == source) fireDisconnected("耳机已断开");
                         }
                     });
                 }
@@ -166,14 +181,18 @@ public class EdifierClient implements TwsClient {
     // ---- 传输: BLE GATT ----
 
     private boolean bleConnect() {
+        if (closing) return false;
         if (app == null) return false;
-        final boolean[] ok = {false};
+        final boolean[] ok = {false}, completed = {false};
         final Object lock = new Object();
         try {
             gatt = device.connectGatt(app, false, new BluetoothGattCallback() {
                 @Override public void onConnectionStateChange(BluetoothGatt g, int status, int newState) {
+                    if (closing) { g.close(); return; }
                     if (newState == BluetoothProfile.STATE_CONNECTED) {
                         g.discoverServices();
+                    } else if (newState == BluetoothProfile.STATE_DISCONNECTED && !connected) {
+                        finish(false);
                     } else if (newState == BluetoothProfile.STATE_DISCONNECTED && connected) {
                         connected = false;
                         h.post(new Runnable() {
@@ -185,27 +204,28 @@ public class EdifierClient implements TwsClient {
                 }
 
                 @Override public void onServicesDiscovered(BluetoothGatt g, int status) {
+                    if (closing) { g.close(); return; }
                     BluetoothGattCharacteristic nChar = findChar(g, BLE_NOTIFY);
                     writeChar = findChar(g, BLE_WRITE);
-                    if (nChar == null || writeChar == null) {
-                        synchronized (lock) {
-                            lock.notifyAll();
-                        }
-                        return;
+                    if (status != BluetoothGatt.GATT_SUCCESS || nChar == null || writeChar == null
+                            || !g.setCharacteristicNotification(nChar, true)) {
+                        finish(false); return;
                     }
-                    g.setCharacteristicNotification(nChar, true);
                     BluetoothGattDescriptor d = nChar.getDescriptor(CCCD);
-                    if (d != null) {
-                        d.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-                        g.writeDescriptor(d);
-                    }
-                    synchronized (lock) {
-                        ok[0] = true;
-                        lock.notifyAll();
-                    }
+                    if (d == null) { finish(false); return; }
+                    d.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+                    if (!g.writeDescriptor(d)) finish(false);
+                }
+
+                private void finish(boolean success) {
+                    synchronized (lock) { ok[0] = success; completed[0] = true; lock.notifyAll(); }
+                }
+                @Override public void onDescriptorWrite(BluetoothGatt g, BluetoothGattDescriptor descriptor, int status) {
+                    if (!closing && CCCD.equals(descriptor.getUuid())) finish(status == BluetoothGatt.GATT_SUCCESS);
                 }
 
                 @Override public void onCharacteristicChanged(BluetoothGatt g, BluetoothGattCharacteristic c) {
+                    if (closing) return;
                     byte[] v = c.getValue();
                     if (v != null) feed(v, v.length);
                 }
@@ -214,13 +234,18 @@ public class EdifierClient implements TwsClient {
             Log.d(TAG, "ble failed: " + t.getMessage());
             return false;
         }
+        if (closing) { closeAll(); return false; }
         if (gatt == null) return false;
         synchronized (lock) {
-            try {
-                lock.wait(5000);
-            } catch (InterruptedException ignored) {
+            long deadline = android.os.SystemClock.elapsedRealtime() + 5000L;
+            while (!completed[0] && !closing) {
+                long remaining = deadline - android.os.SystemClock.elapsedRealtime();
+                if (remaining <= 0) break;
+                try { lock.wait(Math.min(remaining, 250L)); }
+                catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
             }
         }
+        if (closing) { closeAll(); return false; }
         if (!ok[0]) {
             try {
                 if (gatt != null) gatt.close();
@@ -246,296 +271,110 @@ public class EdifierClient implements TwsClient {
     // ---- 探测: 定帧版本/加密/电量命令 ----
 
     private boolean probe() {
-        // 尝试序列: V2+xor D0 → V2+xor F2 → V2 明文 D0/F2 → V1 D0/F2
-        int[][] tries = {
-                {1, 0}, {1, 1},   // v2=1(是), cmd 0=D0 1=F2
-                {1, 0}, {1, 1},   // 明文重试, 由下面 xor 标志控制
-                {0, 0}, {0, 1},   // V1
-        };
-        boolean[] xorPlan = {true, true, false, false, true, true};
-        for (int i = 0; i < tries.length; i++) {
-            if (closing) return false;
-            v2 = tries[i][0] == 1;
-            xor = xorPlan[i];
-            int cmd = tries[i][1] == 0 ? CMD_BATT_D0 : CMD_BATT_F2;
-            sendFrame(cmd, new byte[0]);
-            if (waitFrame(1100)) {
-                if (batteryCmd < 0) batteryCmd = tries[i][1];
-                // 再问一次降噪拿 group(不阻塞成功判定)
-                sendAncQuery();
-                waitFrame(900);
-                return true;
-            }
-            // 如果耳机只读了一次唤醒: 同一配置重发一次再等
-            if (i == 0 || i == 1) {
-                sendFrame(cmd, new byte[0]);
-                if (waitFrame(900)) {
-                    if (batteryCmd < 0) batteryCmd = tries[i][1];
-                    sendAncQuery();
-                    waitFrame(900);
-                    return true;
-                }
-            }
+        // 三种只读方言；明确的明文型号优先明文，不能凭任意回包宣布探测成功。
+        boolean preferredXor = xor;
+        for (int dialect = 0; dialect < 3 && !closing; dialect++) {
+            v2 = dialect != 2;
+            xor = dialect == 0 ? preferredXor : !preferredXor;
+            int before;
+            synchronized (frameLock) { before = frameSeq; }
+            sendFrame(CMD_BATT_F2, new byte[0]);
+            sendFrame(CMD_BATT_D0, new byte[0]);
+            sendAncQuery();
+            if (waitFrame(before, 1500L)) return true;
         }
         return false;
     }
 
-    private boolean waitFrame(long ms) {
-        long deadline = System.currentTimeMillis() + ms;
+    private boolean waitFrame(int before, long timeout) {
+        long end = android.os.SystemClock.elapsedRealtime() + timeout;
         synchronized (frameLock) {
-            int start = frameSeq;
-            while (frameSeq == start) {
-                long left = deadline - System.currentTimeMillis();
-                if (left <= 0) return false;
-                try {
-                    frameLock.wait(left);
-                } catch (InterruptedException ignored) {
-                    return frameSeq != start;
-                }
+            while (!closing && frameSeq == before) {
+                long remaining = end - android.os.SystemClock.elapsedRealtime();
+                if (remaining <= 0) return false;
+                try { frameLock.wait(remaining); }
+                catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
             }
-            return true;
+            return !closing && frameSeq != before;
         }
     }
 
     // ---- 发送 ----
 
     private void sendFrame(int cmd, byte[] data) {
-        byte[] frame = v2 ? buildV2(cmd, data) : buildV1(cmd, data);
+        byte[] frame = EdifierProtocol.encode(cmd, data, v2, xor);
         sendRaw(frame);
     }
 
-    private byte[] buildV2(int cmd, byte[] data) {
-        int len = data.length;
-        byte[] f = new byte[6 + len + 1];
-        f[0] = (byte) 0xAA;
-        f[1] = (byte) 0xEC;
-        f[2] = (byte) cmd;
-        f[3] = (byte) ((len >> 8) & 0xFF);
-        f[4] = (byte) (len & 0xFF);
-        for (int i = 0; i < len; i++) {
-            f[5 + i] = (byte) (data[i] ^ (xor ? 0xA5 : 0));
-        }
-        int crc = 0;
-        for (int i = 0; i < 5 + len; i++) crc = (crc + (f[i] & 0xFF)) & 0xFF;
-        f[5 + len] = (byte) crc;
-        return f;
+
+
+    private void sendRaw(final byte[] frame) {
+        if (closing || frame == null || frame.length == 0) return;
+        final OutputStream stream = sppOut;
+        final BluetoothGatt ble = gatt;
+        final BluetoothGattCharacteristic characteristic = writeChar;
+        if (!writer.post(new Runnable() {
+            @Override public void run() {
+                if (!closing && stream == sppOut && ble == gatt)
+                    writeRaw(frame, stream, ble, characteristic);
+            }
+        }) && !closing) fireError("控制指令过多，请稍后重试");
     }
 
-    private byte[] buildV1(int cmd, byte[] data) {
-        int len = data.length + 1;
-        byte[] f = new byte[3 + len + 2];
-        f[0] = (byte) 0xAA;
-        f[1] = (byte) len;
-        f[2] = (byte) cmd;
-        for (int i = 0; i < data.length; i++) f[3 + i] = data[i];
-        int sum = 0x2019;
-        for (int i = 0; i < 3 + data.length; i++) sum += f[i] & 0xFF;
-        f[3 + data.length] = (byte) ((sum >> 8) & 0xFF);
-        f[3 + data.length + 1] = (byte) (sum & 0xFF);
-        return f;
-    }
-
-    private synchronized void sendRaw(byte[] frame) {
-        if (frame == null || frame.length == 0) return;
+    private void writeRaw(byte[] frame, OutputStream stream, BluetoothGatt ble,
+            BluetoothGattCharacteristic characteristic) {
+        if (closing || frame == null || frame.length == 0) return;
         try {
-            if (sppOut != null) {
-                sppOut.write(frame);
-                sppOut.flush();
-            } else if (gatt != null && writeChar != null) {
+            if (stream != null) {
+                stream.write(frame);
+                stream.flush();
+            } else if (ble != null && characteristic != null) {
                 // BLE 按 20 字节分片, 片间留 30ms
-                for (int off = 0; off < frame.length; off += 20) {
+                for (int off = 0; off < frame.length && !closing && ble == gatt
+                        && !Thread.currentThread().isInterrupted(); off += 20) {
                     int n = Math.min(20, frame.length - off);
                     byte[] chunk = Arrays.copyOfRange(frame, off, off + n);
-                    writeChar.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
-                    writeChar.setValue(chunk);
-                    gatt.writeCharacteristic(writeChar);
+                    characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
+                    characteristic.setValue(chunk);
+                    if (!ble.writeCharacteristic(characteristic)) throw new IllegalStateException("BLE busy");
                     sleep(30);
                 }
             }
         } catch (Throwable t) {
-            fail("发送失败: " + t.getMessage());
+            if (!closing && stream == sppOut && ble == gatt) fail("发送失败: " + t.getMessage());
         }
     }
 
     // ---- 接收 ----
 
     private void feed(byte[] data, int len) {
-        synchronized (rx) {
-            rx.add(Arrays.copyOfRange(data, 0, len));
-        }
-        parse();
-    }
-
-    private void parse() {
-        byte[] buf;
-        synchronized (rx) {
-            if (rx.isEmpty()) return;
-            int total = 0;
-            for (byte[] b : rx) total += b.length;
-            // 契约: 别让无帧头的垃圾无限堆积(慢速内存泄漏)
-            if (total > 1024) {
-                rx.clear();
-                Log.w(TAG, "rx overflow, pending buffer dropped");
-                return;
+        if (closing) return;
+        for (EdifierProtocol.Frame frame : decoder.feed(data, len)) {
+            if (frame.v2 != v2) continue;
+            byte[] payload = frame.payload(xor);
+            boolean recognized = false;
+            int[] battery = EdifierProtocol.battery(frame.command, payload);
+            if (battery != null) {
+                // F2 优先；稍后到达的 D0 聚合电量不能把 TWS 切成单电池。
+                if (frame.command == CMD_BATT_F2 || batteryCmd != 1) {
+                    batteryCmd = frame.command == CMD_BATT_F2 ? 1 : 0;
+                    deliverBattery(battery[0], battery[1], battery[2], battery[3]);
+                }
+                recognized = true;
+            } else if (frame.command == CMD_ANC_QUERY && (v2 ? payload.length >= 2 && payload.length <= 3 : payload.length >= 1 && payload.length <= 2)) {
+                int returnedGroup = v2 ? payload[0] & 255 : 0;
+                int value = payload[v2 ? 1 : 0] & 255;
+                int mode = EdifierProtocol.mode(returnedGroup, value);
+                boolean wind = returnedGroup == 0x10 && value == 3 || returnedGroup == 0x1B && value == 4;
+                if (mode >= 0 || wind) {
+                    group = returnedGroup; noiseConfirmed = true; recognized = true;
+                    deliverMode(mode);
+                }
             }
-            buf = new byte[total];
-            int p = 0;
-            for (byte[] b : rx) {
-                System.arraycopy(b, 0, buf, p, b.length);
-                p += b.length;
+            if (recognized) synchronized (frameLock) {
+                frameSeq++; frameLock.notifyAll();
             }
-            rx.clear();
-        }
-        int i = 0;
-        while (i < buf.length) {
-            int hdr = buf[i] & 0xFF;
-            if (hdr != 0xAA && hdr != 0xBB && hdr != 0xCC) {
-                i++;
-                continue;
-            }
-            if (i + 1 < buf.length && (buf[i + 1] & 0xFF) == 0xEC) {
-                // V2
-                if (i + 5 > buf.length) break;
-                int len = ((buf[i + 3] & 0xFF) << 8) | (buf[i + 4] & 0xFF);
-                // 二次校验: 长度不合理就不是帧头(0xCC 既是老固件响应头又是降噪命令号, 易出假帧)
-                if (len > 512) {
-                    i++;
-                    continue;
-                }
-                int total = 6 + len;
-                if (i + total > buf.length) break;
-                int crc = 0;
-                for (int k = i; k < i + total - 1; k++) crc = (crc + (buf[k] & 0xFF)) & 0xFF;
-                if ((buf[i + total - 1] & 0xFF) != crc) {
-                    i++;
-                    continue;
-                }
-                byte[] payload = new byte[len];
-                for (int k = 0; k < len; k++) {
-                    payload[k] = (byte) ((buf[i + 5 + k] & 0xFF) ^ (xor ? 0xA5 : 0));
-                }
-                onFrame(buf[i + 2] & 0xFF, payload);
-                i += total;
-            } else {
-                // V1
-                if (i + 2 > buf.length) break;
-                int len = buf[i + 1] & 0xFF;
-                // 二次校验: V1 帧的 LEN = len(DATA)+1, 本项目只收发很小的控制帧
-                if (len < 1 || len > 64) {
-                    i++;
-                    continue;
-                }
-                int total = 4 + len;
-                if (i + total > buf.length) break;
-                int sum = 0x2019;
-                for (int k = i; k < i + 4 + len - 2; k++) sum += buf[k] & 0xFF;
-                int crc = ((buf[i + total - 2] & 0xFF) << 8) | (buf[i + total - 1] & 0xFF);
-                if ((sum & 0xFFFF) != crc) {
-                    i++;
-                    continue;
-                }
-                byte[] payload = new byte[Math.max(0, len - 1)];
-                for (int k = 0; k < payload.length; k++) payload[k] = buf[i + 3 + k];
-                onFrame(buf[i + 2] & 0xFF, payload);
-                i += total;
-            }
-        }
-        synchronized (rx) {
-            if (i < buf.length) rx.add(Arrays.copyOfRange(buf, i, buf.length));
-        }
-    }
-
-    private void onFrame(int cmd, byte[] payload) {
-        synchronized (frameLock) {
-            frameSeq++;
-            frameLock.notifyAll();
-        }
-        try {
-            if (cmd == CMD_BATT_D0 && payload.length >= 1) {
-                int v = payload[0] & 0x7F;
-                if (v >= 1 && v <= 100) {
-                    batteryCmd = 0;
-                    deliverBattery(v, 0xFF, 0xFF, 0);
-                }
-            } else if (cmd == CMD_BATT_F2 && payload.length >= 5) {
-                int l = payload[1] & 0xFF;
-                int r = payload[2] & 0xFF;
-                int c = payload[3] & 0xFF;
-                batteryCmd = 1;
-                deliverBattery(l, r, c, 0);
-            } else if (cmd == CMD_ANC_QUERY && payload.length >= 2) {
-                if (v2) {
-                    group = payload[0] & 0xFF;
-                    deliverMode(mapMode(group, payload[1] & 0xFF));
-                } else {
-                    deliverMode(mapV1Mode(payload[0] & 0xFF));
-                }
-            } else {
-                // 契约 6.6.3: 未知帧全量打 hex, 这是协议分析的 ground truth
-                Log.d(TAG, "rx unknown cmd=0x" + Integer.toHexString(cmd) + " payload=" + hex(payload));
-            }
-        } catch (Throwable t) {
-            Log.w(TAG, "parse frame failed", t);
-        }
-    }
-
-    /** V2 每个 group 的 mode 含义不同, 必须按 group 查表(见协议文档) */
-    private static int mapMode(int group, int mode) {
-        switch (group) {
-            case 0x10: // W860NB PRO: 1/2 降噪, 3 防风, 4 环境声, 5 关
-                if (mode == 1 || mode == 2) return MODE_ANC;
-                if (mode == 4) return MODE_TRANS;
-                if (mode == 5) return MODE_OFF;
-                return -1;
-            case 0x1B: // Evo Pro / FitBuds Turbo: 1/2/3 降噪, 4 防风, 5 环境声, 6 关
-                if (mode >= 1 && mode <= 3) return MODE_ANC;
-                if (mode == 5) return MODE_TRANS;
-                if (mode == 6) return MODE_OFF;
-                return -1;
-            case 0x17: // X5 Pro: 1 降噪, 2 环境声, 3 关
-                if (mode == 1) return MODE_ANC;
-                if (mode == 2) return MODE_TRANS;
-                if (mode == 3) return MODE_OFF;
-                return -1;
-            default:
-                return -1;
-        }
-    }
-
-    /** V1(W820NB 等): 1 关 / 2 降噪 / 3 环境声 */
-    private static int mapV1Mode(int mode) {
-        if (mode == 1) return MODE_OFF;
-        if (mode == 2) return MODE_ANC;
-        if (mode == 3) return MODE_TRANS;
-        return -1;
-    }
-
-    private int[] deviceModeFor(int mode) {
-        // 返回 {group, mode} 或 {mode} (V1), 未知 group 返回 null
-        if (!v2) {
-            if (mode == MODE_ANC) return new int[]{2};
-            if (mode == MODE_OFF) return new int[]{1};
-            if (mode == MODE_TRANS) return new int[]{3};
-            return null;
-        }
-        switch (group) {
-            case 0x10:
-                if (mode == MODE_ANC) return new int[]{0x10, 1};
-                if (mode == MODE_OFF) return new int[]{0x10, 5};
-                if (mode == MODE_TRANS) return new int[]{0x10, 4};
-                return null;
-            case 0x1B:
-                if (mode == MODE_ANC) return new int[]{0x1B, 1};
-                if (mode == MODE_OFF) return new int[]{0x1B, 6};
-                if (mode == MODE_TRANS) return new int[]{0x1B, 5};
-                return null;
-            case 0x17:
-                if (mode == MODE_ANC) return new int[]{0x17, 1};
-                if (mode == MODE_OFF) return new int[]{0x17, 3};
-                if (mode == MODE_TRANS) return new int[]{0x17, 2};
-                return null;
-            default:
-                return null;
+            else Log.d(TAG, "rx unsupported cmd=" + Integer.toHexString(frame.command) + " payload=" + hex(payload));
         }
     }
 
@@ -544,6 +383,7 @@ public class EdifierClient implements TwsClient {
     }
 
     private void deliverBattery(int l, int r, int c, int flags) {
+        if (closing) return;
         batt[0] = l;
         batt[1] = r;
         batt[2] = c;
@@ -557,7 +397,7 @@ public class EdifierClient implements TwsClient {
     }
 
     private void deliverMode(int mode) {
-        if (mode < 0) return;
+        if (closing) return;
         for (Listener li : snapshot()) {
             try {
                 li.onNoiseMode(mode);
@@ -569,10 +409,12 @@ public class EdifierClient implements TwsClient {
     // ---- 生命周期/工具 ----
 
     private void fail(final String msg) {
+        if (closing) return;
         Log.d(TAG, msg);
         final boolean wasConnected = connected;
         Runnable r = new Runnable() {
             @Override public void run() {
+                if (closing) return;
                 if (!wasConnected) fireError(msg);
                 else fireDisconnected(msg);
                 closeAll();
@@ -622,7 +464,11 @@ public class EdifierClient implements TwsClient {
 
     @Override public void disconnect() {
         closing = true;
+        writer.stop();
+        h.removeCallbacksAndMessages(null);
+        synchronized (frameLock) { frameLock.notifyAll(); }
         closeAll();
+        decoder.reset();
     }
 
     @Override public boolean isConnected() {
@@ -649,6 +495,7 @@ public class EdifierClient implements TwsClient {
     }
 
     private void fireConnected(final String name) {
+        if (closing) return;
         for (Listener l : snapshot()) {
             try {
                 l.onConnected(name);
@@ -658,6 +505,7 @@ public class EdifierClient implements TwsClient {
     }
 
     private void fireDisconnected(final String reason) {
+        if (closing) return;
         for (Listener l : snapshot()) {
             try {
                 l.onDisconnected(reason);
@@ -667,6 +515,7 @@ public class EdifierClient implements TwsClient {
     }
 
     private void fireError(final String msg) {
+        if (closing) return;
         for (Listener l : snapshot()) {
             try {
                 l.onError(msg);
@@ -677,8 +526,8 @@ public class EdifierClient implements TwsClient {
 
     @Override public void queryBattery() {
         if (!connected) return;
-        if (batteryCmd == 1) sendFrame(CMD_BATT_F2, new byte[0]);
-        else sendFrame(CMD_BATT_D0, new byte[0]);
+        if (batteryCmd != 0) sendFrame(CMD_BATT_F2, new byte[0]);
+        if (batteryCmd != 1) sendFrame(CMD_BATT_D0, new byte[0]);
     }
 
     @Override public void queryNoise() {
@@ -687,13 +536,9 @@ public class EdifierClient implements TwsClient {
 
     @Override public void setNoiseMode(int mode) {
         if (!connected) return;
-        int[] dm = deviceModeFor(mode);
-        if (dm == null) return;
-        if (v2 && dm.length == 2) {
-            sendFrame(CMD_ANC_SET, new byte[]{(byte) dm[0], (byte) dm[1]});
-        } else {
-            sendFrame(CMD_ANC_SET, new byte[]{(byte) dm[0]});
-        }
+        byte[] target = noiseConfirmed ? EdifierProtocol.modeCommand(v2, group, mode) : null;
+        if (target == null) { fireError("该耳机尚未确认降噪控制协议"); return; }
+        sendFrame(CMD_ANC_SET, target);
         h.postDelayed(new Runnable() {
             @Override public void run() {
                 if (connected) sendAncQuery();
@@ -715,8 +560,7 @@ public class EdifierClient implements TwsClient {
 
     @Override public int caps() {
         // 头戴型号只有 D0 单值电量; TWS 是 F2 三段
-        if (batteryCmd == 0) return CAP_BATTERY_SINGLE | CAP_NOISE;
-        return CAP_BATTERY | CAP_NOISE;
+        return (batteryCmd == 0 ? CAP_BATTERY_SINGLE : CAP_BATTERY) | (noiseConfirmed ? CAP_NOISE : 0);
     }
 
     @Override public int verifLevel() {

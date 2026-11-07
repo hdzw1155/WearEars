@@ -53,7 +53,9 @@ public class StandardClient implements TwsClient {
     private BluetoothDevice device;
     private String address;
     private String deviceName;
-    private boolean connected;
+    private volatile boolean connected;
+    private volatile boolean closing = true;
+    private volatile int session;
     private boolean receiverOn;
     private boolean triedHeadsetProfile;
     private boolean linkCheckRunning;
@@ -62,11 +64,11 @@ public class StandardClient implements TwsClient {
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override public void onReceive(Context ctx, Intent intent) {
             String action = intent.getAction();
-            if (action == null) return;
+            if (closing || action == null) return;
             BluetoothDevice d = (BluetoothDevice)
                     intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
             String addr = d != null ? d.getAddress() : null;
-            if (address != null && addr != null && !address.equals(addr)) return;
+            if (address == null || !address.equals(addr)) return;
 
             if (BluetoothDevice.ACTION_ACL_CONNECTED.equals(action)) {
                 if (!connected) {
@@ -95,6 +97,8 @@ public class StandardClient implements TwsClient {
 
     @Override
     public void connect(BluetoothDevice target) {
+        closing = false;
+        ++session;
         device = target;
         if (target != null) {
             address = target.getAddress();
@@ -123,6 +127,7 @@ public class StandardClient implements TwsClient {
 
     /** 问系统: 目标耳机现在连着没有? 先用 A2DP, 再看 HFP(有些耳机只连了通话通道) */
     private void checkCurrentLink() {
+        if (closing) return;
         if (app == null || device == null) {
             fireError("缺少上下文");
             return;
@@ -139,6 +144,9 @@ public class StandardClient implements TwsClient {
     }
 
     private void askProfile(int profileId) {
+        if (closing) return;
+        final int request = session;
+        final BluetoothAdapter source = adapter;
         if (adapter == null) {
             onLinkCheckResult(false);
             return;
@@ -147,6 +155,7 @@ public class StandardClient implements TwsClient {
             @Override public void onServiceConnected(int profile, BluetoothProfile proxy) {
                 boolean found = false;
                 try {
+                    if (closing || request != session) return;
                     List<BluetoothDevice> connectedDevices = proxy.getConnectedDevices();
                     if (connectedDevices != null) {
                         for (BluetoothDevice d : connectedDevices) {
@@ -160,15 +169,15 @@ public class StandardClient implements TwsClient {
                     // 没权限/代理异常都当"没连上"处理
                 } finally {
                     try {
-                        adapter.closeProfileProxy(profile, proxy);
+                        source.closeProfileProxy(profile, proxy);
                     } catch (Throwable ignored) {
                     }
                 }
-                onLinkCheckResult(found);
+                if (!closing && request == session) onLinkCheckResult(found);
             }
 
             @Override public void onServiceDisconnected(int profile) {
-                onLinkCheckResult(false);
+                if (!closing && request == session) onLinkCheckResult(false);
             }
         };
         try {
@@ -179,6 +188,7 @@ public class StandardClient implements TwsClient {
     }
 
     private void onLinkCheckResult(boolean found) {
+        if (closing) return;
         if (found) {
             linkUp();
             return;
@@ -196,7 +206,7 @@ public class StandardClient implements TwsClient {
 
     private void linkUp() {
         linkCheckRunning = false;
-        if (connected) return;
+        if (closing || connected) return;
         connected = true;
         fireConnected(deviceName != null ? deviceName : "耳机");
         readInitialBattery();
@@ -224,7 +234,7 @@ public class StandardClient implements TwsClient {
     }
 
     private void deliverBattery(int value) {
-        if (value < 0 || value > 100) return;
+        if (closing || value < 0 || value > 100) return;
         lastBattery = value;
         Listener[] arr = snapshot();
         for (Listener l : arr) {
@@ -237,6 +247,8 @@ public class StandardClient implements TwsClient {
 
     @Override
     public void disconnect() {
+        closing = true;
+        ++session;
         if (receiverOn && app != null) {
             try {
                 app.unregisterReceiver(receiver);

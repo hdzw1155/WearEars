@@ -42,6 +42,8 @@ final class TileSnapshot {
     final int chargeFlags;
     /** 降噪档位 TwsClient.MODE_*, 未知为 {@link #UNKNOWN} */
     final int mode;
+    final int confirmedMode;
+    final int pendingMode;
     /** 驱动能力位 TwsClient.CAP_*, 0 = 还没连过 */
     final int caps;
     /** 驱动的验证等级 TwsClient.VERIF_REAL / VERIF_UNTESTED */
@@ -49,6 +51,11 @@ final class TileSnapshot {
 
     TileSnapshot(String name, long lastOk, int battL, int battR, int battC, int battTotal,
                  int chargeFlags, int mode, int caps, int verifLevel) {
+        this(name, lastOk, battL, battR, battC, battTotal, chargeFlags, mode, caps, verifLevel, -1, 0L);
+    }
+
+    TileSnapshot(String name, long lastOk, int battL, int battR, int battC, int battTotal,
+                 int chargeFlags, int confirmed, int caps, int verifLevel, int pending, long until) {
         this.name = name != null ? name : "";
         this.lastOk = lastOk;
         this.battL = saneBattery(battL);
@@ -56,8 +63,10 @@ final class TileSnapshot {
         this.battC = saneBattery(battC);
         this.battTotal = saneBattery(battTotal);
         this.chargeFlags = saneChargeFlags(chargeFlags);
-        this.mode = (mode >= TwsClient.MODE_ANC && mode <= TwsClient.MODE_TRANS)
-                ? mode : UNKNOWN;
+        this.confirmedMode = confirmed >= 0 && confirmed <= 2 ? confirmed : UNKNOWN;
+        long remaining = until - System.currentTimeMillis();
+        this.pendingMode = pending >= 0 && pending <= 2 && remaining > 0 && remaining <= 12000L ? pending : UNKNOWN;
+        this.mode = pendingMode >= 0 ? pendingMode : confirmedMode;
         this.caps = caps & CAPS_MASK;
         this.verifLevel = verifLevel;
     }
@@ -106,7 +115,7 @@ final class TileSnapshot {
      * 由 {@link TileResources#version} 统一拼, 这里只保留电量部分。
      */
     String batteryVersion() {
-        if (isSingleBattery() || batteryKnown(battTotal)) {
+        if (isSingleBattery()) {
             return "t" + battTotal;
         }
         return battL + "_" + battR + "_" + battC;

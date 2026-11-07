@@ -877,13 +877,6 @@
         </LinearLayout>
     </com.hdz.wearcontrol.AppScrollView>
 
-    <!-- 至上风格: 单屏静态构成, 不滚动; 只在 STYLE_SUPREM 时显示 -->
-    <com.hdz.wearcontrol.SupremView
-        android:id="@+id/suprem_view"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:contentDescription="@string/settings_style_suprem"
-        android:visibility="gone" />
 
     <!-- fixed scroll indicator: pinned to the right edge of the round screen -->
     <com.hdz.wearcontrol.ArcIndicatorView

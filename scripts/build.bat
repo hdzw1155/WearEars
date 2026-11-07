@@ -10,7 +10,7 @@ rem  NOTE: keep this file ASCII-only. A UTF-8 bat with Chinese text
 rem        plus `chcp 65001` makes cmd misparse lines intermittently.
 rem ============================================================
 setlocal
-cd /d "%~dp0.."
+cd /d "%~dp0.." || exit /b 1
 
 set JDK_DIR=
 for /d %%d in ("%USERPROFILE%\android-tools\jdk-*") do set JDK_DIR=%%d
@@ -52,7 +52,7 @@ echo [2/6] aapt2 link...
 "%BT%\aapt2.exe" link -o build\app.unsigned.apk -I "%PLAT%" ^
   --manifest AndroidManifest.xml --java build\gen ^
   --min-sdk-version 30 --target-sdk-version 34 ^
-  --version-code 12 --version-name 0.3.5 ^
+  --version-code 13 --version-name 0.4.0 ^
   --auto-add-overlay build\res.zip || exit /b 1
 
 echo [3/6] javac...

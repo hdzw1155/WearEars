@@ -1,6 +1,7 @@
 package com.hdz.wearcontrol;
 
 import android.content.Context;
+import android.media.AudioAttributes;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -10,7 +11,6 @@ import android.os.Vibrator;
 import android.os.VibratorManager;
 import android.provider.Settings;
 import android.util.AttributeSet;
-import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
@@ -30,34 +30,21 @@ import android.widget.ScrollView;
  * <p>震感分级(对齐三星原厂旋转表圈的手感):
  * <ul>
  *   <li>旋转过程中: 每滚过一小段就打一下很短很轻的 tick, 形成绵密颗粒感, 转得越快 tick 越密;</li>
- *   <li>旋转停下: 一段旋转结束后补一下稍重的"落定"反馈, 和过程中的 tick 明显不同;</li>
- *   <li>已到顶/触底还在往同方向转: 页面被继续往外拉一点(橡皮筋拉伸), 同时打一下更重的
- *       双击"挡墙"反馈, 并用锁限制只打一次, 反向离开边界后才重新上锁。
+ *   <li>到顶/触底: 页面被继续往外拉一点(橡皮筋拉伸), 同时打一下更重的
+ *       "挡墙"反馈, 并用锁限制只打一次, 反向离开边界后才重新上锁。
  *       顶部和底部两个方向都生效。</li>
  * </ul>
  *
- * <p>tick 用 Vibrator 直接播放短脉冲(可控时长/强度), 而不是走 View.performHapticFeedback:
- * 后者在三星表上会把 ROTARY_SCROLL_TICK 映射成 110ms 的整段马达, 密起来会糊成一片、分不出颗粒。
- * 如果拿不到 Vibrator 或系统关掉了触感反馈, 再退回 performHapticFeedback 的三星常量 18/20。
+ * <p>仅表圈产生触感：优先低频 LOW_TICK，回退为低振幅短包络；边界才使用强冲击。
+ * 手指拖动、甩动和停手都不补震，强震期间不插入微震，遵循系统触感开关。
  */
 public class AppScrollView extends ScrollView {
 
     /** 旋转输入里 1 个原始单位(一格)对应的滚动距离(dp) */
     private static final float DP_PER_UNIT = 22f;
 
-    /** 三星 ROTARY_SCROLL_TICK / ROTARY_SCROLL_LIMIT 的数值(API34 android.jar 无此常量, 只能裸传) */
-    private static final int HAPTIC_ROTARY_TICK = 18;
-    private static final int HAPTIC_ROTARY_LIMIT = 20;
-
     /** 每滚过多少 dp 补一下过程 tick */
-    private static final float TICK_DIST_DP = 12f;
-    /** 单次旋转事件最多补几下, 防止高速时马达排队 */
-    private static final int MAX_TICKS_PER_EVENT = 2;
-
-    /** 旋转停下多久算"一段转完" */
-    private static final long SETTLE_DELAY_MS = 220L;
-    /** 一段旋转至少滚过这么多格才补"落定"震感, 单点一下不补 */
-    private static final float SETTLE_MIN_UNITS = 1.2f;
+    private static final float TICK_DIST_DP = 8f;
 
     // ---- 超限拉伸(橡皮筋)参数 ----
     /** 超限时页面最多被拉出多少 dp */
@@ -79,23 +66,19 @@ public class AppScrollView extends ScrollView {
     /** 输入停手多久后开始惯性滑行 */
     private static final long INPUT_HOLD_MS = 55L;
 
-    // ---- 短脉冲参数(直接用 Vibrator 播) ----
-    /** 过程 tick: 短、轻 */
-    private static final int TICK_MS = 8;
-    private static final int TICK_AMP = 150;
-    /** 落定: 比 tick 稍长稍重 */
-    private static final int SETTLE_MS = 16;
-    private static final int SETTLE_AMP = 205;
-    /** 边界挡墙: 两下重的连着来, 和过程 tick 明显不一样 */
-    private static final long[] LIMIT_TIMINGS = {0L, 14L, 30L, 26L};
-    private static final int[] LIMIT_AMPS = {0, 255, 0, 225};
-
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final float unitPx;
-    private final float tickDistPx;
+    private final ScrollFeedback feedback;
     private final float maxOverscrollPx;
 
     private Vibrator vibrator;
+    private VibrationEffect softTick, wallImpact;
+    private final AudioAttributes hapticAttributes = new AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build();
+    private long settingsCheckedAt = -1000L;
+    private boolean hapticsEnabled = true;
+    private Runnable edgeEffect;
 
     /** 目标滚动位置(px); 帧循环把它平滑逼近当前 scrollY */
     private float targetPx;
@@ -107,13 +90,7 @@ public class AppScrollView extends ScrollView {
     /** 最近一次超限输入的时间(旋转或手指拖动共用), 用来判断松手回弹 */
     private long lastOverscrollAt;
 
-    /** 过程 tick 的累计滚动距离(px) */
-    private float hapticAccum;
-    /** 当前这段旋转累计滚过的距离(px), 给落定震感用 */
-    private float burstDistPx;
-    private boolean edgeLatched;
-    private long lastRotaryAt;
-    private boolean rotaryMoved;
+    private boolean active = true;
 
     /** true = 当前 scrollY 由旋转输入驱动; 手指拖动时不接管 scrollY */
     private boolean rotaryDriving;
@@ -176,24 +153,6 @@ public class AppScrollView extends ScrollView {
         }
     };
 
-    private final Runnable settleRunnable = new Runnable() {
-        @Override
-        public void run() {
-            if (SystemClock.uptimeMillis() - lastRotaryAt < SETTLE_DELAY_MS) {
-                ui.postDelayed(this, 60L);
-                return;
-            }
-            if (!rotaryMoved) {
-                return;
-            }
-            rotaryMoved = false;
-            if (!edgeLatched && burstDistPx >= SETTLE_MIN_UNITS * unitPx) {
-                hapticSettle();
-            }
-            burstDistPx = 0f;
-        }
-    };
-
     public AppScrollView(Context context) {
         this(context, null);
     }
@@ -202,12 +161,13 @@ public class AppScrollView extends ScrollView {
         super(context, attrs);
         float density = getResources().getDisplayMetrics().density;
         unitPx = DP_PER_UNIT * density;
-        tickDistPx = TICK_DIST_DP * density;
+        feedback = new ScrollFeedback(TICK_DIST_DP * density);
         maxOverscrollPx = MAX_OVERSCROLL_DP * density;
         setOverScrollMode(View.OVER_SCROLL_NEVER);
         setVerticalScrollBarEnabled(false);
         setHorizontalScrollBarEnabled(false);
         initVibrator();
+        initEffects();
         setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
@@ -235,6 +195,33 @@ public class AppScrollView extends ScrollView {
     }
 
     // ---------------- 旋转表冠 / 触摸表圈 ----------------
+
+    private void initEffects() {
+        if (vibrator == null) return;
+        boolean amplitude = false;
+        try { amplitude = vibrator.hasAmplitudeControl(); } catch (RuntimeException ignored) { }
+        softTick = amplitude
+                ? VibrationEffect.createWaveform(new long[]{0L, 2L, 4L, 3L}, new int[]{0, 30, 68, 24}, -1)
+                : VibrationEffect.createOneShot(5L, VibrationEffect.DEFAULT_AMPLITUDE);
+        wallImpact = amplitude
+                ? VibrationEffect.createWaveform(new long[]{0L, 4L, 12L, 5L}, new int[]{0, 140, 245, 90}, -1)
+                : VibrationEffect.createOneShot(21L, VibrationEffect.DEFAULT_AMPLITUDE);
+        if (Build.VERSION.SDK_INT >= 31) {
+            try {
+                int low = VibrationEffect.Composition.PRIMITIVE_LOW_TICK;
+                int thud = VibrationEffect.Composition.PRIMITIVE_THUD;
+                boolean[] supported = vibrator.arePrimitivesSupported(low, thud);
+                int[] duration = vibrator.getPrimitiveDurations(low, thud);
+                // 只采用能在下一个颗粒前完成的短效果，避免长马达被密集事件反复截断。
+                if (supported[0] && duration[0] > 0 && duration[0] <= 20)
+                    softTick = VibrationEffect.startComposition().addPrimitive(low, 0.30f).compose();
+                if (supported[1] && duration[1] > 0 && duration[1] <= 70)
+                    wallImpact = VibrationEffect.startComposition().addPrimitive(thud, 0.90f).compose();
+            } catch (RuntimeException ignored) { }
+        }
+    }
+
+    void setEdgeEffect(Runnable effect) { edgeEffect = effect; }
 
     @Override
     public boolean onGenericMotionEvent(MotionEvent e) {
@@ -297,13 +284,15 @@ public class AppScrollView extends ScrollView {
 
     /** @param units 为正=内容向上滚(看下面), 负=内容向下滚 */
     private void onRotary(float units) {
-        if (Math.abs(units) < 0.001f) {
+        if (!active || Math.abs(units) < 0.001f) {
             return;
         }
         int max = getMaxScroll();
         if (max <= 0) {
             return; // 内容不够一屏, 不响应, 免得看着像 bug
         }
+
+        if (!rotaryDriving) feedback.beginGesture();
 
         // 单次事件最多认 4 格, 高速转动时事件会合并成大 delta
         float capped = Math.max(-4f, Math.min(4f, units));
@@ -347,37 +336,21 @@ public class AppScrollView extends ScrollView {
             ui.post(chaseFrame);
         }
 
-        lastRotaryAt = SystemClock.uptimeMillis();
-        rotaryMoved = true;
-        ui.removeCallbacks(settleRunnable);
-        ui.postDelayed(settleRunnable, SETTLE_DELAY_MS);
-
         if (hitEdge) {
-            // 边界: 只打一下挡墙, 锁住, 反向离开边界才重新上锁
-            if (!edgeLatched) {
-                edgeLatched = true;
-                hapticLimit();
-            }
-            burstDistPx = 0f;
+            // 已在端点时立刻反馈；尚未到达则由 onScrollChanged 在实际抵达时反馈。
+            if (getScrollY() <= 0 && rawTarget <= 0f)
+                playFeedback(feedback.limit(-1, lastInputAt));
+            else if (getScrollY() >= max && rawTarget >= max)
+                playFeedback(feedback.limit(1, lastInputAt));
             return;
         }
+    }
 
-        edgeLatched = false;
-        float movedPx = Math.abs(capped) * unitPx;
-        burstDistPx += movedPx;
-
-        // 过程震感: 每滚过 TICK_DIST_DP 补一下短脉冲 → 绵密颗粒感
-        hapticAccum += movedPx;
-        int ticks = 0;
-        while (hapticAccum >= tickDistPx && ticks < MAX_TICKS_PER_EVENT) {
-            hapticAccum -= tickDistPx;
-            ticks++;
-        }
-        if (hapticAccum > tickDistPx * 3f) {
-            hapticAccum = 0f; // 高速时丢掉积压, 不要在马达里排队
-        }
-        for (int i = 0; i < ticks; i++) {
-            hapticTick();
+    @Override protected void onScrollChanged(int x, int y, int oldX, int oldY) {
+        super.onScrollChanged(x, y, oldX, oldY);
+        if (feedback == null || !active || !hasWindowFocus()) return;
+        if (rotaryDriving && !touchTracking) {
+            playFeedback(feedback.scrolled(y, oldY, getMaxScroll(), SystemClock.uptimeMillis()));
         }
     }
 
@@ -423,16 +396,15 @@ public class AppScrollView extends ScrollView {
      * 橡皮筋拉伸要在这里单独接一份。只旁听, 返回 false 让 ScrollView 继续滚。
      */
     private void handleTouch(MotionEvent e) {
+        if (!active) return;
         int action = e.getActionMasked();
         if (action == MotionEvent.ACTION_DOWN) {
             touchTracking = true;
-            touchLastY = e.getY();
-            // 手指一碰就接管: 立刻停掉旋转残留的滑动和惯性, 避免"刚滑上去又被拉回最底下"
-            rotaryDriving = false;
-            velocityPx = 0f;
-            targetPx = getScrollY();
-            overscrollTarget = 0f;
             return;
+        }
+        if (action == MotionEvent.ACTION_MOVE) {
+            // 从可点击的设置项开始拖动时，ScrollView 可能到 MOVE 才接管触摸。
+            touchTracking = true;
         }
         if (action == MotionEvent.ACTION_MOVE && touchTracking) {
             float dy = e.getY() - touchLastY; // 手指往下拨为正
@@ -442,45 +414,43 @@ public class AppScrollView extends ScrollView {
                 return;
             }
             int sy = getScrollY();
-            int predicted = sy - Math.round(dy);
             boolean atTop = sy <= 0;
             boolean atBottom = sy >= max;
-            // 只要"这一下拨完会到端点"就立刻给挡墙强震: 第一次滑到底/顶就有, 不用第二次
-            boolean hitTop = dy > 0f && predicted <= 0;
-            boolean hitBottom = dy < 0f && predicted >= max;
+            boolean hitTop = dy > 0f && atTop;
+            boolean hitBottom = dy < 0f && atBottom;
             if (hitTop || hitBottom) {
-                if (!edgeLatched) {
-                    edgeLatched = true;
-                    hapticLimit();
-                }
                 // 已经在端点还继续拉: 累积橡皮筋(页面被拉出一点)
-                if (atTop && dy > 0f) {
-                    overscrollTarget += dy * OVERSCROLL_DAMP;
-                } else if (atBottom && dy < 0f) {
-                    overscrollTarget += dy * OVERSCROLL_DAMP;
-                }
-                if (overscrollTarget > maxOverscrollPx) {
-                    overscrollTarget = maxOverscrollPx;
-                } else if (overscrollTarget < -maxOverscrollPx) {
-                    overscrollTarget = -maxOverscrollPx;
-                }
+                overscrollTarget += dy * OVERSCROLL_DAMP;
+                overscrollTarget = Math.max(-maxOverscrollPx, Math.min(maxOverscrollPx, overscrollTarget));
             } else {
-                // 已经在往页面里面滚: 立刻解锁并清掉拉伸, 避免残留位移看着像"跳回底部"
-                edgeLatched = false;
                 overscrollTarget = 0f;
                 overscrollPx = 0f;
                 applyOverscroll();
             }
             lastOverscrollAt = SystemClock.uptimeMillis();
-            startOverscrollLoop();
-            return;
+            if (overscrollTarget != 0f || overscrollPx != 0f) startOverscrollLoop();
         }
+    }
+
+    @Override public boolean dispatchTouchEvent(MotionEvent event) {
+        int action = event.getActionMasked();
+        if (active && action == MotionEvent.ACTION_DOWN) {
+            touchTracking = false;
+            feedback.beginGesture();
+            touchLastY = event.getY();
+            // 手指一碰就接管: 立刻停掉旋转残留的滑动和惯性, 避免"刚滑上去又被拉回最底下"
+            rotaryDriving = false;
+            velocityPx = 0f;
+            targetPx = getScrollY();
+            overscrollTarget = 0f;
+        }
+        boolean handled = super.dispatchTouchEvent(event);
         if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
             touchTracking = false;
             overscrollTarget = 0f;
-            edgeLatched = false;
-            startOverscrollLoop();
+            if (active && overscrollPx != 0f) startOverscrollLoop();
         }
+        return handled;
     }
 
     private void startOverscrollLoop() {
@@ -491,75 +461,37 @@ public class AppScrollView extends ScrollView {
     }
 
     private boolean hapticsAllowed() {
-        try {
-            return Settings.System.getInt(getContext().getContentResolver(),
-                    "haptic_feedback_enabled", 1) != 0;
-        } catch (RuntimeException e) {
-            return true;
+        if (!active || !isHapticFeedbackEnabled() || !isShown() || !hasWindowFocus()) return false;
+        long now = SystemClock.uptimeMillis();
+        if (now - settingsCheckedAt >= 200L) {
+            settingsCheckedAt = now;
+            try {
+                hapticsEnabled = Settings.System.getInt(getContext().getContentResolver(),
+                        Settings.System.HAPTIC_FEEDBACK_ENABLED, 1) != 0;
+            } catch (RuntimeException ignored) { }
         }
+        return hapticsEnabled;
     }
 
-    private boolean play(VibrationEffect effect) {
-        if (vibrator == null || !vibrator.hasVibrator()) {
-            return false;
+    private void play(VibrationEffect effect) {
+        if (vibrator == null || effect == null) {
+            return;
         }
         if (!hapticsAllowed()) {
-            return true;
+            return;
         }
         try {
-            // 不 cancel 前一个脉冲: 8ms 短 tick 连续播时如果每次先 cancel 再 vibrate,
-            // 前一下会被系统记为 CANCELLED_SUPERSEDED, 高频转动时几乎打不出完整颗粒。
-            vibrator.vibrate(effect);
-            return true;
+            vibrator.vibrate(effect, hapticAttributes);
         } catch (RuntimeException e) {
-            return false;
         }
     }
 
-    /** 旋转过程: 短促轻 tick */
-    private void hapticTick() {
-        if (play(VibrationEffect.createOneShot(TICK_MS, TICK_AMP))) {
-            return;
-        }
-        boolean ok = false;
-        try {
-            ok = performHapticFeedback(HAPTIC_ROTARY_TICK);
-        } catch (RuntimeException ignored) {
-        }
-        if (!ok) {
-            try {
-                performHapticFeedback(HapticFeedbackConstants.SEGMENT_FREQUENT_TICK);
-            } catch (RuntimeException ignored) {
-            }
-        }
-    }
-
-    /** 一段旋转结束: 稍重一点的落定感 */
-    private void hapticSettle() {
-        if (play(VibrationEffect.createOneShot(SETTLE_MS, SETTLE_AMP))) {
-            return;
-        }
-        try {
-            performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
-        } catch (RuntimeException ignored) {
-        }
-    }
-
-    /** 到顶/触底: 两下重的挡墙顿挫 */
-    private void hapticLimit() {
-        if (play(VibrationEffect.createWaveform(LIMIT_TIMINGS, LIMIT_AMPS, -1))) {
-            return;
-        }
-        boolean ok = false;
-        try {
-            ok = performHapticFeedback(HAPTIC_ROTARY_LIMIT);
-        } catch (RuntimeException ignored) {
-        }
-        if (!ok) {
-            try {
-                performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
-            } catch (RuntimeException ignored) {
-            }
+    private void playFeedback(int effect) {
+        if (effect == ScrollFeedback.LIMIT) {
+            if (edgeEffect != null) edgeEffect.run();
+            play(wallImpact);
+        } else if (effect == ScrollFeedback.TICK) {
+            play(softTick);
         }
     }
 
@@ -568,15 +500,29 @@ public class AppScrollView extends ScrollView {
         if (child == null) {
             return 0;
         }
-        return Math.max(0, child.getHeight() - getHeight());
+        android.view.ViewGroup.LayoutParams params = child.getLayoutParams();
+        int height = child.getHeight();
+        if (params instanceof android.view.ViewGroup.MarginLayoutParams) {
+            android.view.ViewGroup.MarginLayoutParams margins = (android.view.ViewGroup.MarginLayoutParams) params;
+            height += margins.topMargin + margins.bottomMargin;
+        }
+        return Math.max(0, height - (getHeight() - getPaddingTop() - getPaddingBottom()));
     }
 
-    @Override
-    protected void onDetachedFromWindow() {
+    void setActive(boolean enabled) {
+        active = enabled;
+        if (!enabled) stopMotion();
+    }
+
+    private void stopMotion() {
         ui.removeCallbacksAndMessages(null);
         chasing = false;
         rotaryDriving = false;
         touchTracking = false;
+        feedback.reset();
+        settingsCheckedAt = -1000L;
+        overscrollPx = overscrollTarget = 0f;
+        targetPx = getScrollY();
         velocityPx = 0f;
         lastInputAt = 0L;
         View child = getChildAt(0);
@@ -590,6 +536,15 @@ public class AppScrollView extends ScrollView {
             } catch (RuntimeException ignored) {
             }
         }
+    }
+
+    @Override public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (!hasFocus) stopMotion();
+    }
+
+    @Override protected void onDetachedFromWindow() {
+        stopMotion();
         super.onDetachedFromWindow();
     }
 }

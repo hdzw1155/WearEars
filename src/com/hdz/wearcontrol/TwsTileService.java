@@ -32,12 +32,8 @@ public class TwsTileService extends TileService {
 
     private static final String TAG = "TileSvc";
 
-    /**
-     * 多久允许系统主动来要一次新数据。
-     * 15 秒会逼系统整夜重画(耗电元凶); 数据真变化时用 TileStore.push() 主动推,
-     * 磁贴可见时系统本来就会常常来问。
-     */
-    private static final long REFRESH_MS = 5 * 60 * 1000;
+    /** 仅数据变化或进入磁贴时刷新，不安排周期任务。 */
+    private static final long REFRESH_MS = 0L;
 
     /** 兜底布局/空资源表用的资源版本号(它们不含任何图片, 不跟电量走) */
     private static final String FALLBACK_VERSION = "fallback";
@@ -52,18 +48,19 @@ public class TwsTileService extends TileService {
         final TileSnapshot snapshot = TileStore.readOrEmpty(lc);
         final int tileStyle = AppPrefs.tileStyle(lc);
         final boolean single = snapshot.isSingleBattery();
+        final String version = TileRenderSpec.version(snapshot, tileStyle, AppPrefs.lang(lc));
         try {
             if (single) {
                 // 单电池设备: 没有三段仪表盘, 布局只放 "电量 N%" + 能力内的模式轨
                 return TileFutures.immediate(tile(TileLayouts.build(lc, snapshot),
-                        TileResources.singleVersion(snapshot)));
+                        version));
             }
             if (tileStyle == AppPrefs.STYLE_CLASSIC) {
                 return TileFutures.immediate(tile(ClassicTileLayouts.build(lc, snapshot),
-                        ClassicTileResources.version(snapshot)));
+                        version));
             }
             return TileFutures.immediate(tile(TileLayouts.build(lc, snapshot),
-                    TileResources.version(snapshot, tileStyle)));
+                    version));
         } catch (RuntimeException e) {
             // 布局构建出任何意外都不能让整块磁贴变红: 先给能点进来的兜底布局
             Log.w(TAG, "layout failed, using fallback", e);
@@ -80,30 +77,20 @@ public class TwsTileService extends TileService {
     @Override
     public ListenableFuture<ResourceBuilders.Resources> onResourcesRequest(
             RequestBuilders.ResourcesRequest requestParams) {
-        final Context lc = AppLocale.localizedContext(this);
-        final TileSnapshot snapshot = TileStore.readOrEmpty(lc);
-        final int tileStyle = AppPrefs.tileStyle(lc);
-        final boolean single = snapshot.isSingleBattery();
+        final String version = requestParams.getVersion();
         return TileFutures.submit(new Callable<ResourceBuilders.Resources>() {
-            @Override
-            public ResourceBuilders.Resources call() {
-                try {
-                    if (single) {
-                        return TileResources.buildSingle(lc, snapshot);
-                    }
-                    if (tileStyle == AppPrefs.STYLE_CLASSIC) {
-                        return ClassicTileResources.build(lc, snapshot);
-                    }
-                    return TileResources.build(lc, snapshot, tileStyle);
-                } catch (RuntimeException e) {
-                    // 画图失败就交空资源表: 布局里引用不到的图会空着, 但不至于崩
-                    Log.w(TAG, "resources failed, using empty", e);
-                    return TileResources.empty(single
-                            ? TileResources.singleVersion(snapshot)
-                            : TileResources.version(snapshot, tileStyle));
+            @Override public ResourceBuilders.Resources call() {
+                try { return TileRenderSpec.resources(TwsTileService.this, version); }
+                catch (RuntimeException e) {
+                    Log.w(TAG, "resources failed", e);
+                    return TileResources.empty(version);
                 }
             }
         });
+    }
+
+    @Override public void onTileEnterEvent(androidx.wear.tiles.EventBuilders.TileEnterEvent event) {
+        TileStore.push(this);
     }
 
     private static TileBuilders.Tile tile(LayoutElementBuilders.Layout layout, String version) {

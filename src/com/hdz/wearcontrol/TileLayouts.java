@@ -279,8 +279,9 @@ final class TileLayouts {
     /** 复合仪表盘: 位图由 TileResources 在 onResourcesRequest 里生成, 这里只放图 */
     private static LayoutElementBuilders.Image dial(Context ctx, TileSnapshot s) {
         ModifiersBuilders.Modifiers modifiers = new ModifiersBuilders.Modifiers.Builder()
+                .setClickable(TileRenderSpec.refresh())
                 .setSemantics(new ModifiersBuilders.Semantics.Builder()
-                        .setContentDescription(dialDescription(ctx, s))
+                        .setContentDescription(dialDescription(ctx, s) + ", " + ctx.getString(R.string.tile_refresh_hint))
                         .build())
                 .build();
         return new LayoutElementBuilders.Image.Builder()
@@ -331,8 +332,9 @@ final class TileLayouts {
                 .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
                 .setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
                 .setModifiers(new ModifiersBuilders.Modifiers.Builder()
+                        .setClickable(TileRenderSpec.refresh())
                         .setSemantics(new ModifiersBuilders.Semantics.Builder()
-                                .setContentDescription(label(ctx, R.string.battery_title) + " " + value)
+                                .setContentDescription(label(ctx, R.string.battery_title) + " " + value + ", " + ctx.getString(R.string.tile_refresh_hint))
                                 .build())
                         .build())
                 .addContent(new LayoutElementBuilders.Column.Builder()

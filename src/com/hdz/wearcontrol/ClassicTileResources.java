@@ -7,10 +7,8 @@ import androidx.wear.tiles.ResourceBuilders;
 /**
  * 磁贴资源表: 1 张复合仪表盘 PNG(运行时画) + 3 个降噪图标(直接引用 drawable)。
  *
- * <p>版本号规则见 {@link #version}: {@code a1.1-左_右_盒}。它必须同时喂给
- * Tile.Builder.setResourcesVersion 和 Resources.Builder.setVersion, 两边不一致系统会一直
- * 重发请求; 而只要版本号不变, 手表就认旧缓存 —— 所以 <b>改画法必须 bump {@link #ART_REV}</b>,
- * 否则改了 DialPainter 也看不到任何变化。
+ * <p>图片缓存键含电量、充电标志和语言；返回的资源版本与 TileRenderSpec 请求一致。
+ * 修改画法时递增 ART_REV。
  */
 final class ClassicTileResources {
 
@@ -46,8 +44,8 @@ final class ClassicTileResources {
         return v;
     }
 
-    static ResourceBuilders.Resources build(Context ctx, TileSnapshot s) {
-        String ver = version(s);
+    static synchronized ResourceBuilders.Resources build(Context ctx, TileSnapshot s, String requestedVersion) {
+        String ver = version(s) + "_" + ctx.getResources().getConfiguration().locale.getLanguage();
         byte[] png = cachePng;
         if (png == null || !ver.equals(cacheVersion)) {
             png = ClassicTilePainter.png(ctx, s);
@@ -55,7 +53,7 @@ final class ClassicTileResources {
             cacheVersion = ver;
         }
         return new ResourceBuilders.Resources.Builder()
-                .setVersion(ver)
+                .setVersion(requestedVersion)
                 .addIdToImageMapping(ID_DIAL, inline(png))
                 .addIdToImageMapping(ID_IC_OFF, androidImage(R.drawable.ic_off))
                 .addIdToImageMapping(ID_IC_TRANS, androidImage(R.drawable.ic_trans))

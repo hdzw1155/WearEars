@@ -99,6 +99,19 @@ public final class DriverRegistry {
         @Override public TwsClient create() { return new EdifierClient(); }
     };
 
+    private static final DriverInfo SONY = new DriverInfo() {
+        @Override public String brandName() { return "Sony"; }
+        @Override public String[] matchWords() { return new String[0]; }
+        @Override public boolean isFallback() { return false; }
+        @Override public TwsClient create() { return new SonyClient(); }
+    };
+    private static final DriverInfo TECHNICS = new DriverInfo() {
+        @Override public String brandName() { return "Technics"; }
+        @Override public String[] matchWords() { return new String[0]; }
+        @Override public boolean isFallback() { return false; }
+        @Override public TwsClient create() { return new TechnicsClient(); }
+    };
+
     // 标准协议兜底: 认不出私有协议的耳机, 只报系统聚合电量, 不碰蓝牙连接
     private static final DriverInfo STANDARD = new DriverInfo() {
         @Override public String brandName() { return "标准协议"; }
@@ -108,7 +121,7 @@ public final class DriverRegistry {
     };
 
     private static final DriverInfo[] DRIVERS =
-            {VIVO, HUAWEI, XIAOMI, OPPO, EDIFIER, ROSE, NICEHCK, STANDARD};
+            {VIVO, HUAWEI, XIAOMI, OPPO, EDIFIER, ROSE, NICEHCK, SONY, TECHNICS, STANDARD};
 
     /**
      * 蓝牙名里的品牌词 → 展示名。只用于界面/日志识别"这可能是哪家的耳机",
@@ -129,6 +142,7 @@ public final class DriverRegistry {
             {"enco", "OPPO"}, {"oppo", "OPPO"},
             {"realme", "realme"}, {"oneplus", "一加"}, {"一加", "一加"},
             {"meizu", "魅族"}, {"魅族", "魅族"},
+            {"technics", "Technics"}, {"panasonic", "松下"}, {"松下", "松下"},
             {"sony", "索尼"}, {"wf-", "索尼"}, {"wh-", "索尼"},
             {"jbl", "JBL"},
             {"galaxy buds", "三星"}, {"samsung", "三星"},
@@ -197,6 +211,25 @@ public final class DriverRegistry {
         return null;
     }
 
+    /** 只列出已配对音频设备，不扫描，不把手机作为控制目标。 */
+    public static java.util.List<BluetoothDevice> audioDevices(BluetoothAdapter adapter) {
+        java.util.List<BluetoothDevice> result = new java.util.ArrayList<BluetoothDevice>();
+        if (adapter != null) for (BluetoothDevice d : adapter.getBondedDevices()) {
+            if (!isPhone(d) && (isKnownDevice(d) || hasA2dpSink(d))) result.add(d);
+        }
+        java.util.Collections.sort(result, new java.util.Comparator<BluetoothDevice>() {
+            @Override public int compare(BluetoothDevice a, BluetoothDevice b) { return a.getAddress().compareTo(b.getAddress()); }
+        });
+        return result;
+    }
+
+    public static BluetoothDevice findTarget(Context ctx, BluetoothAdapter adapter) {
+        String selected = AppPrefs.deviceAddress(ctx);
+        if (selected.isEmpty()) return findTarget(adapter);
+        for (BluetoothDevice d : audioDevices(adapter)) if (selected.equals(d.getAddress())) return d;
+        return null;
+    }
+
     private static boolean hasA2dpSink(BluetoothDevice d) {
         ParcelUuid[] uuids = d.getUuids();
         if (uuids == null) return false;
@@ -214,10 +247,15 @@ public final class DriverRegistry {
     private static DriverInfo match(BluetoothDevice device) {
         String n = device.getName();
         if (n == null) return null;
-        String ln = n.toLowerCase();
+        String ln = n.toLowerCase(java.util.Locale.ROOT);
+        if (RoseProtocol.familyForName(n) >= 0) return ROSE;
+        if (SonyProtocol.matches(n)) return SONY;
+        if (TechnicsProtocol.matches(n)) return TECHNICS;
+        // Buds 5 Pro 使用 Compact GAIA，不能发送 Redmi RCSP 指令。
+        if (ln.replaceAll("[^a-z0-9]", "").equals("xiaomibuds5pro")) return STANDARD;
         for (DriverInfo d : DRIVERS) {
             for (String w : d.matchWords()) {
-                if (ln.contains(w)) return d;
+                if (d != ROSE && ln.contains(w)) return d;
             }
         }
         return null;
@@ -226,7 +264,7 @@ public final class DriverRegistry {
     /** 型号名 → 品牌展示名; 认不出返回 null(不代表设备不可用, 只是没有品牌标签) */
     public static String brandLabelForName(String deviceName) {
         if (deviceName == null) return null;
-        String ln = deviceName.toLowerCase();
+        String ln = deviceName.toLowerCase(java.util.Locale.ROOT);
         for (String[] pair : BRAND_WORDS) {
             if (ln.contains(pair[0])) return pair[1];
         }
