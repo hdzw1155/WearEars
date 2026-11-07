@@ -122,25 +122,25 @@
                     android:textSize="12sp" />
 
                 <TextView
-                    android:id="@+id/tile_liquid"
+                    android:id="@+id/tile_classic"
                     android:layout_width="0dp"
                     android:layout_height="34dp"
                     android:layout_marginEnd="8dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_choice"
                     android:gravity="center"
-                    android:text="@string/settings_style_liquid"
+                    android:text="@string/settings_style_classic"
                     android:textColor="@color/text_dim"
                     android:textSize="12sp" />
 
                 <TextView
-                    android:id="@+id/tile_classic"
+                    android:id="@+id/tile_liquid"
                     android:layout_width="0dp"
                     android:layout_height="34dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_choice"
                     android:gravity="center"
-                    android:text="@string/settings_style_classic"
+                    android:text="@string/settings_style_liquid"
                     android:textColor="@color/text_dim"
                     android:textSize="12sp" />
             </LinearLayout>

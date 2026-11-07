@@ -94,7 +94,7 @@ final class TileResources {
 
     static byte[] pngFor(Context ctx, TileSnapshot s, int style) {
         if (style == AppPrefs.STYLE_CLASSIC) {
-            return OutlineTilePainter.png(ctx, s);
+            return ClassicTilePainter.png(ctx, s);
         }
         if (style == AppPrefs.STYLE_LIQUID) {
             return DialPainter.png(ctx, s);
