@@ -143,5 +143,8 @@ final class SonyClient extends RfcommClient {
     @Override public int caps() {
         return CAP_BATTERY | (singleBattery ? CAP_BATTERY_SINGLE : 0) | (noiseConfirmed ? CAP_NOISE : 0);
     }
+    @Override public int verifLevel() {
+        return SonyProtocol.isVerifiedReal(deviceName()) ? VERIF_REAL : VERIF_UNTESTED;
+    }
     @Override public String brandName() { return "Sony"; }
 }

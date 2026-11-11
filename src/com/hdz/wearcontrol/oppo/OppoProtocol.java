@@ -8,6 +8,14 @@ import java.util.List;
 public final class OppoProtocol {
     private OppoProtocol() { }
 
+    /** 真机实测确认的 OPPO 型号；其余 OPOv1 型号保持实验性未验证。 */
+    public static boolean isVerifiedReal(String name) {
+        if (name == null) return false;
+        String n = name.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9]", "");
+        return n.equals("oppoencoair5pro") || n.equals("encoair5pro")
+                || n.equals("oppoencofree4") || n.equals("encofree4");
+    }
+
     public static final class Frame {
         public final int command, sequence;
         public final byte[] payload;

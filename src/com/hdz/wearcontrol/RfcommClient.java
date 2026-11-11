@@ -136,6 +136,12 @@ abstract class RfcommClient implements TwsClient {
         try { if (socket != null) socket.close(); } catch (Exception ignored) { }
     }
     @Override public boolean isConnected() { Session s = current; return s != null && s.ready; }
+    protected final String deviceName() {
+        Session s = current;
+        if (s == null || s.device == null) return "";
+        String name = s.device.getName();
+        return name == null ? "" : name;
+    }
     @Override public void addListener(Listener l) { if (l != null) listeners.addIfAbsent(l); }
     @Override public void removeListener(Listener l) { listeners.remove(l); }
     @Override public int verifLevel() { return VERIF_UNTESTED; }

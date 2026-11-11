@@ -8,9 +8,18 @@ import java.util.Locale;
 
 /** Sony MDR V1/V2 的帧与已确认三态格式，未知子类型只读不写。 */
 final class SonyProtocol {
+    private static String normalizeName(String name) {
+        return name == null ? "" : name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
+    }
+
     static boolean matches(String name) {
-        String n = name == null ? "" : name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
-        return n.matches("(sony)?(wh1000xm[3456]|wf1000xm[3456]|whch720n|wfc700n|wfls900n)");
+        String n = normalizeName(name);
+        return n.matches("(?:le)?(?:sony)?(wh1000xm[3456]|wf1000xm[3456]|whch720n|wfc700n|wfls900n).*");
+    }
+
+    /** 真机实测确认的 Sony 型号；其余候选型号继续标注实验性未验证。 */
+    static boolean isVerifiedReal(String name) {
+        return normalizeName(name).matches("(?:le)?(?:sony)?wf1000xm5.*");
     }
 
     static byte[] encode(int type, int sequence, byte[] payload) {

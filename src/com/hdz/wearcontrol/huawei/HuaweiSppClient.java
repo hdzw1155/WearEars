@@ -89,10 +89,15 @@ public class HuaweiSppClient implements TwsClient {
 
     @Override
     public int verifLevel() {
-        // FreeBuds 6i 已在本项目真机验证(电量 + 降噪/通透/关闭三态);
-        // 其他华为/荣耀型号沿用同一 SPP 协议族, 但未逐型号实测, 如实标实验性。
-        String n = connectedName.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9]", "");
-        if (n.equals("huaweifreebuds6i") || n.equals("freebuds6i")) {
+        // FreeBuds 6i / FreeBuds SE 4 ANC / HONOR Earbuds X9 已在本项目真机验证;
+        // 其他华为/荣耀型号沿用同一 SPP 协议族, 如实标实验性。
+        String raw = connectedName == null ? "" : connectedName;
+        String n = raw.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9]", "");
+        if (n.equals("huaweifreebuds6i") || n.equals("freebuds6i")
+                || n.equals("huaweifreebudsse4anc") || n.equals("freebudsse4anc")
+                || n.equals("huaweifreebudsse4") || n.equals("freebudsse4")
+                || n.equals("honorearbudsx9") || n.equals("earbudsx9")
+                || raw.contains("SE 4 ANC") || raw.contains("SE4 ANC")) {
             return VERIF_REAL;
         }
         return VERIF_UNTESTED;

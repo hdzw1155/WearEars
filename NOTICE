@@ -1,15 +1,15 @@
 WearEars (formerly TWS Control for Wear / tws-control-for-wear)
 Copyright (c) 2026 hdzw1155
 
-本项目为非商业个人学习研究作品，与 vivo / 华为 / 小米 / 三星 / 高通 / 蓝牙技术联盟
-均无任何关联且未获其授权；项目中出现的第三方商标归其各自所有者所有，仅作兼容性
-说明之用（名义性合理使用）。
+本项目源代码基于 MIT 许可证开源（详见 LICENSE），与 vivo / 华为 / 荣耀 / 小米 / OPPO / Sony / Technics / 漫步者 / 弱水时砂 / 原道 / 蓝牙技术联盟等均无任何关联且未获其官方授权；项目中出现的第三方商标归其各自所有者所有，仅作兼容性名义性说明。
+
+品牌与商用边界说明：MIT 许可证适用于本项目公开源代码，但“WearEars”名称、应用图标、官方发布签名包及面向厂商官方授权的定制集成服务不在免费商标授权范围内；同时禁止抹除作者署名、将本项目或编译产物原样打包售卖或冒充原创。
 
 本项目不收集、不上传任何用户数据。
 
-各品牌协议知识来自社区公开逆向成果（详见 README 致谢）：vivo 部分经本项目实机
-验证；华为 / 小米部分按公开协议文档独立编写，其中小米认证算法的 Java 移植与
-公开的 36 组逆向真值逐字节对拍一致。华为协议文档的上游参考项目（HuaweiPods）
-为 GPL-3.0 许可，本项目系按其协议描述独立实现，未复制其代码。
+各品牌协议知识来自社区公开逆向成果与实机测试验证（详见 README 致谢）：
+- vivo / 华为 / 荣耀 / 小米 / OPPO / 原道 / Sony 部分型号已在本项目完成实机测试验证；
+- 小米认证算法移植与公开 36 组逆向真值逐字节对拍一致；
+- OPPO（spizganed/QuickBuds）、漫步者（HyperEars / mEDIFIER / BudsLink）、弱水时砂（IRDecoyFlare/roseselsa-RoseLink-Protocol、OPerepadia/rosebuds）、原道（ZaeXT/NiceHCK_Controller、HELPMEEADICE）、Sony（mos9527/SonyHeadphonesClient）、Technics（TechincsPods）与华为（HuaweiPods GPL-3.0 上游协议文档）均基于公开协议资料独立编写 Java 代码，未复制 GPL/AGPL 上游源代码。
 
-实验性功能仅供学习研究，使用前请阅读应用内与 README 的免责声明。
+实验性功能仅供学习研究与兼容性测试，使用前请阅读应用内与 README 的免责声明。

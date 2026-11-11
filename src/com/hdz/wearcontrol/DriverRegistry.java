@@ -47,14 +47,18 @@ public final class DriverRegistry {
 
     private static final DriverInfo HUAWEI = new DriverInfo() {
         @Override public String brandName() { return "huawei"; }
-        @Override public String[] matchWords() { return new String[]{"freebuds", "huawei", "honor"}; }
+        @Override public String[] matchWords() {
+            return new String[]{"freebuds", "huawei", "honor", "华为", "荣耀"};
+        }
         @Override public boolean isFallback() { return false; }
         @Override public TwsClient create() { return new HuaweiSppClient(); }
     };
 
     private static final DriverInfo XIAOMI = new DriverInfo() {
         @Override public String brandName() { return "xiaomi"; }
-        @Override public String[] matchWords() { return new String[]{"xiaomi", "redmi", "mibuds"}; }
+        @Override public String[] matchWords() {
+            return new String[]{"xiaomi", "redmi", "mibuds", "红米", "小米"};
+        }
         @Override public boolean isFallback() { return false; }
         @Override public TwsClient create() { return new XiaomiMmaClient(); }
     };
@@ -80,10 +84,12 @@ public final class DriverRegistry {
         @Override public TwsClient create() { return new RoseLinkClient(); }
     };
 
-    // 原道(NiceHCK / OriG in): SPP 私有帧, 实验性
+    // 原道(NiceHCK / OriG in): SPP 私有帧
     private static final DriverInfo NICEHCK = new DriverInfo() {
         @Override public String brandName() { return "原道"; }
-        @Override public String[] matchWords() { return new String[]{"yuandao", "orig", "nicehck"}; }
+        @Override public String[] matchWords() {
+            return new String[]{"yuandao", "orig", "nicehck", "原道", "原点"};
+        }
         @Override public boolean isFallback() { return false; }
         @Override public TwsClient create() { return new NiceHckClient(); }
     };
@@ -129,8 +135,8 @@ public final class DriverRegistry {
      */
     private static final String[][] BRAND_WORDS = {
             {"vivo", "vivo"}, {"iqoo", "iQOO"},
-            {"freebuds", "华为"}, {"huawei", "华为"}, {"honor", "荣耀"},
-            {"xiaomi", "小米"}, {"redmi", "Redmi"}, {"mibuds", "小米"},
+            {"freebuds", "华为"}, {"huawei", "华为"}, {"华为", "华为"}, {"honor", "荣耀"}, {"荣耀", "荣耀"},
+            {"xiaomi", "小米"}, {"小米", "小米"}, {"redmi", "Redmi"}, {"红米", "Redmi"}, {"mibuds", "小米"},
             {"edifier", "漫步者"}, {"漫步者", "漫步者"},
             {"nicehck", "原道"}, {"yuandao", "原道"}, {"原道", "原道"},
             {"ruoshui", "弱水时砂"}, {"弱水", "弱水时砂"}, {"roselink", "弱水时砂"},

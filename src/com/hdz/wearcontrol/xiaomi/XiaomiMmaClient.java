@@ -109,7 +109,7 @@ public class XiaomiMmaClient implements TwsClient {
 
     @Override
     public int verifLevel() {
-        return VERIF_UNTESTED;
+        return XiaomiProtocol.isVerifiedReal(connectedName) ? VERIF_REAL : VERIF_UNTESTED;
     }
 
     // ---- 小米协议没有这些实验能力 ----

@@ -99,6 +99,9 @@ public final class ProtocolChecks {
         answer[3] ^= 1;
         check(!XiaomiProtocol.authMatches(challenge, answer), "mismatched authentication rejected");
         check(!XiaomiProtocol.authMatches(challenge, hex("01")), "short authentication rejected");
+        check(XiaomiProtocol.isVerifiedReal("Redmi Buds 6") && XiaomiProtocol.isVerifiedReal("红米 Buds 6")
+                && !XiaomiProtocol.isVerifiedReal("Redmi Buds 6 Lite") && !XiaomiProtocol.isVerifiedReal("Redmi Buds 5"),
+                "Xiaomi real-device scope");
     }
     private static void rose() {
         equal(hex("FF 00 0F FA 01 07 08 09 0C 0D 0E 12 2A 2B 2C 2D 2E 33 AA"),
@@ -167,6 +170,8 @@ public final class ProtocolChecks {
         check(OppoProtocol.noiseMode(0x10) == TwsClient.MODE_ANC, "Enco Air3 Pro ANC feedback");
         check(OppoProtocol.noiseMode(0x02) == TwsClient.MODE_ANC, "legacy OPO ANC feedback");
         check(OppoProtocol.noiseMode(0x18) == -1, "ambiguous OPO mode rejected");
+        check(OppoProtocol.isVerifiedReal("OPPO Enco Air5 Pro") && OppoProtocol.isVerifiedReal("OPPO Enco Free4")
+                && !OppoProtocol.isVerifiedReal("Enco Air3 Pro"), "OPPO real-device scope");
     }
 
     private static void sony() {
@@ -209,7 +214,10 @@ public final class ProtocolChecks {
         check(SonyProtocol.noiseCommand(2, hex("67 22 01 01 00 14"), TwsClient.MODE_ANC) == null, "ambient-only is not ANC");
         check(SonyProtocol.mode(1, hex("67 02 01 02 02 01 00 00")) == TwsClient.MODE_ANC, "MDR V1 ANC");
         check(SonyProtocol.mode(2, hex("67 17 01 01 02 00 14")) == -1, "unknown MDR mode");
-        check(SonyProtocol.matches("Sony WH-CH720N") && !SonyProtocol.matches("Sony TV"), "Sony candidate boundaries");
+        check(SonyProtocol.matches("Sony WH-CH720N") && SonyProtocol.matches("WF-1000XM5")
+                && SonyProtocol.matches("LE_WF-1000XM5") && !SonyProtocol.matches("Sony TV"), "Sony candidate boundaries");
+        check(SonyProtocol.isVerifiedReal("WF-1000XM5") && SonyProtocol.isVerifiedReal("LE_WF-1000XM5")
+                && !SonyProtocol.isVerifiedReal("WH-CH720N"), "Sony real-device scope");
     }
 
     private static void technics() {

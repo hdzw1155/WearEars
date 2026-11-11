@@ -78,6 +78,7 @@ public class OppoOpoClient implements TwsClient {
     private volatile boolean closing = false;
     private volatile boolean ready = false;
     private volatile boolean noiseConfirmed;
+    private volatile String connectedName = "";
     private int seq = 1;
     private int pendingMode = -1;
 
@@ -97,7 +98,7 @@ public class OppoOpoClient implements TwsClient {
 
     @Override
     public int verifLevel() {
-        return VERIF_UNTESTED;
+        return OppoProtocol.isVerifiedReal(connectedName) ? VERIF_REAL : VERIF_UNTESTED;
     }
 
     // ---- OPPO 协议没有实验能力命令 ----
@@ -143,6 +144,7 @@ public class OppoOpoClient implements TwsClient {
         closing = false;
         ready = false;
         noiseConfirmed = false;
+        connectedName = device != null && device.getName() != null ? device.getName() : "";
         pendingMode = -1;
         seq = 1;
         new Thread(new Runnable() {

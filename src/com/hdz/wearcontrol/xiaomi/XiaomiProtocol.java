@@ -14,6 +14,16 @@ public final class XiaomiProtocol {
         return 0;
     }
 
+    /** 真机实测确认的小米 / Redmi 型号；其余型号保持实验性未验证。 */
+    public static boolean isVerifiedReal(String name) {
+        if (name == null) return false;
+        String lower = name.toLowerCase(java.util.Locale.ROOT);
+        String ascii = lower.replaceAll("[^a-z0-9]", "");
+        String compact = lower.replaceAll("\\s+", "");
+        return ascii.equals("redmibuds6") || ascii.equals("xiaomiredmibuds6")
+                || compact.equals("红米buds6") || compact.equals("红米buds6降噪版");
+    }
+
     public static int authApp(int profile) { return profile == 2 ? 4 : 1; }
 
     public static byte[] command(int opcode, int app, int serial, byte[] params) {
