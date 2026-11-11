@@ -52,14 +52,14 @@ public class TwsTileService extends TileService {
         try {
             if (single) {
                 // 单电池设备: 没有三段仪表盘, 布局只放 "电量 N%" + 能力内的模式轨
-                return TileFutures.immediate(tile(TileLayouts.build(lc, snapshot),
+                return TileFutures.immediate(tile(TileLayouts.build(lc, snapshot, tileStyle),
                         version));
             }
             if (tileStyle == AppPrefs.STYLE_CLASSIC) {
                 return TileFutures.immediate(tile(ClassicTileLayouts.build(lc, snapshot),
                         version));
             }
-            return TileFutures.immediate(tile(TileLayouts.build(lc, snapshot),
+            return TileFutures.immediate(tile(TileLayouts.build(lc, snapshot, tileStyle),
                     version));
         } catch (RuntimeException e) {
             // 布局构建出任何意外都不能让整块磁贴变红: 先给能点进来的兜底布局

@@ -20,6 +20,7 @@ public class StatusDotView extends View {
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private int dotColor = 0xFF8E8E93;
     private boolean hollow;
+    private boolean diamond;
     private ValueAnimator breath;
     private ObjectAnimator pop;
 
@@ -30,6 +31,14 @@ public class StatusDotView extends View {
     public StatusDotView(Context context, AttributeSet attrs) {
         super(context, attrs);
         paint.setStyle(Paint.Style.FILL);
+    }
+
+    public void setDiamond(boolean diamondNow) {
+        if (diamond == diamondNow) {
+            return;
+        }
+        diamond = diamondNow;
+        invalidate();
     }
 
     /** 设颜色; 同样颜色重复调用会被忽略(轮询每 30 秒都会写一次, 不能闪) */
@@ -88,6 +97,23 @@ public class StatusDotView extends View {
         float cy = getHeight() / 2f;
         float r = Math.min(getWidth(), getHeight()) / 2f;
         paint.setColor(dotColor);
+        if (diamond) {
+            float half = Math.min(getWidth(), getHeight()) * 0.34f;
+            canvas.save();
+            canvas.rotate(45f, cx, cy);
+            if (hollow) {
+                float stroke = 1.6f * getResources().getDisplayMetrics().density;
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(stroke);
+                canvas.drawRect(cx - half + stroke / 2f, cy - half + stroke / 2f,
+                        cx + half - stroke / 2f, cy + half - stroke / 2f, paint);
+                paint.setStyle(Paint.Style.FILL);
+            } else {
+                canvas.drawRect(cx - half, cy - half, cx + half, cy + half, paint);
+            }
+            canvas.restore();
+            return;
+        }
         if (hollow) {
             float stroke = 1.6f * getResources().getDisplayMetrics().density;
             paint.setStyle(Paint.Style.STROKE);

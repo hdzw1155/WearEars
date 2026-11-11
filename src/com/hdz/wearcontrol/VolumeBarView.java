@@ -31,6 +31,7 @@ public class VolumeBarView extends View {
 
     private static final int STYLE_CLASSIC = AppPrefs.STYLE_CLASSIC;
     private static final int STYLE_LIQUID = AppPrefs.STYLE_LIQUID;
+    private static final int STYLE_SUPREME = AppPrefs.STYLE_SUPREME;
 
     // 极简
     private static final int COLOR_TRACK = 0xFF1E1E21;
@@ -44,6 +45,11 @@ public class VolumeBarView extends View {
     private static final int COLOR_CLASSIC_TRACK = 0xFF3A3A3C;
     private static final int COLOR_CLASSIC_TRACK_IN = 0xFF26262A;
     private static final int COLOR_CLASSIC_FILL = 0xFF34C759;
+    // 至上
+    private static final int COLOR_SUPREME_TRACK = 0xFF2B313B;
+    private static final int COLOR_SUPREME_BORDER = 0xFF464F5C;
+    private static final int COLOR_SUPREME_FILL = 0xFF4CC38A;
+    private static final int COLOR_SUPREME_TICK = 0xFFEAB31A;
     private static final float STROKE_DP = 3.2f;
 
     private final Paint trackPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -154,6 +160,8 @@ public class VolumeBarView extends View {
             drawClassic(canvas, w, h, frac);
         } else if (style == STYLE_LIQUID) {
             drawLiquid(canvas, w, h, frac);
+        } else if (style == STYLE_SUPREME) {
+            drawSupreme(canvas, w, h, frac);
         } else {
             drawNew(canvas, w, h, frac);
         }
@@ -238,6 +246,48 @@ public class VolumeBarView extends View {
         float knob = Math.min(knobRadius, trackRect.height() * 0.42f);
         knobPaint.setColor(COLOR_KNOB);
         canvas.drawCircle(progressX, h / 2f, dragging ? knob * 1.2f : knob, knobPaint);
+    }
+
+    /** 至上: 直角架构轨道 + 翡翠填充 + 镉黄竖标 */
+    private void drawSupreme(Canvas canvas, int w, int h, float frac) {
+        float d = getResources().getDisplayMetrics().density;
+        float tickHalfW = (dragging ? 2.4f : 1.7f) * d;
+        float left = tickHalfW;
+        float right = w - tickHalfW;
+        if (right <= left) {
+            return;
+        }
+        float barTop = h * 0.28f;
+        float barBottom = h * 0.72f;
+        trackRect.set(left, barTop, right, barBottom);
+        float r = 1.5f * d;
+
+        fillPaint.setShader(null);
+        fillPaint.setColor(COLOR_SUPREME_TRACK);
+        canvas.drawRoundRect(trackRect, r, r, fillPaint);
+
+        float fillX = left + (right - left) * frac;
+        if (frac > 0.002f) {
+            clipPath.reset();
+            clipPath.addRoundRect(trackRect, r, r, Path.Direction.CW);
+            canvas.save();
+            canvas.clipPath(clipPath);
+            fillPaint.setColor(COLOR_SUPREME_FILL);
+            canvas.drawRect(left, barTop, fillX, barBottom, fillPaint);
+            canvas.restore();
+        }
+
+        surfacePaint.setStyle(Paint.Style.STROKE);
+        surfacePaint.setStrokeWidth(1.1f * d);
+        surfacePaint.setColor(COLOR_SUPREME_BORDER);
+        canvas.drawRoundRect(trackRect, r, r, surfacePaint);
+        surfacePaint.setStyle(Paint.Style.FILL);
+
+        float markTop = h * 0.14f;
+        float markBottom = h * 0.86f;
+        trackRect.set(fillX - tickHalfW, markTop, fillX + tickHalfW, markBottom);
+        knobPaint.setColor(COLOR_SUPREME_TICK);
+        canvas.drawRect(trackRect, knobPaint);
     }
 
     @Override

@@ -15,7 +15,7 @@ final class TileRenderSpec {
         String[] p = version.split("~");
         if (p.length != 10 || !"legacy4".equals(p[0])) return TileResources.empty(version);
         int style = Integer.parseInt(p[1]);
-        if (style < 0 || style > 2 || (!"zh".equals(p[2]) && !"en".equals(p[2]))) return TileResources.empty(version);
+        if (style < 0 || style > 3 || (!"zh".equals(p[2]) && !"en".equals(p[2]))) return TileResources.empty(version);
         TileSnapshot s = new TileSnapshot("", 0, Integer.parseInt(p[4]), Integer.parseInt(p[5]),
                 Integer.parseInt(p[6]), Integer.parseInt(p[7]), Integer.parseInt(p[8]), Integer.parseInt(p[9]),
                 "1".equals(p[3]) ? TwsClient.CAP_BATTERY_SINGLE : TwsClient.CAP_BATTERY, 0);

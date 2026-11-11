@@ -55,6 +55,14 @@ final class TileLayouts {
     /** 「打开控制」胶囊底色: 深灰半透明材质感, 不用描边(描边在圆屏上像未加样式的按钮) */
     private static final int COLOR_PILL_BG = 0xFF1E1E21;
 
+    private static final int SUP_DOT_ON = 0xFFEAB31A;
+    private static final int SUP_TROUGH = 0xFF14171C;
+    private static final int SUP_BORDER = 0xFF3A4350;
+    private static final int SUP_ACCENT = 0xFF1E4182;
+    private static final int SUP_PAPER = 0xFFF6F6F2;
+    private static final int SUP_INK = 0xFF101316;
+    private static final float SUP_RADIUS_DP = 2f;
+
     // 尺寸(dp, spec §2.1; 整列 18+2+92+2+32+2+26 = 174)
     private static final float HEADER_H_DP = 16f;
     private static final float DIAL_W_DP = 148f;
@@ -102,22 +110,27 @@ final class TileLayouts {
      * (点了也切不动的按钮不如不画), 什么都没连过时只剩名字/时间/打开按钮。
      */
     static LayoutElementBuilders.Layout build(Context ctx, TileSnapshot s) {
+        return build(ctx, s, AppPrefs.STYLE_NEW);
+    }
+
+    static LayoutElementBuilders.Layout build(Context ctx, TileSnapshot s, int tileStyle) {
+        boolean supreme = tileStyle == AppPrefs.STYLE_SUPREME;
         LayoutElementBuilders.Column.Builder col = new LayoutElementBuilders.Column.Builder()
                 .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
                 .addContent(gapV(TOP_SHIFT_DP))
-                .addContent(header(ctx, s))
+                .addContent(header(ctx, s, supreme))
                 .addContent(gapV(GAP_DP));
         if (s.isSingleBattery()) {
-            col.addContent(singleBattery(ctx, s));
+            col.addContent(singleBattery(ctx, s, supreme));
         } else {
             col.addContent(dial(ctx, s));
         }
         col.addContent(gapV(GAP_DP));
         if (s.hasCapability(TwsClient.CAP_NOISE)) {
-            col.addContent(segmented(ctx, s));
+            col.addContent(segmented(ctx, s, supreme));
             col.addContent(gapV(PILL_GAP_DP));
         }
-        col.addContent(openPill(ctx.getString(R.string.tile_open)));
+        col.addContent(openPill(ctx.getString(R.string.tile_open), supreme));
         return new LayoutElementBuilders.Layout.Builder()
                 .setRoot(new LayoutElementBuilders.Box.Builder()
                         .setWidth(DimensionBuilders.expand())
@@ -175,15 +188,16 @@ final class TileLayouts {
      * 顶行: 设备名 + "· 时间"。时间只是"上一次成功通讯"的时刻, 磁贴不表示实时连接,
      * 所以不加"已连接"之类的措辞(0.3.7 的教训: 猜连接状态会抖)。
      */
-    private static LayoutElementBuilders.Row header(Context ctx, TileSnapshot s) {
+    private static LayoutElementBuilders.Row header(Context ctx, TileSnapshot s, boolean supreme) {
         // 小圆点只表达"最近 24h 内成功同步过", 磁贴不声称实时连接(lastOk 只是快照时间戳)
         boolean recent = s.lastOk > 0L
                 && System.currentTimeMillis() - s.lastOk < 24L * 60L * 60L * 1000L;
+        int dotColor = recent ? (supreme ? SUP_DOT_ON : COLOR_DOT_ON) : COLOR_TEXT_DIM;
         return new LayoutElementBuilders.Row.Builder()
                 .setHeight(DimensionBuilders.dp(HEADER_H_DP))
                 .setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
                 // 小圆点用 Box 画: 字符 "●" 的基线/行高跟文字不同, 会被 Row 居中对成两条水平线
-                .addContent(dot(recent ? COLOR_DOT_ON : COLOR_TEXT_DIM))
+                .addContent(dot(dotColor, supreme))
                 .addContent(gapH(DOT_GAP_DP))
                 .addContent(text(ellipsize(shortName(s.name), NAME_MAX_CHARS),
                         HEADER_NAME_SP, COLOR_TITLE, 500))
@@ -195,8 +209,8 @@ final class TileLayouts {
                 .build();
     }
 
-    /** 顶行的小圆点: 纯色圆角小方块当圆用, 不依赖字体字形 */
-    private static LayoutElementBuilders.Box dot(int color) {
+    /** 顶行的小圆点: 纯色圆角小方块(至上样式改为锐角正方形) */
+    private static LayoutElementBuilders.Box dot(int color, boolean supreme) {
         return new LayoutElementBuilders.Box.Builder()
                 .setWidth(DimensionBuilders.dp(5f))
                 .setHeight(DimensionBuilders.dp(5f))
@@ -204,7 +218,7 @@ final class TileLayouts {
                         .setBackground(new ModifiersBuilders.Background.Builder()
                                 .setColor(ColorBuilders.argb(color))
                                 .setCorner(new ModifiersBuilders.Corner.Builder()
-                                        .setRadius(DimensionBuilders.dp(2.5f))
+                                        .setRadius(DimensionBuilders.dp(supreme ? 0f : 2.5f))
                                         .build())
                                 .build())
                         .build())
@@ -324,24 +338,37 @@ final class TileLayouts {
      * 单电池设备(标准协议兜底/单电池头戴)没有三段仪表盘, 用一块 148x76dp 的居中文字区代替:
      * "电量" 小标签 + 大号 "N%"。视觉高度与仪表盘一致, 下面的模式轨/打开胶囊不会跳位。
      */
-    private static LayoutElementBuilders.Box singleBattery(Context ctx, TileSnapshot s) {
+    private static LayoutElementBuilders.Box singleBattery(Context ctx, TileSnapshot s, boolean supreme) {
         String value = batteryText(s);
+        ModifiersBuilders.Modifiers.Builder modifiers = new ModifiersBuilders.Modifiers.Builder()
+                .setClickable(TileRenderSpec.refresh())
+                .setSemantics(new ModifiersBuilders.Semantics.Builder()
+                        .setContentDescription(label(ctx, R.string.battery_title) + " " + value + ", " + ctx.getString(R.string.tile_refresh_hint))
+                        .build());
+        if (supreme) {
+            modifiers.setBackground(new ModifiersBuilders.Background.Builder()
+                    .setColor(ColorBuilders.argb(SUP_PAPER))
+                    .setCorner(new ModifiersBuilders.Corner.Builder()
+                            .setRadius(DimensionBuilders.dp(SUP_RADIUS_DP))
+                            .build())
+                    .build())
+                    .setBorder(new ModifiersBuilders.Border.Builder()
+                            .setWidth(DimensionBuilders.dp(1.5f))
+                            .setColor(ColorBuilders.argb(SUP_INK))
+                            .build());
+        }
         return new LayoutElementBuilders.Box.Builder()
                 .setWidth(DimensionBuilders.dp(DIAL_W_DP))
                 .setHeight(DimensionBuilders.dp(DIAL_H_DP))
                 .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
                 .setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
-                .setModifiers(new ModifiersBuilders.Modifiers.Builder()
-                        .setClickable(TileRenderSpec.refresh())
-                        .setSemantics(new ModifiersBuilders.Semantics.Builder()
-                                .setContentDescription(label(ctx, R.string.battery_title) + " " + value + ", " + ctx.getString(R.string.tile_refresh_hint))
-                                .build())
-                        .build())
+                .setModifiers(modifiers.build())
                 .addContent(new LayoutElementBuilders.Column.Builder()
                         .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
-                        .addContent(text(label(ctx, R.string.battery_title), 11f, COLOR_FAINT, 400))
+                        .addContent(text(label(ctx, R.string.battery_title), 11f,
+                                supreme ? 0xFF5E646E : COLOR_FAINT, 500))
                         .addContent(gapV(2f))
-                        .addContent(text(value, 34f, COLOR_TITLE, 600))
+                        .addContent(text(value, 34f, supreme ? SUP_INK : COLOR_TITLE, 700))
                         .build())
                 .build();
     }
@@ -356,19 +383,19 @@ final class TileLayouts {
 
     // ---- 分段模式轨 ----
 
-    private static LayoutElementBuilders.Box segmented(Context ctx, TileSnapshot s) {
+    private static LayoutElementBuilders.Box segmented(Context ctx, TileSnapshot s, boolean supreme) {
         LayoutElementBuilders.Row row = new LayoutElementBuilders.Row.Builder()
                 .setWidth(DimensionBuilders.dp(SEG_ROW_W_DP))
                 .setHeight(DimensionBuilders.dp(SEG_ROW_H_DP))
                 .setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
                 .addContent(segment(ctx, s, R.drawable.ic_off, TwsClient.MODE_OFF,
-                        R.string.tile_mode_off, R.string.tile_mode_off_selected))
+                        R.string.tile_mode_off, R.string.tile_mode_off_selected, supreme))
                 .addContent(gapH(SEG_CELL_GAP_DP))
                 .addContent(segment(ctx, s, R.drawable.ic_trans, TwsClient.MODE_TRANS,
-                        R.string.tile_mode_trans, R.string.tile_mode_trans_selected))
+                        R.string.tile_mode_trans, R.string.tile_mode_trans_selected, supreme))
                 .addContent(gapH(SEG_CELL_GAP_DP))
                 .addContent(segment(ctx, s, R.drawable.ic_anc, TwsClient.MODE_ANC,
-                        R.string.tile_mode_anc, R.string.tile_mode_anc_selected))
+                        R.string.tile_mode_anc, R.string.tile_mode_anc_selected, supreme))
                 .build();
 
         return new LayoutElementBuilders.Box.Builder()
@@ -378,14 +405,14 @@ final class TileLayouts {
                 .setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
                 .setModifiers(new ModifiersBuilders.Modifiers.Builder()
                         .setBackground(new ModifiersBuilders.Background.Builder()
-                                .setColor(ColorBuilders.argb(COLOR_TROUGH))
+                                .setColor(ColorBuilders.argb(supreme ? SUP_TROUGH : COLOR_TROUGH))
                                 .setCorner(new ModifiersBuilders.Corner.Builder()
-                                        .setRadius(DimensionBuilders.dp(TROUGH_RADIUS_DP))
+                                        .setRadius(DimensionBuilders.dp(supreme ? SUP_RADIUS_DP : TROUGH_RADIUS_DP))
                                         .build())
                                 .build())
                         .setBorder(new ModifiersBuilders.Border.Builder()
                                 .setWidth(DimensionBuilders.dp(1f))
-                                .setColor(ColorBuilders.argb(COLOR_HAIRLINE))
+                                .setColor(ColorBuilders.argb(supreme ? SUP_BORDER : COLOR_HAIRLINE))
                                 .build())
                         .build())
                 .addContent(row)
@@ -397,7 +424,8 @@ final class TileLayouts {
      * id 用 "mode_" + 目标档位(关闭 1 / 通透 2 / 降噪 0), 与主界面既有的约定一致。
      */
     private static LayoutElementBuilders.Box segment(Context ctx, TileSnapshot s, int iconRes,
-                                                     int target, int labelRes, int selectedLabelRes) {
+                                                     int target, int labelRes, int selectedLabelRes,
+                                                     boolean supreme) {
         boolean active = s.mode == target;
         ModifiersBuilders.Modifiers.Builder modifiers = new ModifiersBuilders.Modifiers.Builder()
                 .setClickable(new ModifiersBuilders.Clickable.Builder()
@@ -418,9 +446,9 @@ final class TileLayouts {
                         .build());
         if (active) {
             modifiers.setBackground(new ModifiersBuilders.Background.Builder()
-                    .setColor(ColorBuilders.argb(COLOR_ACCENT))
+                    .setColor(ColorBuilders.argb(supreme ? SUP_ACCENT : COLOR_ACCENT))
                     .setCorner(new ModifiersBuilders.Corner.Builder()
-                            .setRadius(DimensionBuilders.dp(SEG_CELL_RADIUS_DP))
+                            .setRadius(DimensionBuilders.dp(supreme ? SUP_RADIUS_DP : SEG_CELL_RADIUS_DP))
                             .build())
                     .build());
         }
@@ -451,6 +479,10 @@ final class TileLayouts {
 
     /** 次级胶囊「打开控制 ›」: 108x42dp, 圆角 12, 二级面 #1E1E21 + 1dp 8% 白描边 (视觉与主界面按钮同源) */
     private static LayoutElementBuilders.Box openPill(String label) {
+        return openPill(label, false);
+    }
+
+    private static LayoutElementBuilders.Box openPill(String label, boolean supreme) {
         ModifiersBuilders.Modifiers modifiers = new ModifiersBuilders.Modifiers.Builder()
                 .setClickable(new ModifiersBuilders.Clickable.Builder()
                         .setId(ID_OPEN)
@@ -465,14 +497,14 @@ final class TileLayouts {
                         .setContentDescription(label)
                         .build())
                 .setBackground(new ModifiersBuilders.Background.Builder()
-                        .setColor(ColorBuilders.argb(COLOR_PILL_BG))
+                        .setColor(ColorBuilders.argb(supreme ? SUP_TROUGH : COLOR_PILL_BG))
                         .setCorner(new ModifiersBuilders.Corner.Builder()
-                                .setRadius(DimensionBuilders.dp(PILL_RADIUS_DP))
+                                .setRadius(DimensionBuilders.dp(supreme ? SUP_RADIUS_DP : PILL_RADIUS_DP))
                                 .build())
                         .build())
                 .setBorder(new ModifiersBuilders.Border.Builder()
                         .setWidth(DimensionBuilders.dp(1f))
-                        .setColor(ColorBuilders.argb(COLOR_HAIRLINE))
+                        .setColor(ColorBuilders.argb(supreme ? SUP_BORDER : COLOR_HAIRLINE))
                         .build())
                 .build();
 
@@ -482,7 +514,8 @@ final class TileLayouts {
                 .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
                 .setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
                 .setModifiers(modifiers)
-                .addContent(text(label + " ›", PILL_LABEL_SP, COLOR_PILL_TEXT, 400))
+                .addContent(text(label + " ›", PILL_LABEL_SP,
+                        supreme ? SUP_PAPER : COLOR_PILL_TEXT, supreme ? 500 : 400))
                 .build();
     }
 

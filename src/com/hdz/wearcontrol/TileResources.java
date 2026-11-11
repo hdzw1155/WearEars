@@ -99,6 +99,9 @@ final class TileResources {
         if (style == AppPrefs.STYLE_LIQUID) {
             return DialPainter.png(ctx, s);
         }
+        if (style == AppPrefs.STYLE_SUPREME) {
+            return SuprematistTilePainter.png(ctx, s);
+        }
         return BarsTilePainter.png(ctx, s);
     }
 

@@ -25,6 +25,7 @@ public class BatteryBarView extends View {
 
     private int percent = -1;
     private int fillColor;
+    private float cornerRadiusDp = RADIUS_DP;
 
     public BatteryBarView(Context context) {
         super(context);
@@ -58,6 +59,16 @@ public class BatteryBarView extends View {
         invalidate();
     }
 
+    public void setTrackColor(int color) {
+        trackPaint.setColor(color);
+        invalidate();
+    }
+
+    public void setCornerRadiusDp(float dp) {
+        this.cornerRadiusDp = Math.max(0f, dp);
+        invalidate();
+    }
+
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
@@ -66,7 +77,8 @@ public class BatteryBarView extends View {
         if (w <= 0 || h <= 0) {
             return;
         }
-        float r = Math.min(h / 2f, RADIUS_DP * getResources().getDisplayMetrics().density);
+        float density = getResources().getDisplayMetrics().density;
+        float r = Math.min(h / 2f, cornerRadiusDp * density);
         rect.set(0, 0, w, h);
         canvas.drawRoundRect(rect, r, r, trackPaint);
 
@@ -74,7 +86,8 @@ public class BatteryBarView extends View {
             return;
         }
         float p = Math.min(100, percent) / 100f;
-        rect.set(0, 0, Math.max(h, w * p), h); // 至少留一个圆头, 避免 1% 时看不见
+        float minFill = cornerRadiusDp > 0.5f ? Math.max(h, r * 2f) : Math.max(2f * density, r * 2f);
+        rect.set(0, 0, Math.min(w, Math.max(minFill, w * p)), h); // 至少留一点可见宽度, 避免 1% 时看不见
         fillPaint.setColor(fillColor);
         canvas.drawRoundRect(rect, r, r, fillPaint);
     }

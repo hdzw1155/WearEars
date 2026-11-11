@@ -25,4 +25,23 @@
     <color name="danger">#F0524F</color>
     <color name="track">#26262A</color>
     <color name="choice_text">#F2F2F5</color>
+    <color name="sup_paper">#F6F6F2</color>
+    <color name="sup_paper_card">#FFFFFF</color>
+    <color name="sup_ink">#101316</color>
+    <color name="sup_ink_dim">#5E646E</color>
+    <color name="sup_ink_faint">#8C939E</color>
+    <color name="sup_dark_bg">#14171C</color>
+    <color name="sup_dark_card">#1C2128</color>
+    <color name="sup_dark_border">#2F3640</color>
+    <color name="sup_blue">#1E4182</color>
+    <color name="sup_blue_deep">#152E5E</color>
+    <color name="sup_blue_border">#3A61A8</color>
+    <color name="sup_yellow">#EAB31A</color>
+    <color name="sup_amber">#D97706</color>
+    <color name="sup_green">#2E7D52</color>
+    <color name="sup_green_dark">#4CC38A</color>
+    <color name="sup_red">#C9433E</color>
+    <color name="sup_red_dark">#F0524F</color>
+    <color name="sup_track_light">#E2E2DC</color>
+    <color name="sup_track_dark">#2B313B</color>
 </resources>

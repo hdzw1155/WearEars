@@ -34,10 +34,9 @@ public class NoiseSegmentedView extends View {
     private int colorPill = 0xFF2B6CB0;
     private static final int COLOR_SELECTED = 0xFFFFFFFF;
     private int colorIdle = 0x99F2F2F5;
+    private float cornerRadiusDp = 12f;
 
     private static final float PILL_INSET_DP = 2f;
-    /** 选中块圆角: 与 DeepX chip / 磁贴 segmented 统一为 12dp */
-    private static final float CHIP_RADIUS_DP = 12f;
     private static final float ICON_DP = 12f;
     private static final float ICON_GAP_DP = 2f;
     private static final float TEXT_SP = 10f;
@@ -144,6 +143,11 @@ public class NoiseSegmentedView extends View {
         colorTrough = trough;
         colorPill = pill;
         colorIdle = idle;
+        invalidate();
+    }
+
+    public void setCornerRadiusDp(float dp) {
+        cornerRadiusDp = Math.max(0f, dp);
         invalidate();
     }
 
@@ -267,14 +271,14 @@ public class NoiseSegmentedView extends View {
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-        float radius = Math.min(getHeight() / 2f, CHIP_RADIUS_DP * density);
+        float radius = Math.min(getHeight() / 2f, cornerRadiusDp * density);
         paint.setStyle(Paint.Style.FILL);
         paint.setColor(colorTrough);
         canvas.drawRoundRect(troughRect, radius, radius, paint);
 
         int selected = indexOfMode(mode);
         float pillW = segmentWidth() - 2 * pillInsetPx;
-        float pillRadius = Math.min(pillHeightPx / 2f, CHIP_RADIUS_DP * density);
+        float pillRadius = Math.min(pillHeightPx / 2f, cornerRadiusDp * density);
         if ((selected >= 0 || dragging) && pillW > 0) {
             float left = clampPillCenter(pillCenter) - pillW / 2f;
             pillRect.set(left, pillInsetPx, left + pillW, getHeight() - pillInsetPx);

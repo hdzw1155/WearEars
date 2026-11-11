@@ -135,4 +135,11 @@
     <string name="settings_volume_show">显示音量条</string>
     <string name="settings_volume_hide">隐藏音量条</string>
     <string name="tile_refresh_hint">，点按刷新电量</string>
+    <string name="settings_style_supreme">至上</string>
+    <string name="sup_sec_power">01 / 电量</string>
+    <string name="sup_sec_acoustic">02 / 声学</string>
+    <string name="sup_sec_control">03 / 控制</string>
+    <string name="sup_sec_notice">04 / 声明</string>
+    <string name="sup_open_settings">打开设置 →</string>
+    <string name="sup_swipe_hint">上下翻扇</string>
 </resources>

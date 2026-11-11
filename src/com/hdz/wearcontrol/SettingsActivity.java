@@ -21,8 +21,8 @@ import java.util.List;
 /** 所有常用选项共用旧版设置页；布局、卡片和选择态沿用 0.3.5。 */
 public class SettingsActivity extends Activity {
     private static final int REQUEST_BLUETOOTH = 1;
-    private static final int[] UI_IDS = {R.id.style_new, R.id.style_classic, R.id.style_liquid};
-    private static final int[] TILE_IDS = {R.id.tile_new, R.id.tile_classic, R.id.tile_liquid};
+    private static final int[] UI_IDS = {R.id.style_new, R.id.style_classic, R.id.style_liquid, R.id.style_supreme};
+    private static final int[] TILE_IDS = {R.id.tile_new, R.id.tile_classic, R.id.tile_liquid, R.id.tile_supreme};
     private AppScrollView scroll;
     private ArcIndicatorView indicator;
 

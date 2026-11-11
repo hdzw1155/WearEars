@@ -12,6 +12,7 @@ final class AppPrefs {
     static final int STYLE_NEW = 0;
     static final int STYLE_CLASSIC = 1;
     static final int STYLE_LIQUID = 2;
+    static final int STYLE_SUPREME = 3;
 
     static final int STYLE_FOLLOW = -1;
 
@@ -38,11 +39,11 @@ final class AppPrefs {
     static int uiStyle(Context ctx) {
         int style = prefs(ctx).getInt(KEY_UI_STYLE, STYLE_NEW);
 
-        return style >= 0 && style <= 2 ? style : STYLE_NEW;
+        return style >= 0 && style <= 3 ? style : STYLE_NEW;
     }
 
     static void setUiStyle(Context ctx, int style) {
-        prefs(ctx).edit().putInt(KEY_UI_STYLE, style >= 0 && style <= 2 ? style : STYLE_NEW).apply();
+        prefs(ctx).edit().putInt(KEY_UI_STYLE, style >= 0 && style <= 3 ? style : STYLE_NEW).apply();
     }
 
     /** 返回 "zh" 或 "en"; 默认跟随系统, 系统不是中文时用英文。 */
@@ -64,7 +65,7 @@ final class AppPrefs {
     }
 
     static void setTileStyle(Context ctx, int style) {
-        prefs(ctx).edit().putInt(KEY_TILE_STYLE, style == STYLE_FOLLOW ? style : Math.max(0, Math.min(2, style))).apply();
+        prefs(ctx).edit().putInt(KEY_TILE_STYLE, style == STYLE_FOLLOW ? style : Math.max(0, Math.min(3, style))).apply();
     }
 
     static int tileStyleChoice(Context ctx) { return prefs(ctx).getInt(KEY_TILE_STYLE, STYLE_FOLLOW); }

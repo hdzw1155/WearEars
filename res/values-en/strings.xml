@@ -132,4 +132,11 @@
     <string name="settings_volume_show">Show volume bar</string>
     <string name="settings_volume_hide">Hide volume bar</string>
     <string name="tile_refresh_hint">, tap to refresh battery</string>
+    <string name="settings_style_supreme">Supreme</string>
+    <string name="sup_sec_power">01 / POWER</string>
+    <string name="sup_sec_acoustic">02 / ACOUSTIC</string>
+    <string name="sup_sec_control">03 / CONTROL</string>
+    <string name="sup_sec_notice">04 / NOTICE</string>
+    <string name="sup_open_settings">Settings →</string>
+    <string name="sup_swipe_hint">Fan Swipe</string>
 </resources>

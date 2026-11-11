@@ -64,6 +64,17 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
     private static final int COL_IDLE = 0x61F2F2F5;
     private static final int COL_TEXT = 0xFFF2F2F5;
 
+    private static final int SUP_ACCENT = 0xFF1E4182;
+    private static final int SUP_DIM = 0xFF5E646E;
+    private static final int SUP_OK = 0xFF2E7D52;
+    private static final int SUP_WARN = 0xFFD97706;
+    private static final int SUP_DANGER = 0xFFC9433E;
+    private static final int SUP_IDLE = 0xFF8C939E;
+    private static final int SUP_TEXT = 0xFF101316;
+    private static final int SUP_TRACK_LIGHT = 0xFFE2E2DC;
+    private static final int SUP_NOISE_TROUGH = 0xFF0E1116;
+    private static final int SUP_NOISE_IDLE = 0xFF9AA3B2;
+
     private static final int[] DEEPX_NAME_RES = {
             R.string.deepx_std, R.string.deepx_vocal, R.string.deepx_bass,
             R.string.deepx_treble, R.string.deepx_book};
@@ -77,6 +88,9 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
     private AppScrollView scrollView;
     /** 贴屏幕右缘的弧形指示条: 独立覆盖层, 不随内容滚动 */
     private ArcIndicatorView indicator;
+    private SuprematistFanDeckView fanDeck;
+    private SuprematistPageRailView pageRail;
+    private View acousticPage;
 
     private StatusDotView dot;
     private TextView status;
@@ -132,6 +146,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
     /** 当前界面风格/语言: onResume 里与之对比, 变了就 recreate 立即生效 */
     private int curUiStyle;
     private String curLang;
+    private boolean supreme;
 
     private Switch swSpatial;
     private TextView spatialHint;
@@ -192,16 +207,35 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
         curUiStyle = AppPrefs.uiStyle(this);
         curLang = AppPrefs.lang(this);
         classic = curUiStyle == AppPrefs.STYLE_CLASSIC;
-        setContentView(R.layout.activity_main);
+        supreme = curUiStyle == AppPrefs.STYLE_SUPREME;
+        stateColor = colIdle();
+        setContentView(supreme ? R.layout.activity_main_supreme : R.layout.activity_main);
 
         scrollView = (AppScrollView) findViewById(R.id.scroll);
         indicator = (ArcIndicatorView) findViewById(R.id.indicator);
-        if (indicator != null) {
+        if (indicator != null && scrollView != null) {
             indicator.attachTo(scrollView);
+        }
+        fanDeck = (SuprematistFanDeckView) findViewById(R.id.fan_deck);
+        pageRail = (SuprematistPageRailView) findViewById(R.id.page_rail);
+        acousticPage = findViewById(R.id.sup_page_acoustic);
+        if (fanDeck != null && pageRail != null) {
+            fanDeck.setOnDeckStateListener(new SuprematistFanDeckView.OnDeckStateListener() {
+                @Override
+                public void onDeckMoved(int settledPage, int pageCount, float position,
+                                        boolean lightSurface, boolean awake) {
+                    pageRail.setPageCount(pageCount);
+                    pageRail.setPosition(position, lightSurface, awake);
+                }
+            });
         }
 
 
         dot = (StatusDotView) findViewById(R.id.status_dot);
+        if (supreme) {
+            dot.setDiamond(true);
+            dot.setDotState(colIdle(), true);
+        }
         dot.setContentDescription(getString(R.string.status_idle));
         status = (TextView) findViewById(R.id.status);
         sub = (TextView) findViewById(R.id.sub);
@@ -214,6 +248,11 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
         barL = (BatteryBarView) findViewById(R.id.bar_l);
         barR = (BatteryBarView) findViewById(R.id.bar_r);
         barC = (BatteryBarView) findViewById(R.id.bar_c);
+        if (supreme) {
+            setupSupremeBar(barL);
+            setupSupremeBar(barR);
+            setupSupremeBar(barC);
+        }
         boltL = findViewById(R.id.bolt_l);
         boltR = findViewById(R.id.bolt_r);
         boltC = findViewById(R.id.bolt_c);
@@ -261,6 +300,10 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
         applyVolumeVisibility();
 
         noiseSeg = (NoiseSegmentedView) findViewById(R.id.noise_seg);
+        if (supreme && noiseSeg != null) {
+            noiseSeg.setCornerRadiusDp(2f);
+            noiseSeg.setPalette(SUP_NOISE_TROUGH, SUP_ACCENT, SUP_NOISE_IDLE);
+        }
         deepxScroller = (SnapChipRow) findViewById(R.id.deepx_scroller);
 
         // 电量区双形态: 新版横向进度条 / 经典压扁圆环, 其余 UI 完全一致
@@ -301,6 +344,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
         }
 
         wireListeners();
+        syncAcousticPageVisibility();
         entryAnimation();
     }
 
@@ -318,8 +362,8 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
         String[] names = deepxNames();
         for (int i = 0; i < names.length; i++) {
             TextView chip = new TextView(this);
-            chip.setBackgroundResource(R.drawable.bg_chip);
-            chip.setTextColor(COL_DIM);
+            chip.setBackgroundResource(supreme ? R.drawable.bg_sup_chip : R.drawable.bg_chip);
+            chip.setTextColor(colDim());
             chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
             chip.setGravity(Gravity.CENTER);
             int ph = (int) dp(12);
@@ -439,6 +483,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
                             if (volumeCard != null) {
                                 volumeCard.setVisibility(isChecked ? View.VISIBLE : View.GONE);
                             }
+                            syncAcousticPageVisibility();
                             haptic(HapticFeedbackConstants.KEYBOARD_TAP);
                         }
                     });
@@ -463,8 +508,10 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
             return;
         }
         resumed = true;
-        scrollView.setActive(true);
+        if (scrollView != null) scrollView.setActive(true);
         if (indicator != null) indicator.setActive(true);
+        if (fanDeck != null) fanDeck.setActive(true);
+        if (pageRail != null) pageRail.wake();
         tryConnect();
         applyVolumeVisibility();
         refreshVolumeUi();
@@ -475,8 +522,9 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
     protected void onPause() {
         super.onPause();
         resumed = false;
-        scrollView.setActive(false);
+        if (scrollView != null) scrollView.setActive(false);
         if (indicator != null) indicator.setActive(false);
+        if (fanDeck != null) fanDeck.setActive(false);
         unregisterVolumeReceiver();
         ui.removeCallbacksAndMessages(null);
         connecting = false;
@@ -494,6 +542,9 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
      */
     @Override
     public boolean onGenericMotionEvent(MotionEvent ev) {
+        if (fanDeck != null && fanDeck.onGenericMotionEvent(ev)) {
+            return true;
+        }
         AppScrollView target = activeScroll();
         return target != null && target.onGenericMotionEvent(ev) || super.onGenericMotionEvent(ev);
     }
@@ -503,6 +554,9 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
      */
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (fanDeck != null && fanDeck.handleRotaryKey(keyCode)) {
+            return true;
+        }
         AppScrollView target = activeScroll();
         return target != null && target.handleRotaryKey(keyCode) || super.onKeyDown(keyCode, event);
     }
@@ -567,7 +621,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
             return;
         }
         if (!hasPerm()) {
-            setState(R.string.status_no_perm, COL_DANGER, false, false,
+            setState(R.string.status_no_perm, colDanger(), false, false,
                     getString(R.string.sub_no_perm_action));
             requestPermissions(new String[]{Manifest.permission.BLUETOOTH_CONNECT}, REQ_PERM);
             return;
@@ -583,7 +637,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
     public void onConnectionState(final int state, final int hint) {
         if (!resumed) return;
         connecting = state == R.string.status_connecting;
-        int color = connecting ? COL_ACCENT : state == R.string.status_bt_off ? COL_WARN : COL_IDLE;
+        int color = connecting ? colAccent() : state == R.string.status_bt_off ? colWarn() : colIdle();
         setState(state, color, !connecting, connecting,
                 hint == 0 ? TileStore.readOrEmpty(this).name : getString(hint));
         showSnapshot();
@@ -743,7 +797,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
     }
 
     private void onRefreshPermissionDenied() {
-        setState(R.string.status_no_perm, COL_DANGER, false, false,
+        setState(R.string.status_no_perm, colDanger(), false, false,
                 getString(R.string.sub_no_perm_action));
         setSub(getString(R.string.sub_no_perm_action));
     }
@@ -785,8 +839,12 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
             public void run() {
                 for (int i = 0; i < deepxChips.length; i++) {
                     boolean sel = (i == deepxMode);
-                    deepxChips[i].setBackgroundResource(sel ? R.drawable.bg_chip_sel : R.drawable.bg_chip);
-                    deepxChips[i].setTextColor(sel ? Color.WHITE : COL_DIM);
+                    if (supreme) {
+                        deepxChips[i].setBackgroundResource(sel ? R.drawable.bg_sup_chip_sel : R.drawable.bg_sup_chip);
+                    } else {
+                        deepxChips[i].setBackgroundResource(sel ? R.drawable.bg_chip_sel : R.drawable.bg_chip);
+                    }
+                    deepxChips[i].setTextColor(sel ? Color.WHITE : colDim());
                 }
                 if (deepxScroller != null) {
                     deepxScroller.select(deepxMode, true);
@@ -844,6 +902,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
                     lblL.setText(single ? R.string.label_total : R.string.label_left);
                 }
                 applyBatteryStyle();
+                syncAcousticPageVisibility();
             }
         });
     }
@@ -876,21 +935,21 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
                 sp.setSpan(new android.text.style.RelativeSizeSpan(0.58f), unitStart, unitStart + 1,
                         Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
                 pctView.setText(sp);
-                pctView.setTextColor(COL_TEXT);
+                pctView.setTextColor(colText());
             } else {
                 pctView.setText("--");
-                pctView.setTextColor(COL_IDLE);
+                pctView.setTextColor(colIdle());
             }
         }
         if (bar != null) {
             bar.setPercent(known ? pct : -1);
             int color;
             if (charging) {
-                color = COL_WARN;
+                color = colWarn();
             } else if (known && pct <= 20) {
-                color = COL_DANGER;
+                color = colDanger();
             } else {
-                color = COL_OK;
+                color = colOk();
             }
             bar.setFillColor(color);
         }
@@ -949,11 +1008,11 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
         final int verif = c != null ? c.verifLevel() : TwsClient.VERIF_UNTESTED;
         // 磁贴靠 caps 决定显示三段电量/降噪轨还是单电量; 未验证驱动给个小标签, 功能照常尝试
         deviceName = name == null ? "" : name;
-        setState(R.string.status_connected, COL_OK, false, false, deviceName);
+        setState(R.string.status_connected, colOk(), false, false, deviceName);
         applyBatteryConfig(caps);
         boolean untested = verif == TwsClient.VERIF_UNTESTED;
         setChip(untested ? getString(R.string.chip_unverified) : null);
-        sub.setTextColor(untested ? COL_WARN : COL_DIM);
+        sub.setTextColor(untested ? colWarn() : colDim());
         if (untested) {
             setSub(getString(R.string.sub_model_unverified));
         }
@@ -1018,7 +1077,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
     public void onDisconnected(String reason) {
         connecting = false;
         showSnapshot();
-        setState(R.string.status_idle, COL_IDLE, true, false, lastSeenSub());
+        setState(R.string.status_idle, colIdle(), true, false, lastSeenSub());
         setSub(lastSeenSub());
         TileStore.push(this);
     }
@@ -1178,6 +1237,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
             switchVolume.setChecked(show);
             volumeGuard = false;
         }
+        syncAcousticPageVisibility();
     }
 
 
@@ -1186,13 +1246,37 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
         return scrollView;
     }
 
+    private void setupSupremeBar(BatteryBarView bar) {
+        if (bar != null) {
+            bar.setTrackColor(SUP_TRACK_LIGHT);
+            bar.setCornerRadiusDp(1f);
+        }
+    }
+
+    private void syncAcousticPageVisibility() {
+        if (fanDeck == null || acousticPage == null) {
+            return;
+        }
+        boolean hasNoise = noiseCard != null && noiseCard.getVisibility() == View.VISIBLE;
+        boolean hasVolume = volumeCard != null && volumeCard.getVisibility() == View.VISIBLE;
+        fanDeck.setPageEnabled(acousticPage, hasNoise || hasVolume);
+    }
+
+    private int colAccent() { return supreme ? SUP_ACCENT : COL_ACCENT; }
+    private int colDim() { return supreme ? SUP_DIM : COL_DIM; }
+    private int colOk() { return supreme ? SUP_OK : COL_OK; }
+    private int colWarn() { return supreme ? SUP_WARN : COL_WARN; }
+    private int colDanger() { return supreme ? SUP_DANGER : COL_DANGER; }
+    private int colIdle() { return supreme ? SUP_IDLE : COL_IDLE; }
+    private int colText() { return supreme ? SUP_TEXT : COL_TEXT; }
+
     private float dp(float v) {
         return v * getResources().getDisplayMetrics().density;
     }
     /** 新版=横向进度条(数字行+条), 经典=压扁圆环(数字在环里). 只切电量区, 其余 UI 相同.
      *  单电池设备统一按"单张进度卡"显示, 不套三格布局. */
     private void applyBatteryStyle() {
-        boolean showCards = curUiStyle == AppPrefs.STYLE_NEW;
+        boolean showCards = curUiStyle == AppPrefs.STYLE_NEW || curUiStyle == AppPrefs.STYLE_SUPREME;
         boolean showRing = curUiStyle == AppPrefs.STYLE_CLASSIC;
         boolean showBlocks = curUiStyle == AppPrefs.STYLE_LIQUID;
         boolean single = singleBatt;
