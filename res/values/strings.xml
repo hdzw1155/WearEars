@@ -138,16 +138,19 @@
     <string name="settings_style_supreme">至上</string>
     <string name="sup_sec_power">01 / 电量</string>
     <string name="sup_sec_acoustic">02 / 降噪控制</string>
-    <string name="sup_sec_control">03 / 控制</string>
+    <string name="sup_sec_control">02 / 控制</string>
     <string name="sup_sec_dev">DEV / 实验功能</string>
     <string name="sup_sec_notice">安全声明 / NOTICE</string>
     <string name="sup_open_settings">打开设置 · 风格 / 设备 →</string>
     <string name="sup_swipe_hint">弧滑翻页</string>
-    <string name="sup_vol_guard_hint">防误触锁定 · 长按或双击「音」</string>
-    <string name="sup_vol_unlocked_hint">调音已解锁 · 拖动「音」或 -/+</string>
+    <string name="sup_vol_guard_hint">长按「音」解锁</string>
+    <string name="sup_vol_unlocked_hint">已解锁 · 拖/-+</string>
     <string name="sup_noise_disconnected">未连接耳机 · 点按任一档位重连</string>
     <string name="sup_noise_unsupported">当前机型协议不支持主动降噪</string>
     <string name="sup_dev_unlocked_jump">实验页已解锁 · 点此跳转 →</string>
     <string name="sup_notice_summary">• 非官方逆向协议研究工具，不收集也不上传数据。\n• 首次连接或开实验功能前务必先摘耳机、调低音量。\n• 听力健康不可逆，使用本应用风险由您自行承担。</string>
     <string name="sup_full_notice">查看完整条款 →</string>
+    <string name="settings_theme">设置外观</string>
+    <string name="settings_theme_night">夜晚</string>
+    <string name="settings_theme_day">白天</string>
 </resources>

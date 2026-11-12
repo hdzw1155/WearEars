@@ -2,7 +2,7 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#0D0F14">
+    android:background="#F4F3EE">
 
     <!-- Full-screen curved C-arc + alternating folding-fan deck (ZERO internal scrolling) -->
     <com.hdz.wearcontrol.SuprematistFanDeckView
@@ -10,7 +10,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
-        <!-- Sheet 0: Slanted Dashed Battery (L/R/C, NO digits) + Anti-Accidental-Touch Solid Volume -->
+        <!-- Sheet 0: All-in-One El Lissitzky Hero Poster (WearEars + ANC + L/R/C + Guarded Volume) -->
         <FrameLayout
             android:id="@+id/sup_page_power"
             android:layout_width="match_parent"
@@ -22,271 +22,36 @@
                 android:layout_height="match_parent"
                 android:tag="paper" />
 
-            <!-- Full-dial interactive canvas: slanted dashed L/R/C + locked solid Volume bar -->
             <com.hdz.wearcontrol.SuprematistDialView
                 android:id="@+id/sup_dial"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent" />
-
-            <!-- Top circular-safe compact header + refresh + idle reconnect pill -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_gravity="top"
-                android:orientation="vertical"
-                android:paddingLeft="40dp"
-                android:paddingTop="18dp"
-                android:paddingRight="38dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <com.hdz.wearcontrol.StatusDotView
-                        android:id="@+id/status_dot"
-                        android:layout_width="9dp"
-                        android:layout_height="9dp" />
-
-                    <TextView
-                        android:id="@+id/status"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="5dp"
-                        android:ellipsize="end"
-                        android:maxLines="1"
-                        android:text="@string/status_idle"
-                        android:textColor="@color/sup_ink"
-                        android:textSize="12sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:id="@+id/status_chip"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="5dp"
-                        android:background="@drawable/bg_sup_chip"
-                        android:paddingLeft="4dp"
-                        android:paddingTop="1dp"
-                        android:paddingRight="4dp"
-                        android:paddingBottom="1dp"
-                        android:textColor="@color/sup_ink"
-                        android:textSize="8sp"
-                        android:textStyle="bold"
-                        android:visibility="gone" />
-
-                    <View
-                        android:layout_width="0dp"
-                        android:layout_height="1dp"
-                        android:layout_weight="1" />
-
-                    <FrameLayout
-                        android:id="@+id/refresh"
-                        android:layout_width="28dp"
-                        android:layout_height="28dp"
-                        android:background="@drawable/bg_sup_icon_btn"
-                        android:clickable="true"
-                        android:contentDescription="@string/btn_refresh"
-                        android:focusable="true">
-
-                        <ImageView
-                            android:layout_width="13dp"
-                            android:layout_height="13dp"
-                            android:layout_gravity="center"
-                            android:src="@drawable/ic_refresh"
-                            android:tint="@color/sup_ink" />
-                    </FrameLayout>
-                </LinearLayout>
-
-                <TextView
-                    android:id="@+id/sub"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="1dp"
-                    android:ellipsize="end"
-                    android:maxLines="1"
-                    android:textColor="@color/sup_ink_dim"
-                    android:textSize="9.5sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/cta_reconnect"
-                    android:layout_width="wrap_content"
-                    android:layout_height="22dp"
-                    android:layout_gravity="center_horizontal"
-                    android:layout_marginTop="3dp"
-                    android:background="@drawable/bg_sup_cta_blue"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:gravity="center"
-                    android:paddingLeft="12dp"
-                    android:paddingRight="12dp"
-                    android:text="@string/cta_reconnect"
-                    android:textColor="@color/sup_paper"
-                    android:textSize="9.5sp"
-                    android:textStyle="bold"
-                    android:visibility="gone" />
-            </LinearLayout>
         </FrameLayout>
 
-        <!-- Sheet 1: P5R Obsidian ANC Controls (Always Enabled, Full-Fit, Zero Scroll) -->
-        <FrameLayout
-            android:id="@+id/sup_page_acoustic"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:tag="ink">
-
-            <com.hdz.wearcontrol.SuprematistDecorView
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:tag="ink" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:paddingLeft="26dp"
-                android:paddingTop="18dp"
-                android:paddingRight="22dp"
-                android:paddingBottom="18dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="14dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <View
-                        android:layout_width="7dp"
-                        android:layout_height="7dp"
-                        android:layout_marginEnd="6dp"
-                        android:background="#E5232A" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:letterSpacing="0.06"
-                        android:text="@string/sup_sec_acoustic"
-                        android:textColor="@color/sup_paper"
-                        android:textSize="10.5sp"
-                        android:textStyle="bold" />
-                </LinearLayout>
-
-                <com.hdz.wearcontrol.SuprematistNoiseView
-                    android:id="@+id/sup_noise_view"
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_marginTop="5dp"
-                    android:layout_marginBottom="5dp"
-                    android:layout_weight="1" />
-
-                <TextView
-                    android:id="@+id/sup_noise_status"
-                    android:layout_width="wrap_content"
-                    android:layout_height="22dp"
-                    android:layout_gravity="center_horizontal"
-                    android:background="@drawable/bg_sup_card_dark"
-                    android:clickable="true"
-                    android:ellipsize="end"
-                    android:focusable="true"
-                    android:gravity="center"
-                    android:maxLines="1"
-                    android:paddingLeft="10dp"
-                    android:paddingRight="10dp"
-                    android:text="@string/sup_noise_disconnected"
-                    android:textColor="@color/sup_yellow"
-                    android:textSize="9sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-        </FrameLayout>
-
-        <!-- Sheet 2: Electric Cobalt Settings & Dev Entry (Full-Fit, Zero Scroll) -->
+        <!-- Sheet 1: Reference #2 Constructivist Control Poster ("02 / 控制") -->
         <FrameLayout
             android:id="@+id/sup_page_control"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:tag="blue">
+            android:tag="paper">
 
             <com.hdz.wearcontrol.SuprematistDecorView
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:tag="blue" />
+                android:tag="control" />
 
-            <LinearLayout
+            <com.hdz.wearcontrol.SuprematistControlView
+                android:id="@+id/sup_control"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:paddingLeft="28dp"
-                android:paddingTop="22dp"
-                android:paddingRight="24dp"
-                android:paddingBottom="22dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <View
-                        android:layout_width="7dp"
-                        android:layout_height="7dp"
-                        android:layout_marginEnd="6dp"
-                        android:background="@color/sup_yellow" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:letterSpacing="0.06"
-                        android:text="@string/sup_sec_control"
-                        android:textColor="@color/sup_paper"
-                        android:textSize="10.5sp"
-                        android:textStyle="bold" />
-                </LinearLayout>
-
-                <TextView
-                    android:id="@+id/open_settings"
-                    android:layout_width="match_parent"
-                    android:layout_height="44dp"
-                    android:layout_marginTop="10dp"
-                    android:background="@drawable/bg_sup_btn_paper"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:gravity="center"
-                    android:paddingLeft="12dp"
-                    android:paddingRight="12dp"
-                    android:text="@string/sup_open_settings"
-                    android:textColor="@color/sup_ink"
-                    android:textSize="12sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/dev_hint"
-                    android:layout_width="match_parent"
-                    android:layout_height="36dp"
-                    android:layout_marginTop="10dp"
-                    android:background="@drawable/bg_sup_card_dark"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:gravity="center"
-                    android:paddingLeft="10dp"
-                    android:paddingRight="10dp"
-                    android:text="@string/dev_section"
-                    android:textColor="@color/sup_yellow"
-                    android:textSize="10sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
+                android:layout_height="match_parent" />
         </FrameLayout>
 
-        <!-- Sheet 3: Dedicated Dev Lab Sheet (Enabled on 5-tap Dev unlock, Zero Scroll) -->
+        <!-- Sheet 2: Dedicated Dev Lab Sheet (Enabled on 5-tap unlock, Circular-Safe, Zero Scroll) -->
         <FrameLayout
             android:id="@+id/sup_page_dev"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:tag="hazard">
+            android:tag="paper">
 
             <com.hdz.wearcontrol.SuprematistDecorView
                 android:layout_width="match_parent"
@@ -299,32 +64,31 @@
                 android:layout_height="match_parent"
                 android:gravity="center"
                 android:orientation="vertical"
-                android:paddingLeft="24dp"
-                android:paddingTop="18dp"
-                android:paddingRight="20dp"
-                android:paddingBottom="18dp"
+                android:paddingLeft="42dp"
+                android:paddingTop="32dp"
+                android:paddingRight="36dp"
+                android:paddingBottom="32dp"
                 android:visibility="visible">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="16dp"
                     android:gravity="center_vertical"
                     android:orientation="horizontal">
 
                     <View
-                        android:layout_width="7dp"
-                        android:layout_height="7dp"
+                        android:layout_width="8dp"
+                        android:layout_height="8dp"
                         android:layout_marginEnd="6dp"
-                        android:background="#E5232A" />
+                        android:background="#DF1B22" />
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:letterSpacing="0.06"
                         android:text="@string/sup_sec_dev"
-                        android:textColor="@color/sup_paper"
-                        android:textSize="10sp"
+                        android:textColor="@color/sup_ink"
+                        android:textSize="10.5sp"
                         android:textStyle="bold" />
                 </LinearLayout>
 
@@ -333,12 +97,12 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
-                    android:background="@drawable/bg_sup_card_dark"
+                    android:background="@drawable/bg_sup_card_paper"
                     android:orientation="vertical"
-                    android:paddingLeft="10dp"
-                    android:paddingTop="6dp"
-                    android:paddingRight="10dp"
-                    android:paddingBottom="6dp">
+                    android:paddingLeft="8dp"
+                    android:paddingTop="4dp"
+                    android:paddingRight="8dp"
+                    android:paddingBottom="4dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -351,15 +115,15 @@
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             android:text="@string/spatial_title_short"
-                            android:textColor="@color/sup_paper"
-                            android:textSize="11.5sp"
+                            android:textColor="@color/sup_ink"
+                            android:textSize="11sp"
                             android:textStyle="bold" />
 
                         <Switch
                             android:id="@+id/switch_spatial"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:minHeight="28dp"
+                            android:minHeight="26dp"
                             android:thumbTint="@color/switch_thumb"
                             android:trackTint="@color/switch_track" />
                     </LinearLayout>
@@ -371,22 +135,22 @@
                         android:ellipsize="end"
                         android:maxLines="1"
                         android:text="@string/spatial_hint_inline"
-                        android:textColor="#E5232A"
-                        android:textSize="8.5sp"
+                        android:textColor="#DF1B22"
+                        android:textSize="8sp"
                         android:textStyle="bold" />
                 </LinearLayout>
 
-                <!-- DeepX Card (parentOf depth = 2 from deepx_current), 2 compact rows -> ZERO scroll -->
+                <!-- DeepX Card (parentOf depth = 2 from deepx_current), compact 2-row grid -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:background="@drawable/bg_sup_card_dark"
+                    android:layout_marginTop="5dp"
+                    android:background="@drawable/bg_sup_card_paper"
                     android:orientation="vertical"
-                    android:paddingLeft="8dp"
-                    android:paddingTop="6dp"
-                    android:paddingRight="8dp"
-                    android:paddingBottom="7dp">
+                    android:paddingLeft="7dp"
+                    android:paddingTop="4dp"
+                    android:paddingRight="7dp"
+                    android:paddingBottom="5dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -399,8 +163,8 @@
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             android:text="@string/deepx_label"
-                            android:textColor="@color/sup_paper"
-                            android:textSize="11sp"
+                            android:textColor="@color/sup_ink"
+                            android:textSize="10.5sp"
                             android:textStyle="bold" />
 
                         <TextView
@@ -408,8 +172,8 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="--"
-                            android:textColor="@color/sup_yellow"
-                            android:textSize="10.5sp"
+                            android:textColor="#0D4FB8"
+                            android:textSize="10sp"
                             android:textStyle="bold" />
                     </LinearLayout>
 
@@ -417,7 +181,7 @@
                         android:id="@+id/deepx_row"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="5dp"
+                        android:layout_marginTop="4dp"
                         android:orientation="vertical">
 
                         <LinearLayout
@@ -428,76 +192,76 @@
                             <TextView
                                 android:id="@+id/deepx_0"
                                 android:layout_width="0dp"
-                                android:layout_height="25dp"
-                                android:layout_marginEnd="4dp"
+                                android:layout_height="22dp"
+                                android:layout_marginEnd="3dp"
                                 android:layout_weight="1"
                                 android:background="@drawable/bg_sup_chip"
                                 android:gravity="center"
                                 android:maxLines="1"
                                 android:text="@string/deepx_std"
                                 android:textColor="@color/sup_ink"
-                                android:textSize="9.5sp"
+                                android:textSize="9sp"
                                 android:textStyle="bold" />
 
                             <TextView
                                 android:id="@+id/deepx_1"
                                 android:layout_width="0dp"
-                                android:layout_height="25dp"
-                                android:layout_marginEnd="4dp"
+                                android:layout_height="22dp"
+                                android:layout_marginEnd="3dp"
                                 android:layout_weight="1"
                                 android:background="@drawable/bg_sup_chip"
                                 android:gravity="center"
                                 android:maxLines="1"
                                 android:text="@string/deepx_vocal"
                                 android:textColor="@color/sup_ink"
-                                android:textSize="9.5sp"
+                                android:textSize="9sp"
                                 android:textStyle="bold" />
 
                             <TextView
                                 android:id="@+id/deepx_2"
                                 android:layout_width="0dp"
-                                android:layout_height="25dp"
+                                android:layout_height="22dp"
                                 android:layout_weight="1"
                                 android:background="@drawable/bg_sup_chip"
                                 android:gravity="center"
                                 android:maxLines="1"
                                 android:text="@string/deepx_bass"
                                 android:textColor="@color/sup_ink"
-                                android:textSize="9.5sp"
+                                android:textSize="9sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
 
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="4dp"
+                            android:layout_marginTop="3dp"
                             android:orientation="horizontal">
 
                             <TextView
                                 android:id="@+id/deepx_3"
                                 android:layout_width="0dp"
-                                android:layout_height="25dp"
-                                android:layout_marginEnd="4dp"
+                                android:layout_height="22dp"
+                                android:layout_marginEnd="3dp"
                                 android:layout_weight="1"
                                 android:background="@drawable/bg_sup_chip"
                                 android:gravity="center"
                                 android:maxLines="1"
                                 android:text="@string/deepx_treble"
                                 android:textColor="@color/sup_ink"
-                                android:textSize="9.5sp"
+                                android:textSize="9sp"
                                 android:textStyle="bold" />
 
                             <TextView
                                 android:id="@+id/deepx_4"
                                 android:layout_width="0dp"
-                                android:layout_height="25dp"
+                                android:layout_height="22dp"
                                 android:layout_weight="1"
                                 android:background="@drawable/bg_sup_chip"
                                 android:gravity="center"
                                 android:maxLines="1"
                                 android:text="@string/deepx_book"
                                 android:textColor="@color/sup_ink"
-                                android:textSize="9.5sp"
+                                android:textSize="9sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
                     </LinearLayout>
@@ -505,12 +269,12 @@
             </LinearLayout>
         </FrameLayout>
 
-        <!-- Sheet 4: Manifesto Legal Notice (Full-Fit Summary + 1-Tap Full Dialog, Zero Scroll) -->
+        <!-- Sheet 3: Poster Manifesto Notice (Circular-Safe Inset, Zero Scroll) -->
         <FrameLayout
             android:id="@+id/sup_page_notice"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:tag="manifesto">
+            android:tag="paper">
 
             <com.hdz.wearcontrol.SuprematistDecorView
                 android:layout_width="match_parent"
@@ -522,10 +286,10 @@
                 android:layout_height="match_parent"
                 android:gravity="center"
                 android:orientation="vertical"
-                android:paddingLeft="24dp"
-                android:paddingTop="20dp"
-                android:paddingRight="20dp"
-                android:paddingBottom="20dp">
+                android:paddingLeft="28dp"
+                android:paddingTop="24dp"
+                android:paddingRight="24dp"
+                android:paddingBottom="28dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -534,17 +298,17 @@
                     android:orientation="horizontal">
 
                     <View
-                        android:layout_width="7dp"
-                        android:layout_height="7dp"
+                        android:layout_width="8dp"
+                        android:layout_height="8dp"
                         android:layout_marginEnd="6dp"
-                        android:background="@color/sup_yellow" />
+                        android:background="#0D4FB8" />
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:letterSpacing="0.06"
                         android:text="@string/sup_sec_notice"
-                        android:textColor="@color/sup_paper"
+                        android:textColor="@color/sup_ink"
                         android:textSize="10sp"
                         android:textStyle="bold" />
                 </LinearLayout>
@@ -553,41 +317,44 @@
                     android:id="@+id/disclaimer_row"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:background="@drawable/bg_sup_card_blue"
+                    android:layout_marginTop="5dp"
+                    android:background="@drawable/bg_sup_card_paper"
                     android:orientation="vertical"
-                    android:padding="10dp">
+                    android:paddingLeft="8dp"
+                    android:paddingTop="5dp"
+                    android:paddingRight="8dp"
+                    android:paddingBottom="5dp">
 
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:lineSpacingExtra="2dp"
+                        android:lineSpacingExtra="0.5dp"
                         android:text="@string/sup_notice_summary"
-                        android:textColor="@color/sup_paper"
-                        android:textSize="9.5sp" />
+                        android:textColor="@color/sup_ink"
+                        android:textSize="9sp" />
                 </LinearLayout>
 
                 <TextView
                     android:id="@+id/sup_full_notice"
                     android:layout_width="wrap_content"
-                    android:layout_height="28dp"
+                    android:layout_height="24dp"
                     android:layout_gravity="center_horizontal"
-                    android:layout_marginTop="8dp"
-                    android:background="@drawable/bg_sup_btn_paper"
+                    android:layout_marginTop="5dp"
+                    android:background="@drawable/bg_sup_cta_blue"
                     android:clickable="true"
                     android:focusable="true"
                     android:gravity="center"
                     android:paddingLeft="14dp"
                     android:paddingRight="14dp"
                     android:text="@string/sup_full_notice"
-                    android:textColor="@color/sup_ink"
-                    android:textSize="9.5sp"
+                    android:textColor="@color/sup_paper"
+                    android:textSize="9sp"
                     android:textStyle="bold" />
             </LinearLayout>
         </FrameLayout>
     </com.hdz.wearcontrol.SuprematistFanDeckView>
 
-    <!-- Left-bezel C-arc orbital page indicator matching hand sketch ("第一屏 <- -> 最后一屏") -->
+    <!-- Left-bezel C-arc orbital page indicator ("第一屏 <- -> 最后一屏") -->
     <com.hdz.wearcontrol.SuprematistPageRailView
         android:id="@+id/page_rail"
         android:layout_width="match_parent"

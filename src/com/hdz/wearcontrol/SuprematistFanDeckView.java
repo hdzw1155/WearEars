@@ -553,49 +553,52 @@ public class SuprematistFanDeckView extends FrameLayout {
             frac = 0f;
         }
 
-        // Alternating corner folding-fan pivot ("5-tap S" transition) fused with left C-arc orbit
+        // Website 5-tap "S" alternating bottom-corner lower-covers-upper ("左右下角下盖上") fan deck:
+        // Odd sheets hinge from bottom-LEFT & swing up over outgoing; even sheets hinge bottom-RIGHT.
         float dir = (nextIdx % 2 == 1) ? 1f : -1f;
         float u = (float) (0.5 * (1.0 - Math.cos(Math.PI * frac)));
+        float rem = 1f - u;
 
         for (int i = 0; i < count; i++) {
             View page = activePages.get(i);
-            if (i == baseIdx || (i == nextIdx && nextIdx != baseIdx)) {
+            if (i == baseIdx) {
                 page.setVisibility(View.VISIBLE);
+                page.setTranslationZ(0f);
                 if (frac > 0f) {
-                    float t = i - clampedPos; // base in [-1, 0], next in [0, 1]
-                    double theta = t * 0.78;
-                    float arcRx = w * 0.48f;
-                    float arcRy = h * 0.94f;
-                    float tx = -arcRx * (float) (1.0 - Math.cos(theta));
-                    float ty = arcRy * (float) Math.sin(theta);
-
-                    boolean incoming = (i == nextIdx);
-                    page.setTranslationZ((incoming ? 8f : 0f) * density);
-                    page.setPivotX(dir > 0f ? w * 0.14f : w * 0.86f);
-                    page.setPivotY(incoming ? h * 0.88f : h * 0.12f);
-
-                    float fanSwing = (float) Math.sin(Math.PI * frac) * dir * (incoming ? 11f : -6.5f);
-                    page.setRotation(-t * 24f + fanSwing);
-                    page.setTranslationX(tx);
-                    page.setTranslationY(ty);
-                    float s = 1f - 0.10f * Math.abs(t);
+                    page.setPivotX(dir > 0f ? w * 0.90f : w * 0.10f);
+                    page.setPivotY(h);
+                    page.setRotation(-dir * 4.5f * u);
+                    float s = 1f - 0.042f * u;
                     page.setScaleX(s);
                     page.setScaleY(s);
-                    page.setAlpha(Math.max(0.25f, 1f - 0.65f * Math.abs(t)));
+                    page.setTranslationX(0f);
+                    page.setTranslationY(0f);
+                    page.setAlpha(1f - 0.22f * u);
                 } else if (Math.abs(overscroll) > 0.0005f) {
-                    double theta = overscroll * 0.28;
-                    page.setPivotX(w * 0.12f);
-                    page.setPivotY(overscroll < 0f ? h * 0.20f : h * 0.80f);
-                    page.setRotation(overscroll * 9.5f);
-                    page.setTranslationX(-w * 0.24f * (float) (1.0 - Math.cos(theta)));
-                    page.setTranslationY(-h * 0.34f * (float) Math.sin(theta));
-                    float s = 1f - Math.abs(overscroll) * 0.03f;
+                    page.setPivotX(w * 0.5f);
+                    page.setPivotY(overscroll < 0f ? 0f : h);
+                    page.setRotation(overscroll * 3.2f);
+                    page.setTranslationX(0f);
+                    page.setTranslationY(-overscroll * 14f * density);
+                    float s = 1f - Math.abs(overscroll) * 0.02f;
                     page.setScaleX(s);
                     page.setScaleY(s);
                     page.setAlpha(1f);
                 } else {
                     resetPageTransform(page);
                 }
+            } else if (i == nextIdx && nextIdx != baseIdx) {
+                page.setVisibility(View.VISIBLE);
+                page.setTranslationZ(10f * density);
+                page.setPivotX(dir > 0f ? w * 0.08f : w * 0.92f);
+                page.setPivotY(h);
+                page.setRotation(dir * 14.5f * rem);
+                page.setTranslationX(dir * 0.055f * w * rem);
+                page.setTranslationY(h * (1f - frac));
+                float s = 1f - 0.050f * rem;
+                page.setScaleX(s);
+                page.setScaleY(s);
+                page.setAlpha(Math.min(1f, 0.35f + 0.65f * frac));
             } else {
                 resetPageTransform(page);
                 page.setVisibility(View.INVISIBLE);

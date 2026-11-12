@@ -28,6 +28,7 @@ final class AppPrefs {
     private static final String KEY_SCROLL_COLOR = "scroll_color_style";
     /** 主界面音量条: 默认隐藏, 在设置页或原开发者设置中切换 */
     private static final String KEY_SHOW_VOLUME = "show_volume";
+    private static final String KEY_SETTINGS_DAY = "settings_day_mode";
 
     private AppPrefs() {
     }
@@ -80,6 +81,14 @@ final class AppPrefs {
 
     static void setShowVolume(Context ctx, boolean show) {
         prefs(ctx).edit().putBoolean(KEY_SHOW_VOLUME, show).apply();
+    }
+
+    static boolean settingsDayMode(Context ctx) {
+        return prefs(ctx).getBoolean(KEY_SETTINGS_DAY, false);
+    }
+
+    static void setSettingsDayMode(Context ctx, boolean day) {
+        prefs(ctx).edit().putBoolean(KEY_SETTINGS_DAY, day).apply();
     }
 
     static int scrollColorStyle(Context ctx) {

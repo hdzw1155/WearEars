@@ -15,6 +15,8 @@ import android.os.Bundle;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import java.util.List;
 
@@ -46,6 +48,8 @@ public class SettingsActivity extends Activity {
         bindLanguage(R.id.lang_system, "system");
         bindScrollColor(R.id.scroll_color_dynamic, AppPrefs.SCROLL_COLOR_DYNAMIC);
         bindScrollColor(R.id.scroll_color_classic, AppPrefs.SCROLL_COLOR_CLASSIC);
+        bindThemeChoice(R.id.theme_night, false);
+        bindThemeChoice(R.id.theme_day, true);
         findViewById(R.id.device_choice).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View view) { chooseDevice(); }
         });
@@ -102,22 +106,35 @@ public class SettingsActivity extends Activity {
         });
     }
 
+    private void bindThemeChoice(int id, final boolean day) {
+        findViewById(id).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View view) {
+                AppPrefs.setSettingsDayMode(SettingsActivity.this, day);
+                refreshChoices();
+            }
+        });
+    }
+
     private void refreshChoices() {
+        boolean day = AppPrefs.settingsDayMode(this);
+        applySettingsTheme(day);
         int style = AppPrefs.uiStyle(this), tile = AppPrefs.tileStyleChoice(this);
+        setChoice(R.id.theme_night, !day, day);
+        setChoice(R.id.theme_day, day, day);
         for (int i = 0; i < UI_IDS.length; i++) {
-            setChoice(UI_IDS[i], style == i);
-            setChoice(TILE_IDS[i], tile == i);
+            setChoice(UI_IDS[i], style == i, day);
+            setChoice(TILE_IDS[i], tile == i, day);
         }
-        setChoice(R.id.tile_follow, tile == AppPrefs.STYLE_FOLLOW);
+        setChoice(R.id.tile_follow, tile == AppPrefs.STYLE_FOLLOW, day);
         String language = AppPrefs.langChoice(this);
-        setChoice(R.id.lang_zh, AppPrefs.LANG_ZH.equals(language));
-        setChoice(R.id.lang_en, AppPrefs.LANG_EN.equals(language));
-        setChoice(R.id.lang_system, "system".equals(language));
+        setChoice(R.id.lang_zh, AppPrefs.LANG_ZH.equals(language), day);
+        setChoice(R.id.lang_en, AppPrefs.LANG_EN.equals(language), day);
+        setChoice(R.id.lang_system, "system".equals(language), day);
         int scrollColor = AppPrefs.scrollColorStyle(this);
-        setChoice(R.id.scroll_color_dynamic, scrollColor == AppPrefs.SCROLL_COLOR_DYNAMIC);
-        setChoice(R.id.scroll_color_classic, scrollColor == AppPrefs.SCROLL_COLOR_CLASSIC);
+        setChoice(R.id.scroll_color_dynamic, scrollColor == AppPrefs.SCROLL_COLOR_DYNAMIC, day);
+        setChoice(R.id.scroll_color_classic, scrollColor == AppPrefs.SCROLL_COLOR_CLASSIC, day);
         boolean volume = AppPrefs.showVolume(this);
-        setChoice(R.id.volume_choice, volume);
+        setChoice(R.id.volume_choice, volume, day);
         ((TextView) findViewById(R.id.volume_choice)).setText(
                 volume ? R.string.settings_volume_hide : R.string.settings_volume_show);
         String address = AppPrefs.deviceAddress(this), label = getString(R.string.settings_device_auto);
@@ -201,10 +218,44 @@ public class SettingsActivity extends Activity {
                 && results[0] == PackageManager.PERMISSION_GRANTED) chooseDevice();
     }
 
-    private void setChoice(int id, boolean selected) {
+    private void applySettingsTheme(boolean day) {
+        View root = findViewById(R.id.settings_root);
+        if (root != null) {
+            root.setBackgroundColor(day ? 0xFFF4F3EE : 0xFF000000);
+        }
+        TextView title = (TextView) findViewById(R.id.settings_title);
+        if (title != null) {
+            title.setTextColor(day ? 0xFF111317 : 0xFFFFFFFF);
+        }
+        TextView hint = (TextView) findViewById(R.id.settings_hint);
+        if (hint != null) {
+            hint.setTextColor(day ? 0xFF5A606B : 0x85FFFFFF);
+        }
+        View list = findViewById(R.id.settings_list);
+        if (list instanceof ViewGroup) {
+            ViewGroup vg = (ViewGroup) list;
+            for (int i = 0; i < vg.getChildCount(); i++) {
+                View child = vg.getChildAt(i);
+                if (child instanceof LinearLayout) {
+                    child.setBackgroundResource(day ? R.drawable.bg_card_day : R.drawable.bg_card);
+                    View caption = ((LinearLayout) child).getChildAt(0);
+                    if (caption instanceof TextView) {
+                        ((TextView) caption).setTextColor(day ? 0xFF5A606B : 0x85FFFFFF);
+                    }
+                }
+            }
+        }
+    }
+
+    private void setChoice(int id, boolean selected, boolean day) {
         TextView chip = (TextView) findViewById(id);
-        chip.setBackgroundResource(selected ? R.drawable.bg_choice_on : R.drawable.bg_choice);
-        chip.setTextColor(getResources().getColor(selected ? R.color.text : R.color.text_dim));
+        if (day) {
+            chip.setBackgroundResource(selected ? R.drawable.bg_choice_on_day : R.drawable.bg_choice_day);
+            chip.setTextColor(selected ? 0xFFFFFFFF : 0xFF111317);
+        } else {
+            chip.setBackgroundResource(selected ? R.drawable.bg_choice_on : R.drawable.bg_choice);
+            chip.setTextColor(getResources().getColor(selected ? R.color.text : R.color.text_dim));
+        }
         chip.setSelected(selected);
     }
 
