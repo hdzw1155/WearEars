@@ -16,6 +16,7 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowInsets;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import java.util.List;
@@ -60,6 +61,34 @@ public class SettingsActivity extends Activity {
             }
         });
         refreshChoices();
+        applyPhoneInsets();
+    }
+
+    private void applyPhoneInsets() {
+        if (getResources().getConfiguration().isScreenRound()) {
+            return;
+        }
+        final View root = findViewById(android.R.id.content);
+        final View list = findViewById(R.id.settings_list);
+        if (root == null || list == null) {
+            return;
+        }
+        final int baseTop = list.getPaddingTop();
+        final int baseBot = list.getPaddingBottom();
+        final int phoneSide = Math.round(24f * getResources().getDisplayMetrics().density);
+        root.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
+            @Override
+            public WindowInsets onApplyWindowInsets(View v, WindowInsets insets) {
+                int top = insets.getSystemWindowInsetTop();
+                int bot = insets.getSystemWindowInsetBottom();
+                list.setPadding(phoneSide, baseTop + top, phoneSide, baseBot + bot);
+                if (indicator != null) {
+                    indicator.setPadding(0, top, 0, bot);
+                }
+                return insets;
+            }
+        });
+        root.requestApplyInsets();
     }
 
     @Override protected void onResume() {
@@ -219,6 +248,19 @@ public class SettingsActivity extends Activity {
     }
 
     private void applySettingsTheme(boolean day) {
+        if (!getResources().getConfiguration().isScreenRound()) {
+            int barCol = day ? 0xFFF4F3EE : 0xFF000000;
+            getWindow().setStatusBarColor(barCol);
+            getWindow().setNavigationBarColor(barCol);
+            View decor = getWindow().getDecorView();
+            int flags = decor.getSystemUiVisibility();
+            if (day) {
+                flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+            } else {
+                flags &= ~(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+            }
+            decor.setSystemUiVisibility(flags);
+        }
         View root = findViewById(R.id.settings_root);
         if (root != null) {
             root.setBackgroundColor(day ? 0xFFF4F3EE : 0xFF000000);

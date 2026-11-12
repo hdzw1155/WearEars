@@ -100,6 +100,8 @@ public class SuprematistDialView extends View {
 
     // Interactive hit-test geometry (updated on layout/draw in px)
     private float dSize;
+    private float posterOx;
+    private float posterOy;
     private float ancTop;
     private float ancBot;
     private float ancLeft;
@@ -297,9 +299,17 @@ public class SuprematistDialView extends View {
     }
 
     private void updateGeometry(int w, int h) {
-        dSize = Math.min(w, h);
-        float ox = (w - dSize) * 0.5f;
-        float oy = (h - dSize) * 0.5f;
+        boolean round = getResources().getConfiguration().isScreenRound();
+        if (round) {
+            dSize = Math.min(w, h);
+            posterOx = (w - dSize) * 0.5f;
+        } else {
+            dSize = Math.min(w * 1.04f, h * 0.80f);
+            posterOx = (w - dSize) * 0.5f + 8f * density;
+        }
+        posterOy = (h - dSize) * 0.5f;
+        float ox = posterOx;
+        float oy = posterOy;
 
         // Top-right enlarged refresh square strictly within safe circular radius (r <= 0.442 D)
         float refSize = 0.122f * dSize;
@@ -338,8 +348,8 @@ public class SuprematistDialView extends View {
         }
         updateGeometry(w, h);
         float d = dSize;
-        float ox = (w - d) * 0.5f;
-        float oy = (h - d) * 0.5f;
+        float ox = posterOx;
+        float oy = posterOy;
 
         // 1) Top-left Brand Lockup ("WearEars" + "CROSS-BRAND TWS CONTROL")
         drawBrandHeader(canvas, ox, oy, d);

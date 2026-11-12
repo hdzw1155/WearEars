@@ -53,7 +53,11 @@ public class SuprematistFanDeckView extends FrameLayout {
             int w = view.getWidth();
             int h = view.getHeight();
             if (w > 0 && h > 0) {
-                outline.setOval(0, 0, w, h);
+                if (getResources().getConfiguration().isScreenRound()) {
+                    outline.setOval(0, 0, w, h);
+                } else {
+                    outline.setRoundRect(0, 0, w, h, 18f * density);
+                }
             }
         }
     };

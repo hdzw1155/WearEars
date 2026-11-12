@@ -223,6 +223,10 @@ public class ArcIndicatorView extends View {
         return max == 0 ? 0f : Math.max(0f, Math.min(1f, target.getScrollY() / (float) max));
     }
 
+    private boolean isRoundScreen() {
+        return getResources().getConfiguration().isScreenRound();
+    }
+
     @Override protected void onSizeChanged(int w, int h, int oldW, int oldH) {
         super.onSizeChanged(w, h, oldW, oldH);
         float radius = Math.max(0f, Math.min(w, h) / 2f - inset);
@@ -233,8 +237,15 @@ public class ArcIndicatorView extends View {
         super.onDraw(canvas);
         int max = maxScroll();
         int height = viewport();
-        if (max <= 0 || height <= 0 || arc.isEmpty()) return;
+        if (max <= 0 || height <= 0 || getWidth() <= 0 || getHeight() <= 0) return;
         float pos = motion.position();
+
+        if (!isRoundScreen()) {
+            drawLinearIndicator(canvas, max, height, pos);
+            return;
+        }
+        if (arc.isEmpty()) return;
+
         float baseSweep = Math.max(12f, ARC_SPAN * height / (height + (float) max));
         float sweep = Math.min(ARC_SPAN, baseSweep * motion.stretch());
         float start = -ARC_SPAN / 2f;
@@ -242,8 +253,36 @@ public class ArcIndicatorView extends View {
         float radius = arc.height() / 2f;
         float top = arc.centerY() + radius * (float) Math.sin(Math.toRadians(from));
         float bottom = arc.centerY() + radius * (float) Math.sin(Math.toRadians(from + sweep));
-        float length = Math.max(1f, bottom - top);
+        applyThumbGradient(pos, top, bottom);
 
+        rail.setAlpha(Math.round(46f * level));
+        thumb.setAlpha(Math.round(240f * level));
+        canvas.drawArc(arc, start, ARC_SPAN, false, rail);
+        canvas.drawArc(arc, from, sweep, false, thumb);
+    }
+
+    private void drawLinearIndicator(Canvas canvas, int max, int height, float pos) {
+        int w = getWidth();
+        int h = getHeight();
+        float x = w - inset - thumb.getStrokeWidth() * 0.5f;
+        float railTop = Math.max(h * 0.18f, getPaddingTop() + inset * 3f);
+        float railBot = Math.min(h * 0.84f, h - getPaddingBottom() - inset * 3f);
+        float railLen = Math.max(1f, railBot - railTop);
+
+        float baseLen = Math.max(railLen * 0.16f, railLen * height / (height + (float) max));
+        float thumbLen = Math.min(railLen, baseLen * motion.stretch());
+        float top = railTop + (railLen - thumbLen) * pos;
+        float bottom = top + thumbLen;
+        applyThumbGradient(pos, top, bottom);
+
+        rail.setAlpha(Math.round(46f * level));
+        thumb.setAlpha(Math.round(240f * level));
+        canvas.drawLine(x, railTop, x, railBot, rail);
+        canvas.drawLine(x, top, x, bottom, thumb);
+    }
+
+    private void applyThumbGradient(float pos, float top, float bottom) {
+        float length = Math.max(1f, bottom - top);
         if (colorStyle == AppPrefs.SCROLL_COLOR_CLASSIC) {
             gradientMatrix.setScale(1f, length);
             gradientMatrix.postTranslate(0f, top - length * pos * 0.8f);
@@ -269,11 +308,6 @@ public class ArcIndicatorView extends View {
             thumb.setShader(dynGrad);
             rail.setColor(0xFF2A3B4C);
         }
-
-        rail.setAlpha(Math.round(46f * level));
-        thumb.setAlpha(Math.round(240f * level));
-        canvas.drawArc(arc, start, ARC_SPAN, false, rail);
-        canvas.drawArc(arc, from, sweep, false, thumb);
     }
 
     private static int lerpColor(int c0, int c1, float t) {

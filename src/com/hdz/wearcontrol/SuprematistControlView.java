@@ -103,8 +103,9 @@ public class SuprematistControlView extends View {
         if (w <= 0 || h <= 0) {
             return;
         }
-        float d = Math.min(w, h);
-        float ox = (w - d) * 0.5f;
+        boolean round = getResources().getConfiguration().isScreenRound();
+        float d = round ? Math.min(w, h) : Math.min(w * 1.04f, h * 0.80f);
+        float ox = round ? (w - d) * 0.5f : (w - d) * 0.5f + 8f * density;
         float oy = (h - d) * 0.5f;
 
         // 1) Top-left enlarged WearEars brand lockup matching Reference Image #2

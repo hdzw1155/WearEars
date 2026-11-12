@@ -121,6 +121,17 @@ public class SuprematistPageRailView extends View {
             return;
         }
         float d = getResources().getDisplayMetrics().density;
+        int alphaByte = Math.max(0, Math.min(255, Math.round(railAlpha * 255f)));
+        int idleColor = lightSurface ? 0xFF101316 : 0xFFF3F1E8;
+        int trackBg = lightSurface ? 0xFF101318 : 0xFFF3F1E8;
+        int activeFill = lightSurface ? 0xFFE5232A : 0xFFF4BA00;
+        int activeStroke = 0xFF101318;
+
+        if (!getResources().getConfiguration().isScreenRound()) {
+            drawLinearPageRail(canvas, w, h, d, alphaByte, idleColor, trackBg, activeFill, activeStroke);
+            return;
+        }
+
         float cx = w * 0.5f;
         float cy = h * 0.5f;
         float radius = Math.min(w, h) * 0.5f - 6.8f * d;
@@ -130,12 +141,6 @@ public class SuprematistPageRailView extends View {
         float topDeg = 180f + halfSpan;
         float sweepDeg = -2f * halfSpan;
         float stepDeg = (2f * halfSpan) / (pageCount - 1);
-
-        int alphaByte = Math.max(0, Math.min(255, Math.round(railAlpha * 255f)));
-        int idleColor = lightSurface ? 0xFF101318 : 0xFFF3F1E8;
-        int trackBg = lightSurface ? 0xFF101318 : 0xFFF3F1E8;
-        int activeFill = lightSurface ? 0xFFE5232A : 0xFFF4BA00;
-        int activeStroke = 0xFF101318;
 
         // Curved orbital C-arc tube along left bezel matching hand-drawn reference
         arcBounds.set(cx - radius, cy - radius, cx + radius, cy + radius);
@@ -190,6 +195,55 @@ public class SuprematistPageRailView extends View {
         canvas.drawRect(activeRect, fillPaint);
         canvas.drawRect(activeRect, strokePaint);
         canvas.restore();
+    }
+
+    /** Linear vertical left-edge poster rail for rectangular phone screens */
+    private void drawLinearPageRail(Canvas canvas, int w, int h, float d, int alphaByte,
+                                    int idleColor, int trackBg, int activeFill, int activeStroke) {
+        float x = 10f * d;
+        float topY = h * 0.30f;
+        float botY = h * 0.70f;
+        float span = Math.max(1f, botY - topY);
+
+        trackPaint.setStrokeWidth(4.0f * d);
+        trackPaint.setColor(trackBg);
+        trackPaint.setAlpha(Math.round(alphaByte * 0.22f));
+        canvas.drawLine(x, topY, x, botY, trackPaint);
+
+        trackPaint.setStrokeWidth(1.2f * d);
+        trackPaint.setAlpha(Math.round(alphaByte * 0.50f));
+        canvas.drawLine(x, topY, x, botY, trackPaint);
+
+        float capR = 3.2f * d;
+        fillPaint.setColor(idleColor);
+        fillPaint.setAlpha(Math.round(alphaByte * 0.72f));
+        canvas.drawCircle(x, topY, capR, fillPaint);
+        canvas.drawCircle(x, botY, capR, fillPaint);
+
+        float dotHalf = 2.1f * d;
+        float step = span / (pageCount - 1);
+        for (int i = 0; i < pageCount; i++) {
+            float dy = topY + i * step;
+            fillPaint.setColor(idleColor);
+            fillPaint.setAlpha(Math.round(alphaByte * 0.65f));
+            canvas.save();
+            canvas.rotate(45f, x, dy);
+            canvas.drawRect(x - dotHalf, dy - dotHalf, x + dotHalf, dy + dotHalf, fillPaint);
+            canvas.restore();
+        }
+
+        float ay = topY + (position / (pageCount - 1)) * span;
+        float pillW = 4.0f * d;
+        float pillH = 14.0f * d;
+        activeRect.set(x - pillW * 0.5f, ay - pillH * 0.5f, x + pillW * 0.5f, ay + pillH * 0.5f);
+
+        fillPaint.setColor(activeFill);
+        fillPaint.setAlpha(alphaByte);
+        strokePaint.setColor(activeStroke);
+        strokePaint.setStrokeWidth(1.3f * d);
+        strokePaint.setAlpha(alphaByte);
+        canvas.drawRect(activeRect, fillPaint);
+        canvas.drawRect(activeRect, strokePaint);
     }
 
     private void drawEndStop(Canvas canvas, float cx, float cy, float radius, float deg,

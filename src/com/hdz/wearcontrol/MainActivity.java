@@ -29,6 +29,7 @@ import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.WindowInsets;
 import android.widget.LinearLayout;
 import android.widget.Switch;
 import android.widget.TextView;
@@ -215,6 +216,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
         supreme = curUiStyle == AppPrefs.STYLE_SUPREME;
         stateColor = colIdle();
         setContentView(supreme ? R.layout.activity_main_supreme : R.layout.activity_main);
+        applyPhoneWindowChrome();
 
         scrollView = (AppScrollView) findViewById(R.id.scroll);
         indicator = (ArcIndicatorView) findViewById(R.id.indicator);
@@ -425,7 +427,68 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
 
         wireListeners();
         syncAcousticPageVisibility();
+        applyPhoneInsets();
         entryAnimation();
+    }
+
+    private void applyPhoneWindowChrome() {
+        if (getResources().getConfiguration().isScreenRound()) {
+            return;
+        }
+        int barCol = supreme ? 0xFFF4F3EE : 0xFF000000;
+        getWindow().setStatusBarColor(barCol);
+        getWindow().setNavigationBarColor(barCol);
+        View decor = getWindow().getDecorView();
+        int flags = decor.getSystemUiVisibility();
+        if (supreme) {
+            flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+        } else {
+            flags &= ~(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+        }
+        decor.setSystemUiVisibility(flags);
+    }
+
+    private void applyPhoneInsets() {
+        if (getResources().getConfiguration().isScreenRound()) {
+            return;
+        }
+        final View root = findViewById(android.R.id.content);
+        if (root == null) {
+            return;
+        }
+        final int phoneSide = (int) dp(24);
+        final View scrollChild = scrollView != null && scrollView.getChildCount() > 0
+                ? scrollView.getChildAt(0) : null;
+        final int baseScrollTop = scrollChild != null ? scrollChild.getPaddingTop() : 0;
+        final int baseScrollBot = scrollChild != null ? scrollChild.getPaddingBottom() : 0;
+
+        root.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
+            @Override
+            public WindowInsets onApplyWindowInsets(View v, WindowInsets insets) {
+                int top = insets.getSystemWindowInsetTop();
+                int bot = insets.getSystemWindowInsetBottom();
+                if (scrollChild != null) {
+                    scrollChild.setPadding(phoneSide, baseScrollTop + top,
+                            phoneSide, baseScrollBot + bot);
+                }
+                if (indicator != null) {
+                    indicator.setPadding(0, top, 0, bot);
+                }
+                if (supreme) {
+                    if (devSection != null) {
+                        devSection.setPadding(phoneSide, (int) dp(20) + top,
+                                phoneSide, (int) dp(20) + bot);
+                    }
+                    if (disclaimerRow != null && disclaimerRow.getParent() instanceof View) {
+                        View noticeBox = (View) disclaimerRow.getParent();
+                        noticeBox.setPadding(phoneSide, (int) dp(20) + top,
+                                phoneSide, (int) dp(20) + bot);
+                    }
+                }
+                return insets;
+            }
+        });
+        root.requestApplyInsets();
     }
 
 
