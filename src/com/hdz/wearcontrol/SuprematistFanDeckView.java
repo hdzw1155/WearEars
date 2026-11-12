@@ -4,19 +4,20 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
+import android.graphics.Outline;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.util.AttributeSet;
+import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
 import android.view.View;
 import android.view.ViewConfiguration;
-import android.view.ViewGroup;
+import android.view.ViewOutlineProvider;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
-import android.widget.ScrollView;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -24,49 +25,63 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Folding-fan card deck implementing alternating left/right bottom-pivot page reveals
- * (matching the website's 5-click "S" fan-deck interaction) adapted for Wear OS circular
- * watches with 1:1 vertical swipe physics, inner ScrollView cooperation, and rotary detents.
+ * Curved orbital C-arc + alternating folding-fan deck container for Supreme ("至上") UI.
+ *
+ * <p>Every sheet sweeps along a curved left-bezel C-arc trajectory (top-left 第一屏 -> center ->
+ * bottom-left 最后一屏) combined with alternating corner folding-fan pivots matching the 5-tap "S"
+ * motion aesthetic. Zero inner scrolling: each sheet displays completely within the round dial.
  */
 public class SuprematistFanDeckView extends FrameLayout {
 
     public interface OnDeckStateListener {
-        void onDeckMoved(int settledPage, int pageCount, float position, boolean lightSurface, boolean awake);
+        void onDeckMoved(int settledPage, int pageCount, float position,
+                         boolean lightSurface, boolean awake);
     }
 
     private static final float ROTARY_STEP_THRESHOLD = 0.65f;
-    private static final long ROTARY_RESET_MS = 320L;
-    private static final long SETTLE_DURATION_MS = 275L;
-    private static final long SNAPBACK_DURATION_MS = 220L;
+    private static final long ROTARY_RESET_MS = 220L;
+    private static final long SETTLE_DURATION_MS = 300L;
+    private static final long SNAPBACK_DURATION_MS = 230L;
 
     private final List<View> activePages = new ArrayList<View>();
     private final Set<View> disabledPages = new HashSet<View>();
-    private final int[] tmpLoc = new int[2];
+    private ScrollFeedback haptics;
     private final Handler ui = new Handler(Looper.getMainLooper());
-    private final float density;
-    private final int touchSlop;
-    private final int minFlingVel;
-    private final WatchHaptics haptics;
+    private final ViewOutlineProvider circularOutline = new ViewOutlineProvider() {
+        @Override
+        public void getOutline(View view, Outline outline) {
+            int w = view.getWidth();
+            int h = view.getHeight();
+            if (w > 0 && h > 0) {
+                outline.setOval(0, 0, w, h);
+            }
+        }
+    };
 
-    private OnDeckStateListener deckListener;
+    private float density;
+    private int touchSlop;
+    private int minFlingVel;
+
     private boolean active = true;
-
-    private float deckPos = 0f;
     private int currentPage = 0;
+    private float deckPos = 0f;
     private float overscroll = 0f;
-    private ValueAnimator settleAnim;
-    private ValueAnimator overscrollAnim;
 
-    private boolean dragging = false;
-    private boolean dragHorizontalIgnored = false;
-    private boolean wallHitThisGesture = false;
-    private int dragStartPage = 0;
     private float downX;
     private float downY;
     private float lastY;
+    private boolean dragging;
+    private boolean dragHorizontalIgnored;
+    private boolean wallHitThisGesture;
+    private int dragStartPage;
+    private VelocityTracker velocityTracker;
+
     private float rotaryAccum = 0f;
     private long lastRotaryAt = 0L;
-    private VelocityTracker velocityTracker;
+
+    private ValueAnimator settleAnim;
+    private ValueAnimator overscrollAnim;
+    private OnDeckStateListener deckListener;
 
     private final Runnable rotaryDecayTask = new Runnable() {
         @Override
@@ -80,32 +95,41 @@ public class SuprematistFanDeckView extends FrameLayout {
     }
 
     public SuprematistFanDeckView(Context context, AttributeSet attrs) {
-        super(context, attrs);
-        density = getResources().getDisplayMetrics().density;
-        ViewConfiguration vc = ViewConfiguration.get(context);
-        touchSlop = vc.getScaledTouchSlop();
-        minFlingVel = Math.max(420, vc.getScaledMinimumFlingVelocity() * 4);
-        haptics = new WatchHaptics(context);
-        setClipChildren(true);
-        setClipToPadding(true);
+        this(context, attrs, 0);
     }
 
-    public void setOnDeckStateListener(OnDeckStateListener listener) {
-        deckListener = listener;
+    public SuprematistFanDeckView(Context context, AttributeSet attrs, int defStyleAttr) {
+        super(context, attrs, defStyleAttr);
+        density = context.getResources().getDisplayMetrics().density;
+        haptics = new ScrollFeedback(22f * density);
+        ViewConfiguration vc = ViewConfiguration.get(context);
+        touchSlop = vc.getScaledTouchSlop();
+        minFlingVel = vc.getScaledMinimumFlingVelocity() * 3;
+        setClipChildren(false);
+        setClipToPadding(false);
+    }
+
+    public void setOnDeckStateListener(OnDeckStateListener l) {
+        this.deckListener = l;
         notifyDeckState(false);
     }
 
     public void setActive(boolean enabled) {
-        active = enabled;
+        this.active = enabled;
         if (!enabled) {
             cancelAnimations();
-            haptics.cancel();
+            haptics.reset();
         }
     }
 
     @Override
     protected void onFinishInflate() {
         super.onFinishInflate();
+        for (int i = 0; i < getChildCount(); i++) {
+            View child = getChildAt(i);
+            child.setOutlineProvider(circularOutline);
+            child.setClipToOutline(true);
+        }
         rebuildActivePages(null);
     }
 
@@ -193,6 +217,13 @@ public class SuprematistFanDeckView extends FrameLayout {
         animateToPage(target, SETTLE_DURATION_MS, true);
     }
 
+    public void focusPage(View page, boolean animate) {
+        int idx = activePages.indexOf(page);
+        if (idx >= 0) {
+            setCurrentPage(idx, animate);
+        }
+    }
+
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
@@ -236,19 +267,11 @@ public class SuprematistFanDeckView extends FrameLayout {
                 trackVelocity(ev);
                 float dx = ev.getX() - downX;
                 float dy = ev.getY() - downY;
-                if (Math.abs(dx) > touchSlop && Math.abs(dx) > Math.abs(dy) * 1.15f) {
+                if (Math.abs(dx) > touchSlop * 1.4f && Math.abs(dx) > Math.abs(dy) * 1.6f) {
                     dragHorizontalIgnored = true;
                     return false;
                 }
-                if (Math.abs(dy) > touchSlop && Math.abs(dy) > Math.abs(dx)) {
-                    boolean settled = Math.abs(deckPos - Math.round(deckPos)) < 0.015f;
-                    if (settled) {
-                        ScrollView scroller = findInnerScroller(getCurrentPageView(), downX, downY);
-                        int scrollDir = dy < 0f ? 1 : -1;
-                        if (scroller != null && scroller.canScrollVertically(scrollDir)) {
-                            return false;
-                        }
-                    }
+                if (Math.abs(dy) > touchSlop && Math.abs(dy) >= Math.abs(dx) * 0.75f) {
                     dragging = true;
                     lastY = ev.getY();
                     return true;
@@ -292,21 +315,21 @@ public class SuprematistFanDeckView extends FrameLayout {
                 if (!dragging && Math.abs(ev.getY() - downY) > touchSlop) {
                     dragging = true;
                 }
-                float span = Math.max(160f, getHeight() * 0.72f);
+                float span = Math.max(150f, getHeight() * 0.68f);
                 float nextPos = deckPos - (dy / span);
                 if (nextPos < 0f) {
                     deckPos = 0f;
                     overscroll = Math.max(-1f, nextPos * 1.6f);
                     if (!wallHitThisGesture) {
                         wallHitThisGesture = true;
-                        haptics.playWall(this);
+                        playWallFeedback(-1);
                     }
                 } else if (nextPos > maxIdx) {
                     deckPos = maxIdx;
                     overscroll = Math.min(1f, (nextPos - maxIdx) * 1.6f);
                     if (!wallHitThisGesture) {
                         wallHitThisGesture = true;
-                        haptics.playWall(this);
+                        playWallFeedback(1);
                     }
                 } else {
                     deckPos = nextPos;
@@ -343,11 +366,11 @@ public class SuprematistFanDeckView extends FrameLayout {
             return Math.max(0, Math.min(maxIdx, flingTarget));
         }
         float delta = deckPos - dragStartPage;
-        if (delta >= 0.24f) {
-            return Math.min(maxIdx, (int) Math.ceil(deckPos - 0.24f));
+        if (delta >= 0.22f) {
+            return Math.min(maxIdx, (int) Math.ceil(deckPos - 0.22f));
         }
-        if (delta <= -0.24f) {
-            return Math.max(0, (int) Math.floor(deckPos + 0.24f));
+        if (delta <= -0.22f) {
+            return Math.max(0, (int) Math.floor(deckPos + 0.22f));
         }
         return dragStartPage;
     }
@@ -374,19 +397,10 @@ public class SuprematistFanDeckView extends FrameLayout {
         if (!active || activePages.isEmpty() || Math.abs(rawDelta) < 0.001f) {
             return false;
         }
-        // Align sign polarity with AppScrollView: negative AXIS_SCROLL advances down/forward.
         float units = -rawDelta;
-        ScrollView scroller = findInnerScroller(getCurrentPageView(), getWidth() * 0.5f, getHeight() * 0.5f);
-        int dir = units > 0f ? 1 : -1;
-        if (scroller != null && scroller.canScrollVertically(dir)) {
-            int stepPx = Math.round(units * 26f * density);
-            scroller.smoothScrollBy(0, stepPx);
-            haptics.playTick(this);
-            return true;
-        }
-
         long now = SystemClock.uptimeMillis();
-        if (now - lastRotaryAt > ROTARY_RESET_MS || (rotaryAccum != 0f && Math.signum(rotaryAccum) != Math.signum(units))) {
+        if (now - lastRotaryAt > ROTARY_RESET_MS
+                || (rotaryAccum != 0f && Math.signum(rotaryAccum) != Math.signum(units))) {
             rotaryAccum = 0f;
         }
         lastRotaryAt = now;
@@ -428,7 +442,7 @@ public class SuprematistFanDeckView extends FrameLayout {
         }
         int next = currentPage + step;
         if (next < 0 || next > maxIdx) {
-            haptics.playWall(this);
+            playWallFeedback(next < 0 ? -1 : 1);
             nudgeOverscroll(next < 0 ? -0.65f : 0.65f);
             return;
         }
@@ -440,7 +454,7 @@ public class SuprematistFanDeckView extends FrameLayout {
             settleAnim.cancel();
         }
         if (playTick) {
-            haptics.playTick(this);
+            performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
         }
         currentPage = target;
         final float startPos = deckPos;
@@ -539,52 +553,49 @@ public class SuprematistFanDeckView extends FrameLayout {
             frac = 0f;
         }
 
-        // Alternating bottom corners matching the website's 5-click "S" fan-deck sweeps:
-        // Odd sheet indices sweep from bottom-left; even sheet indices sweep from bottom-right.
+        // Alternating corner folding-fan pivot ("5-tap S" transition) fused with left C-arc orbit
         float dir = (nextIdx % 2 == 1) ? 1f : -1f;
         float u = (float) (0.5 * (1.0 - Math.cos(Math.PI * frac)));
-        float rem = 1f - u;
 
         for (int i = 0; i < count; i++) {
             View page = activePages.get(i);
-            if (i == baseIdx) {
+            if (i == baseIdx || (i == nextIdx && nextIdx != baseIdx)) {
                 page.setVisibility(View.VISIBLE);
-                page.setTranslationZ(0f);
                 if (frac > 0f) {
-                    page.setPivotX(dir > 0f ? w * 0.88f : w * 0.12f);
-                    page.setPivotY(h);
-                    page.setRotation(-dir * 3.8f * u);
-                    float s = 1f - 0.045f * u;
+                    float t = i - clampedPos; // base in [-1, 0], next in [0, 1]
+                    double theta = t * 0.78;
+                    float arcRx = w * 0.48f;
+                    float arcRy = h * 0.94f;
+                    float tx = -arcRx * (float) (1.0 - Math.cos(theta));
+                    float ty = arcRy * (float) Math.sin(theta);
+
+                    boolean incoming = (i == nextIdx);
+                    page.setTranslationZ((incoming ? 8f : 0f) * density);
+                    page.setPivotX(dir > 0f ? w * 0.14f : w * 0.86f);
+                    page.setPivotY(incoming ? h * 0.88f : h * 0.12f);
+
+                    float fanSwing = (float) Math.sin(Math.PI * frac) * dir * (incoming ? 11f : -6.5f);
+                    page.setRotation(-t * 24f + fanSwing);
+                    page.setTranslationX(tx);
+                    page.setTranslationY(ty);
+                    float s = 1f - 0.10f * Math.abs(t);
                     page.setScaleX(s);
                     page.setScaleY(s);
-                    page.setTranslationX(0f);
-                    page.setTranslationY(0f);
-                    page.setAlpha(1f - 0.22f * u);
+                    page.setAlpha(Math.max(0.25f, 1f - 0.65f * Math.abs(t)));
                 } else if (Math.abs(overscroll) > 0.0005f) {
-                    page.setPivotX(w * 0.5f);
-                    page.setPivotY(overscroll < 0f ? 0f : h);
-                    page.setRotation(overscroll * 2.8f);
-                    page.setTranslationX(0f);
-                    page.setTranslationY(-overscroll * 14f * density);
-                    float s = 1f - Math.abs(overscroll) * 0.02f;
+                    double theta = overscroll * 0.28;
+                    page.setPivotX(w * 0.12f);
+                    page.setPivotY(overscroll < 0f ? h * 0.20f : h * 0.80f);
+                    page.setRotation(overscroll * 9.5f);
+                    page.setTranslationX(-w * 0.24f * (float) (1.0 - Math.cos(theta)));
+                    page.setTranslationY(-h * 0.34f * (float) Math.sin(theta));
+                    float s = 1f - Math.abs(overscroll) * 0.03f;
                     page.setScaleX(s);
                     page.setScaleY(s);
                     page.setAlpha(1f);
                 } else {
                     resetPageTransform(page);
                 }
-            } else if (i == nextIdx && nextIdx != baseIdx) {
-                page.setVisibility(View.VISIBLE);
-                page.setTranslationZ(8f * density);
-                page.setPivotX(dir > 0f ? w * 0.08f : w * 0.92f);
-                page.setPivotY(h);
-                page.setRotation(dir * 13.5f * rem);
-                page.setTranslationX(dir * 0.055f * w * rem);
-                page.setTranslationY(h * (1f - frac));
-                float s = 1f - 0.055f * rem;
-                page.setScaleX(s);
-                page.setScaleY(s);
-                page.setAlpha(Math.min(1f, 0.35f + 0.65f * frac));
             } else {
                 resetPageTransform(page);
                 page.setVisibility(View.INVISIBLE);
@@ -624,33 +635,6 @@ public class SuprematistFanDeckView extends FrameLayout {
         return tag == null || "paper".equals(tag);
     }
 
-    private ScrollView findInnerScroller(View root, float deckX, float deckY) {
-        if (!(root instanceof ViewGroup) || root.getVisibility() != View.VISIBLE) {
-            return null;
-        }
-        if (root instanceof ScrollView) {
-            return isPointInsideView(root, deckX, deckY) ? (ScrollView) root : null;
-        }
-        ViewGroup vg = (ViewGroup) root;
-        for (int i = vg.getChildCount() - 1; i >= 0; i--) {
-            View child = vg.getChildAt(i);
-            ScrollView found = findInnerScroller(child, deckX, deckY);
-            if (found != null) {
-                return found;
-            }
-        }
-        return null;
-    }
-
-    private boolean isPointInsideView(View v, float deckX, float deckY) {
-        getLocationOnScreen(tmpLoc);
-        float screenX = tmpLoc[0] + deckX;
-        float screenY = tmpLoc[1] + deckY;
-        v.getLocationOnScreen(tmpLoc);
-        return screenX >= tmpLoc[0] && screenX <= tmpLoc[0] + v.getWidth()
-                && screenY >= tmpLoc[1] && screenY <= tmpLoc[1] + v.getHeight();
-    }
-
     private void resetVelocityTracker(MotionEvent ev) {
         recycleVelocityTracker();
         velocityTracker = VelocityTracker.obtain();
@@ -671,12 +655,18 @@ public class SuprematistFanDeckView extends FrameLayout {
         }
     }
 
+    private void playWallFeedback(int side) {
+        if (haptics.limit(side, SystemClock.uptimeMillis()) == ScrollFeedback.LIMIT) {
+            performHapticFeedback(HapticFeedbackConstants.REJECT);
+        }
+    }
+
     @Override
     protected void onDetachedFromWindow() {
         ui.removeCallbacksAndMessages(null);
         cancelAnimations();
         recycleVelocityTracker();
-        haptics.cancel();
+        haptics.reset();
         super.onDetachedFromWindow();
     }
 }

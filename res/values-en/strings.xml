@@ -134,9 +134,17 @@
     <string name="tile_refresh_hint">, tap to refresh battery</string>
     <string name="settings_style_supreme">Supreme</string>
     <string name="sup_sec_power">01 / POWER</string>
-    <string name="sup_sec_acoustic">02 / ACOUSTIC</string>
+    <string name="sup_sec_acoustic">02 / NOISE</string>
     <string name="sup_sec_control">03 / CONTROL</string>
-    <string name="sup_sec_notice">04 / NOTICE</string>
-    <string name="sup_open_settings">Settings →</string>
-    <string name="sup_swipe_hint">Fan Swipe</string>
+    <string name="sup_sec_dev">DEV / LAB</string>
+    <string name="sup_sec_notice">NOTICE</string>
+    <string name="sup_open_settings">Settings · Style / Device →</string>
+    <string name="sup_swipe_hint">Arc Slide</string>
+    <string name="sup_vol_guard_hint">VOL LOCKED · HOLD OR 2X TAP V</string>
+    <string name="sup_vol_unlocked_hint">VOL READY · DRAG OR TAP - / +</string>
+    <string name="sup_noise_disconnected">DISCONNECTED · TAP SLAB TO CONNECT</string>
+    <string name="sup_noise_unsupported">ANC NOT SUPPORTED BY DEVICE</string>
+    <string name="sup_dev_unlocked_jump">DEV PAGE READY · TAP TO JUMP →</string>
+    <string name="sup_notice_summary">• Unofficial reverse-engineered tool. Collects no data.\n• Take earbuds out and lower volume before testing.\n• Hearing loss is irreversible; use at your own risk.</string>
+    <string name="sup_full_notice">Full disclaimer →</string>
 </resources>

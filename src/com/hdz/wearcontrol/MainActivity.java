@@ -91,6 +91,13 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
     private SuprematistFanDeckView fanDeck;
     private SuprematistPageRailView pageRail;
     private View acousticPage;
+    private View supDevPage;
+    private SuprematistDialView supDial;
+    private SuprematistNoiseView supNoise;
+    private TextView supNoiseStatus;
+    private boolean devUnlocked = false;
+    private boolean lastNoiseCap = false;
+    private boolean lastConnState = false;
 
     private StatusDotView dot;
     private TextView status;
@@ -219,6 +226,56 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
         fanDeck = (SuprematistFanDeckView) findViewById(R.id.fan_deck);
         pageRail = (SuprematistPageRailView) findViewById(R.id.page_rail);
         acousticPage = findViewById(R.id.sup_page_acoustic);
+        supDevPage = findViewById(R.id.sup_page_dev);
+        supDial = (SuprematistDialView) findViewById(R.id.sup_dial);
+        supNoise = (SuprematistNoiseView) findViewById(R.id.sup_noise_view);
+        supNoiseStatus = (TextView) findViewById(R.id.sup_noise_status);
+        if (fanDeck != null && supDevPage != null) {
+            fanDeck.setPageEnabled(supDevPage, false);
+        }
+        if (supDial != null) {
+            supDial.setLanguageEnglish(AppPrefs.LANG_EN.equals(curLang));
+            supDial.setOnVolumeControlListener(new SuprematistDialView.OnVolumeControlListener() {
+                @Override
+                public void onVolumeChanged(int level, int max) {
+                    applyVolume(level, max);
+                }
+
+                @Override
+                public void onVolumeGuardHint(boolean unlocked) {
+                    showTempSub(getString(unlocked
+                            ? R.string.sup_vol_unlocked_hint
+                            : R.string.sup_vol_guard_hint), 2200L);
+                }
+            });
+        }
+        if (supNoise != null) {
+            supNoise.setOnModeActionListener(new SuprematistNoiseView.OnModeActionListener() {
+                @Override
+                public void onModeSelected(int mode) {
+                    setMode(mode);
+                }
+
+                @Override
+                public void onReconnectRequested() {
+                    haptic(HapticFeedbackConstants.KEYBOARD_TAP);
+                    clearData();
+                    tryConnect();
+                }
+            });
+        }
+        if (supNoiseStatus != null) {
+            supNoiseStatus.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    if (!lastConnState) {
+                        haptic(HapticFeedbackConstants.KEYBOARD_TAP);
+                        clearData();
+                        tryConnect();
+                    }
+                }
+            });
+        }
         if (fanDeck != null && pageRail != null) {
             fanDeck.setOnDeckStateListener(new SuprematistFanDeckView.OnDeckStateListener() {
                 @Override
@@ -387,19 +444,36 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
         devHint.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                if (supreme && supDevPage != null && devUnlocked && fanDeck != null) {
+                    haptic(HapticFeedbackConstants.KEYBOARD_TAP);
+                    fanDeck.focusPage(supDevPage, true);
+                    return;
+                }
                 long now = SystemClock.elapsedRealtime();
                 devTaps = (now - lastTapAt > TAP_RESET_MS) ? 1 : devTaps + 1;
                 lastTapAt = now;
-                if (devTaps >= 5 && devSection.getVisibility() != View.VISIBLE) {
-                    devSection.setVisibility(View.VISIBLE);
-                    devSection.setAlpha(0f);
-                    devSection.setTranslationY(dp(6));
-                    devSection.animate().alpha(1f).translationY(0f)
-                            .setDuration(220).start();
-                    devHint.setVisibility(View.GONE);
-                    haptic(HapticFeedbackConstants.CONFIRM);
-                    Toast.makeText(MainActivity.this, R.string.dev_unlocked_toast,
-                            Toast.LENGTH_SHORT).show();
+                if (devTaps >= 5) {
+                    if (supreme && supDevPage != null && fanDeck != null) {
+                        devUnlocked = true;
+                        fanDeck.setPageEnabled(supDevPage, true);
+                        if (devHint instanceof TextView) {
+                            ((TextView) devHint).setText(R.string.sup_dev_unlocked_jump);
+                        }
+                        haptic(HapticFeedbackConstants.CONFIRM);
+                        Toast.makeText(MainActivity.this, R.string.dev_unlocked_toast,
+                                Toast.LENGTH_SHORT).show();
+                        fanDeck.focusPage(supDevPage, true);
+                    } else if (devSection.getVisibility() != View.VISIBLE) {
+                        devSection.setVisibility(View.VISIBLE);
+                        devSection.setAlpha(0f);
+                        devSection.setTranslationY(dp(6));
+                        devSection.animate().alpha(1f).translationY(0f)
+                                .setDuration(220).start();
+                        devHint.setVisibility(View.GONE);
+                        haptic(HapticFeedbackConstants.CONFIRM);
+                        Toast.makeText(MainActivity.this, R.string.dev_unlocked_toast,
+                                Toast.LENGTH_SHORT).show();
+                    }
                 } else {
                     haptic(HapticFeedbackConstants.CLOCK_TICK);
                 }
@@ -417,6 +491,16 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
 
         // 免责声明已全文铺在页面底部, 点击不再弹窗
         disclaimerRow.setOnClickListener(null);
+        View supFullNotice = findViewById(R.id.sup_full_notice);
+        if (supFullNotice != null) {
+            supFullNotice.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    haptic(HapticFeedbackConstants.KEYBOARD_TAP);
+                    showFullNoticeInfoDialog();
+                }
+            });
+        }
 
         findViewById(R.id.refresh).setOnClickListener(new View.OnClickListener() {
             @Override
@@ -581,6 +665,8 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
         if (textRes == R.string.status_connected) {
             dot.pop();
         }
+        lastConnState = (textRes == R.string.status_connected);
+        syncSupremeNoiseView();
     }
 
     private void setSub(String text) {
@@ -775,6 +861,14 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
         }
     }
 
+    private void showFullNoticeInfoDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.global_disclaimer_title)
+                .setMessage(R.string.disclaimer_page_msg)
+                .setPositiveButton(R.string.dialog_ok, null)
+                .show();
+    }
+
     /** 首次开启空间音频的个别化确认; 确认后长期有效, 不随版本重置 */
     private void showSpatialDialog() {
         new AlertDialog.Builder(this)
@@ -829,8 +923,34 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
                 if (noiseSeg != null) {
                     noiseSeg.setMode(mode, true);
                 }
+                syncSupremeNoiseView();
             }
         });
+    }
+
+    private void syncSupremeNoiseView() {
+        if (!supreme) {
+            return;
+        }
+        final int mode = selectedModeForView();
+        if (supNoise != null) {
+            supNoise.setState(mode, lastConnState, lastNoiseCap);
+        }
+        if (supNoiseStatus != null) {
+            if (!lastConnState) {
+                supNoiseStatus.setText(R.string.sup_noise_disconnected);
+                supNoiseStatus.setTextColor(0xFFF4BA00);
+            } else if (!lastNoiseCap) {
+                supNoiseStatus.setText(R.string.sup_noise_unsupported);
+                supNoiseStatus.setTextColor(0xFF9AA3B2);
+            } else if (mode >= 0) {
+                supNoiseStatus.setText(modeName(mode));
+                supNoiseStatus.setTextColor(0xFFF3F1E8);
+            } else {
+                supNoiseStatus.setText(R.string.status_connected);
+                supNoiseStatus.setTextColor(0xFF4CC38A);
+            }
+        }
     }
 
     private void renderDeepx() {
@@ -859,6 +979,12 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
     }
 
     private void setBatteryUi(int left, int right, int box, int chargeFlags) {
+        if (supDial != null) {
+            supDial.setBattery(left, right, box,
+                    (chargeFlags & 0x01) != 0,
+                    (chargeFlags & 0x02) != 0,
+                    (chargeFlags & 0x04) != 0, false);
+        }
         if (ringL != null) ringL.setBattery(left, (chargeFlags & 0x01) != 0);
         if (ringR != null) ringR.setBattery(right, (chargeFlags & 0x02) != 0);
         if (ringC != null) ringC.setBattery(box, (chargeFlags & 0x04) != 0);
@@ -872,6 +998,9 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
 
     /** 单电池设备(标准协议兜底/单电池头戴): 只有一格总电量, 借左耳位显示 */
     private void setSingleBatteryUi(int total) {
+        if (supDial != null) {
+            supDial.setSingleBattery(total, false);
+        }
         setCell(pctL, barL, boltL, total, false, false);
     }
 
@@ -886,6 +1015,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
         final boolean single = (caps & TwsClient.CAP_BATTERY_SINGLE) != 0;
         singleBatt = single;
         capsMask = caps;
+        lastNoiseCap = noise;
         ui.post(new Runnable() {
             @Override
             public void run() {
@@ -903,6 +1033,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
                 }
                 applyBatteryStyle();
                 syncAcousticPageVisibility();
+                syncSupremeNoiseView();
             }
         });
     }
@@ -973,6 +1104,9 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
         ui.post(new Runnable() {
             @Override
             public void run() {
+                if (supDial != null) {
+                    supDial.setBattery(-1, -1, -1, false, false, false, singleBatt);
+                }
                 setCell(pctL, barL, boltL, -1, false, false);
                 setCell(pctR, barR, boltR, -1, false, true);
                 setCell(pctC, barC, boltC, -1, false, true);
@@ -1184,6 +1318,9 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
         if (volumeBar != null) {
             volumeBar.setLevel(cur, max);
         }
+        if (supDial != null) {
+            supDial.setVolume(cur, max);
+        }
         updateVolumeText(cur, max);
     }
 
@@ -1257,9 +1394,8 @@ public class MainActivity extends Activity implements TwsClient.Listener, Headse
         if (fanDeck == null || acousticPage == null) {
             return;
         }
-        boolean hasNoise = noiseCard != null && noiseCard.getVisibility() == View.VISIBLE;
-        boolean hasVolume = volumeCard != null && volumeCard.getVisibility() == View.VISIBLE;
-        fanDeck.setPageEnabled(acousticPage, hasNoise || hasVolume);
+        // In Supreme UI, always keep Sheet 1 (ANC Control) accessible in the orbital deck.
+        fanDeck.setPageEnabled(acousticPage, true);
     }
 
     private int colAccent() { return supreme ? SUP_ACCENT : COL_ACCENT; }

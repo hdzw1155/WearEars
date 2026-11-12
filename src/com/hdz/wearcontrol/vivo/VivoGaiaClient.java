@@ -399,10 +399,14 @@ public class VivoGaiaClient implements TwsClient {
                             int[] value = VivoProtocol.battery(payload);
                             if (value != null) fireBattery(value[0], value[1], value[2], value[3]);
                         } else if (vendor == VENDOR_VIVO
-                                && (cmd == RESP_NOISE_QUERY || cmd == RESP_NOISE_SET)
-                                && payload.length >= 2) {
-                            Integer mode = VivoProtocol.noise(payload);
-                            if (mode != null) { noiseConfirmed = true; fireMode(mode.intValue()); }
+                                && (cmd == RESP_NOISE_QUERY || cmd == RESP_NOISE_SET)) {
+                            android.util.Log.d("GaiaClient",
+                                    "noise cmd=0x" + Integer.toHexString(cmd)
+                                            + " payload=" + toHex(payload));
+                            if (payload.length >= 2) {
+                                Integer mode = VivoProtocol.noise(payload);
+                                if (mode != null) { noiseConfirmed = true; fireMode(mode.intValue()); }
+                            }
                         } else if (vendor == VENDOR_VIVO
                                 && (cmd == RESP_SPATIAL || cmd == RESP_SPATIAL_ACK)) {
                             android.util.Log.d("GaiaClient",
@@ -423,6 +427,7 @@ public class VivoGaiaClient implements TwsClient {
                                     "unknown cmd=0x" + Integer.toHexString(cmd)
                                             + " payload=" + toHex(payload));
                         }
+                        first = in.read();
                     }
                     if (!closing && socket == source) fireDisconnected("连接已关闭");
                 } catch (IOException e) {

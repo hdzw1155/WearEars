@@ -12,17 +12,20 @@ import android.view.View;
 import android.view.animation.DecelerateInterpolator;
 
 /**
- * Right-bezel Suprematist page index rail: discrete rotated diamonds with a
- * smoothly gliding Constructivist active bar tuned for circular Watch displays.
+ * Left-bezel Suprematist orbital C-arc page indicator ("第一屏 <- -> 最后一屏").
+ * Tracks curved orbital progression from top-left (224 deg) through 9-o'clock (180 deg)
+ * down to bottom-left (136 deg).
  */
 public class SuprematistPageRailView extends View {
 
-    private static final float REST_ALPHA = 0.34f;
+    private static final float REST_ALPHA = 0.56f;
     private static final float ACTIVE_ALPHA = 1.0f;
-    private static final long IDLE_DELAY_MS = 1100L;
+    private static final long IDLE_DELAY_MS = 1400L;
 
     private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint trackPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final RectF arcBounds = new RectF();
     private final RectF activeRect = new RectF();
     private final Handler ui = new Handler(Looper.getMainLooper());
 
@@ -47,6 +50,8 @@ public class SuprematistPageRailView extends View {
         super(context, attrs);
         fillPaint.setStyle(Paint.Style.FILL);
         strokePaint.setStyle(Paint.Style.STROKE);
+        trackPaint.setStyle(Paint.Style.STROKE);
+        trackPaint.setStrokeCap(Paint.Cap.ROUND);
         setClickable(false);
         setFocusable(false);
     }
@@ -118,50 +123,83 @@ public class SuprematistPageRailView extends View {
         float d = getResources().getDisplayMetrics().density;
         float cx = w * 0.5f;
         float cy = h * 0.5f;
-        float radius = Math.min(w, h) * 0.5f - 6.5f * d;
-        float halfSpan = Math.min(18f, (pageCount - 1) * 6.2f);
+        float radius = Math.min(w, h) * 0.5f - 6.8f * d;
+
+        // Top-left (222 deg = 第一屏) -> 9-o'clock (180 deg) -> Bottom-left (138 deg = 最后一屏)
+        float halfSpan = Math.min(44f, 18f + (pageCount - 1) * 7.5f);
+        float topDeg = 180f + halfSpan;
+        float sweepDeg = -2f * halfSpan;
         float stepDeg = (2f * halfSpan) / (pageCount - 1);
 
         int alphaByte = Math.max(0, Math.min(255, Math.round(railAlpha * 255f)));
-        int idleColor = lightSurface ? 0xFF101316 : 0xFFF6F6F2;
-        int activeFill = lightSurface ? 0xFF1E4182 : 0xFFEAB31A;
-        int activeStroke = lightSurface ? 0xFF101316 : 0xFF14171C;
+        int idleColor = lightSurface ? 0xFF101318 : 0xFFF3F1E8;
+        int trackBg = lightSurface ? 0xFF101318 : 0xFFF3F1E8;
+        int activeFill = lightSurface ? 0xFFE5232A : 0xFFF4BA00;
+        int activeStroke = 0xFF101318;
 
-        strokePaint.setStrokeWidth(1.1f * d);
+        // Curved orbital C-arc tube along left bezel matching hand-drawn reference
+        arcBounds.set(cx - radius, cy - radius, cx + radius, cy + radius);
+        trackPaint.setStrokeWidth(4.0f * d);
+        trackPaint.setColor(trackBg);
+        trackPaint.setAlpha(Math.round(alphaByte * 0.24f));
+        canvas.drawArc(arcBounds, topDeg, sweepDeg, false, trackPaint);
 
-        float dotHalf = 1.9f * d;
+        trackPaint.setStrokeWidth(1.1f * d);
+        trackPaint.setAlpha(Math.round(alphaByte * 0.50f));
+        canvas.drawArc(arcBounds, topDeg, sweepDeg, false, trackPaint);
+
+        // End-cap rings framing "第一屏" & "最后一屏" along the C-arc
+        float capR = 3.2f * d;
+        drawEndStop(canvas, cx, cy, radius, topDeg, capR, idleColor, alphaByte);
+        drawEndStop(canvas, cx, cy, radius, topDeg + sweepDeg, capR, idleColor, alphaByte);
+
+        // Page station diamonds along the left C-arc
+        float dotHalf = 2.0f * d;
         for (int i = 0; i < pageCount; i++) {
-            double rad = Math.toRadians(-halfSpan + i * stepDeg);
+            float deg = topDeg - i * stepDeg;
+            double rad = Math.toRadians(deg);
             float dx = cx + (float) (radius * Math.cos(rad));
             float dy = cy + (float) (radius * Math.sin(rad));
 
             fillPaint.setColor(idleColor);
-            fillPaint.setAlpha(Math.round(alphaByte * 0.38f));
+            fillPaint.setAlpha(Math.round(alphaByte * 0.65f));
             canvas.save();
             canvas.rotate(45f, dx, dy);
             canvas.drawRect(dx - dotHalf, dy - dotHalf, dx + dotHalf, dy + dotHalf, fillPaint);
             canvas.restore();
         }
 
-        float activeDeg = -halfSpan + position * stepDeg;
+        // Bold sliding Constructivist capsule riding along the C-arc
+        float activeDeg = topDeg - position * stepDeg;
         double activeRad = Math.toRadians(activeDeg);
         float ax = cx + (float) (radius * Math.cos(activeRad));
         float ay = cy + (float) (radius * Math.sin(activeRad));
 
-        float pillW = 2.8f * d;
-        float pillH = 9.2f * d;
+        float pillW = 3.6f * d;
+        float pillH = 12.0f * d;
         activeRect.set(ax - pillW * 0.5f, ay - pillH * 0.5f, ax + pillW * 0.5f, ay + pillH * 0.5f);
 
         fillPaint.setColor(activeFill);
         fillPaint.setAlpha(alphaByte);
         strokePaint.setColor(activeStroke);
-        strokePaint.setAlpha(Math.round(alphaByte * 0.72f));
+        strokePaint.setStrokeWidth(1.3f * d);
+        strokePaint.setAlpha(alphaByte);
 
         canvas.save();
-        canvas.rotate(activeDeg, ax, ay);
+        canvas.rotate(activeDeg + 180f, ax, ay);
         canvas.drawRect(activeRect, fillPaint);
         canvas.drawRect(activeRect, strokePaint);
         canvas.restore();
+    }
+
+    private void drawEndStop(Canvas canvas, float cx, float cy, float radius, float deg,
+                             float capR, int color, int alphaByte) {
+        double rad = Math.toRadians(deg);
+        float ex = cx + (float) (radius * Math.cos(rad));
+        float ey = cy + (float) (radius * Math.sin(rad));
+        fillPaint.setColor(color);
+        fillPaint.setAlpha(Math.round(alphaByte * 0.72f));
+        canvas.drawCircle(ex, ey, capR, fillPaint);
     }
 
     @Override
