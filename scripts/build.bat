@@ -52,7 +52,7 @@ echo [2/6] aapt2 link...
 "%BT%\aapt2.exe" link -o build\app.unsigned.apk -I "%PLAT%" ^
   --manifest AndroidManifest.xml --java build\gen ^
   --min-sdk-version 30 --target-sdk-version 34 ^
-  --version-code 14 --version-name 0.4.1 ^
+  --version-code 15 --version-name 0.4.2 ^
   --auto-add-overlay build\res.zip || exit /b 1
 
 echo [3/6] javac...

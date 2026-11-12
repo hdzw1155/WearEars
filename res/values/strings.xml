@@ -21,11 +21,11 @@
     <string name="dialog_ok">已了解风险，继续</string>
     <string name="dialog_cancel">取消</string>
     <string name="global_disclaimer_title">免责声明</string>
-    <string name="global_disclaimer_msg">本应用为非官方、未获授权的第三方学习研究工具，通过逆向私有协议控制耳机，不收集、不上传任何数据。\n\n⚠️ 安全提示：私有指令未经官方认证，可能引发突发爆音、啸叫或音量突变，有损伤听力的风险。首次连接新机型、固件升级后首次使用、以及每次开启「开发者设置」内的实验性功能前，务必先摘下耳机（勿佩戴入耳）并将音量调至最低，确认无异常后再佩戴；请勿在驾驶、骑行或操作机械等需要集中注意力的场景下使用。\n\n听力健康无法挽回，请谨慎操作。使用本应用的一切风险由您自行承担。\n\n是否同意并继续？</string>
-    <string name="disclaimer_page_msg">本应用为非官方、未获授权的第三方学习研究工具，通过逆向私有协议控制耳机，不收集、不上传任何数据。\n\n⚠️ 安全提示：私有指令未经官方认证，可能引发突发爆音、啸叫或音量突变，有损伤听力的风险。首次连接新机型、固件升级后首次使用、以及每次开启「开发者设置」内的实验性功能前，务必先摘下耳机（勿佩戴入耳）并将音量调至最低，确认无异常后再佩戴；请勿在驾驶、骑行或操作机械等需要集中注意力的场景下使用。\n\n听力健康无法挽回，请谨慎操作。使用本应用的一切风险由您自行承担。</string>
+    <string name="global_disclaimer_msg">本应用为非官方、未获授权的第三方学习研究工具，通过逆向私有协议控制耳机，不收集、不上传任何数据。\n开源地址：https://github.com/hdzw1155/WearEars\n\n⚠️ 安全提示：私有指令未经官方认证，可能引发突发爆音、啸叫或音量突变，有损伤听力的风险。首次连接新机型、固件升级后首次使用、以及每次开启「开发者设置」内的实验性功能前，务必先摘下耳机（勿佩戴入耳）并将音量调至最低，确认无异常后再佩戴；请勿在驾驶、骑行或操作机械等需要集中注意力的场景下使用。\n\n听力健康无法挽回，请谨慎操作。使用本应用的一切风险由您自行承担。\n\n是否同意并继续？</string>
+    <string name="disclaimer_page_msg">本应用为非官方、未获授权的第三方学习研究工具，通过逆向私有协议控制耳机，不收集、不上传任何数据。\n开源地址：https://github.com/hdzw1155/WearEars\n\n⚠️ 安全提示：私有指令未经官方认证，可能引发突发爆音、啸叫或音量突变，有损伤听力的风险。首次连接新机型、固件升级后首次使用、以及每次开启「开发者设置」内的实验性功能前，务必先摘下耳机（勿佩戴入耳）并将音量调至最低，确认无异常后再佩戴；请勿在驾驶、骑行或操作机械等需要集中注意力的场景下使用。\n\n听力健康无法挽回，请谨慎操作。使用本应用的一切风险由您自行承担。</string>
     <string name="dialog_agree">我已知晓并同意</string>
     <string name="dialog_refuse">不同意并退出</string>
-    <string name="disclaimer">免责声明：本应用为个人学习研究作品，与 vivo / 华为 / 小米 / 漫步者 / 三星 / 高通等厂商均无关联。「开发者设置」内为实验性功能，指令来自社区反编译推断并经真机探测校准，目前仅部分机型（如 vivo TWS Air 3 Pro）验证过，其他耳机不一定适配。\n⚠️ 听力安全警告：实验功能切换瞬间可能出现突发爆音、啸叫或音量突变，每次操作前务必摘下耳机（勿佩戴入耳）并将音量调至最低，确认无异常后再佩戴；听力损伤不可逆，请务必谨慎。请勿在驾驶、骑行等需要集中注意力的场景下使用。\n使用本应用的一切风险——包括但不限于听力不适、财产损失、耳机固件异常、数据丢失及软件安全风险——由使用者自行承担，作者不对任何直接或间接损失负责。</string>
+    <string name="disclaimer">免责声明：本应用为个人学习研究作品，与 vivo / 华为 / 小米 / 漫步者 / 三星 / 高通等厂商均无关联。「开发者设置」内为实验性功能，指令来自社区反编译推断并经真机探测校准，目前仅部分机型（如 vivo TWS Air 3 Pro）验证过，其他耳机不一定适配。\n开源地址：https://github.com/hdzw1155/WearEars\n⚠️ 听力安全警告：实验功能切换瞬间可能出现突发爆音、啸叫或音量突变，每次操作前务必摘下耳机（勿佩戴入耳）并将音量调至最低，确认无异常后再佩戴；听力损伤不可逆，请务必谨慎。请勿在驾驶、骑行等需要集中注意力的场景下使用。\n使用本应用的一切风险——包括但不限于听力不适、财产损失、耳机固件异常、数据丢失及软件安全风险——由使用者自行承担，作者不对任何直接或间接损失负责。</string>
 
     <!-- 状态行 / 副行 / 芯片 (2026-10 UI 重构) -->
     <string name="status_connected">已连接</string>
@@ -95,7 +95,7 @@
     <!-- 2026-10 视觉统一: 空间音频副标题拆两行 + 免责声明分段 -->
     <string name="spatial_caption_lines">实验性功能 · 仅 Air 3 Pro 可尝试\n切换前请先摘下耳机</string>
     <string name="disclaimer_heading_official">非官方工具</string>
-    <string name="disclaimer_body_official">本应用为非官方、未获授权的第三方学习研究工具，通过逆向私有协议控制耳机，不收集、不上传任何数据。</string>
+    <string name="disclaimer_body_official">本应用为非官方、未获授权的第三方学习研究工具，通过逆向私有协议控制耳机，不收集、不上传任何数据。\nGitHub 开源：https://github.com/hdzw1155/WearEars</string>
     <string name="disclaimer_heading_safety">安全提示</string>
     <string name="disclaimer_body_safety">私有指令未经官方认证，可能引发突发爆音、啸叫或音量突变，有损伤听力的风险。首次连接新机型、固件升级后首次使用、以及开启「开发者设置」内的实验性功能前，务必先摘下耳机（勿佩戴入耳），并将音量调至最低。</string>
     <string name="disclaimer_heading_risk">风险自担</string>
@@ -140,7 +140,7 @@
     <string name="sup_sec_acoustic">02 / 降噪控制</string>
     <string name="sup_sec_control">02 / 控制</string>
     <string name="sup_sec_dev">DEV / 实验功能</string>
-    <string name="sup_sec_notice">安全声明 / NOTICE</string>
+    <string name="sup_sec_notice">使用须知 / NOTICE</string>
     <string name="sup_open_settings">打开设置 · 风格 / 设备 →</string>
     <string name="sup_swipe_hint">弧滑翻页</string>
     <string name="sup_vol_guard_hint">长按「音」解锁</string>
@@ -148,7 +148,7 @@
     <string name="sup_noise_disconnected">未连接耳机 · 点按任一档位重连</string>
     <string name="sup_noise_unsupported">当前机型协议不支持主动降噪</string>
     <string name="sup_dev_unlocked_jump">实验页已解锁 · 点此跳转 →</string>
-    <string name="sup_notice_summary">• 非官方逆向协议研究工具，不收集也不上传数据。\n• 首次连接或开实验功能前务必先摘耳机、调低音量。\n• 听力健康不可逆，使用本应用风险由您自行承担。</string>
+    <string name="sup_notice_summary">• 非官方逆向协议研究工具，不收集也不上传数据。\n• 首次连接或开实验功能前务必先摘耳机、调低音量。\n• 听力健康不可逆，使用本应用风险由您自行承担。\n• GitHub：https://github.com/hdzw1155/WearEars</string>
     <string name="sup_full_notice">查看完整条款 →</string>
     <string name="settings_theme">设置外观</string>
     <string name="settings_theme_night">夜晚</string>
