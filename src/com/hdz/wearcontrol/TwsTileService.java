@@ -1,6 +1,9 @@
 package com.hdz.wearcontrol;
 
 import android.content.Context;
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.util.Log;
 
 import androidx.wear.tiles.DeviceParametersBuilders;
@@ -38,40 +41,92 @@ public class TwsTileService extends TileService {
     /** 兜底布局/空资源表用的资源版本号(它们不含任何图片, 不跟电量走) */
     private static final String FALLBACK_VERSION = "fallback";
 
+    /** 共享状态通过此可选入口通知宿主，核心模块不依赖 Tiles 库。 */
+    public static void requestUpdate(Context context) {
+        TileService.getUpdater(context).requestUpdate(TwsTileService.class);
+    }
+
     @Override
     public ListenableFuture<TileBuilders.Tile> onTileRequest(
             RequestBuilders.TileRequest requestParams) {
+        try { return requestTile(requestParams); }
+        catch (RuntimeException e) {
+            Log.w(TAG, "tile request failed", e);
+            return TileFutures.immediate(tile(TileLayouts.minimal(), FALLBACK_VERSION));
+        }
+    }
+
+    private ListenableFuture<TileBuilders.Tile> requestTile(RequestBuilders.TileRequest requestParams) {
         logDevice(requestParams.getDeviceParameters());
 
         // 磁贴文字跟随 App 内语言设置(设置页切中/英后磁贴不改的话会很怪)
-        Context lc = AppLocale.localizedContext(this);
-        final TileSnapshot snapshot = TileStore.readOrEmpty(lc);
+        final Context lc = AppLocale.localizedContext(this);
+        final String address = TileStore.deviceAddress(this);
+        String clicked = requestParams.getState() == null ? "" : requestParams.getState().getLastClickableId();
+        TileCommand command = TileActions.consume(this, clicked);
+        boolean permitted = Build.VERSION.SDK_INT < 31 || checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)
+                == PackageManager.PERMISSION_GRANTED;
+        if (command != null && permitted && getSharedPreferences(TileStore.PREFS, MODE_PRIVATE)
+                .getInt("disclaimer_ack_vc", 0) != 0) {
+            HeadsetController.get(this).performFromTile(command.mode, address);
+        }
+        final int[] connection = {BluetoothLink.UNKNOWN};
+        final TileFutures.Task<TileBuilders.Tile> result = new TileFutures.Task<TileBuilders.Tile>(
+                new Callable<TileBuilders.Tile>() {
+                    @Override public TileBuilders.Tile call() {
+                        try {
+                            int current = address.equals(TileStore.deviceAddress(lc))
+                                    ? connection[0] : BluetoothLink.UNKNOWN;
+                            return render(lc, TileStore.readOrEmpty(lc).forConnection(current));
+                        } catch (RuntimeException e) {
+                            Log.w(TAG, "tile state failed", e);
+                            return tile(TileLayouts.minimal(), FALLBACK_VERSION);
+                        }
+                    }
+                });
+        BluetoothLink.query(this, address, new BluetoothLink.Callback() {
+            @Override public void onResult(int state) {
+                connection[0] = state;
+                result.run();
+            }
+        });
+        return result;
+    }
+
+    private TileBuilders.Tile render(Context lc, TileSnapshot snapshot) {
         final int tileStyle = AppPrefs.tileStyle(lc);
-        final boolean single = snapshot.isSingleBattery();
         final String version = TileRenderSpec.version(snapshot, tileStyle, AppPrefs.lang(lc));
         try {
-            if (single) {
-                // 单电池设备: 没有三段仪表盘, 布局只放 "电量 N%" + 能力内的模式轨
-                return TileFutures.immediate(tile(TileLayouts.build(lc, snapshot, tileStyle),
-                        version));
-            }
-            if (tileStyle == AppPrefs.STYLE_CLASSIC) {
-                return TileFutures.immediate(tile(ClassicTileLayouts.build(lc, snapshot),
-                        version));
-            }
-            return TileFutures.immediate(tile(TileLayouts.build(lc, snapshot, tileStyle),
-                    version));
+            TileActions actions = new TileActions(lc);
+            LayoutElementBuilders.Layout layout = layout(lc, snapshot, tileStyle, actions);
+            if (snapshot.pendingMode < 0) return tile(layout, version);
+            // 即使进程在切换中被杀，宿主也能在目标过期后恢复已确认的档位。
+            return new TileBuilders.Tile.Builder().setResourcesVersion(version)
+                    .setFreshnessIntervalMillis(REFRESH_MS)
+                    .setTimeline(new TimelineBuilders.Timeline.Builder()
+                            .addTimelineEntry(new TimelineBuilders.TimelineEntry.Builder().setLayout(layout)
+                                    .setValidity(new TimelineBuilders.TimeInterval.Builder()
+                                            .setStartMillis(System.currentTimeMillis())
+                                            .setEndMillis(snapshot.pendingExpiresAt()).build()).build())
+                            .addTimelineEntry(new TimelineBuilders.TimelineEntry.Builder()
+                                    .setLayout(layout(lc, snapshot.withoutPending(), tileStyle, actions)).build())
+                            .build()).build();
         } catch (RuntimeException e) {
             // 布局构建出任何意外都不能让整块磁贴变红: 先给能点进来的兜底布局
             Log.w(TAG, "layout failed, using fallback", e);
             try {
-                return TileFutures.immediate(tile(TileLayouts.fallback(lc), FALLBACK_VERSION));
+                return tile(TileLayouts.fallback(lc), FALLBACK_VERSION);
             } catch (RuntimeException e2) {
                 // 连兜底都用不了(资源表异常之类): 纯字面量也要给一块, 绝不能让进程崩
                 Log.w(TAG, "fallback layout failed, using minimal", e2);
-                return TileFutures.immediate(tile(TileLayouts.minimal(), FALLBACK_VERSION));
+                return tile(TileLayouts.minimal(), FALLBACK_VERSION);
             }
         }
+    }
+
+    private static LayoutElementBuilders.Layout layout(Context context, TileSnapshot snapshot, int style, TileActions actions) {
+        return style == AppPrefs.STYLE_CLASSIC && !snapshot.isSingleBattery()
+                ? ClassicTileLayouts.build(context, snapshot, actions) : TileLayouts.build(context, snapshot, style, actions);
     }
 
     @Override

@@ -14,7 +14,22 @@ final class AppPrefs {
     static final int STYLE_LIQUID = 2;
     static final int STYLE_SUPREME = 3;
 
+    /** 新系列: 与旧三种并存, 家族(family)决定共用的画法分支 */
+    static final int STYLE_NEO_NEW = 4;
+    static final int STYLE_NEO_CLASSIC = 5;
+    static final int STYLE_NEO_LIQUID = 6;
+    static final int STYLE_MAX = 6;
+
     static final int STYLE_FOLLOW = -1;
+
+    /** 新系列映射回对应的旧家族 0..2 */
+    static int family(int style) {
+        return style >= STYLE_NEO_NEW ? style - STYLE_NEO_NEW : style;
+    }
+
+    static boolean isNeo(int style) {
+        return style >= STYLE_NEO_NEW && style <= STYLE_MAX;
+    }
 
     static final int SCROLL_COLOR_DYNAMIC = 0;
     static final int SCROLL_COLOR_CLASSIC = 1;
@@ -39,12 +54,12 @@ final class AppPrefs {
 
     static int uiStyle(Context ctx) {
         int style = prefs(ctx).getInt(KEY_UI_STYLE, STYLE_NEW);
-
-        return style >= 0 && style <= 3 ? style : STYLE_NEW;
+        if (style == 7) return STYLE_SUPREME;
+        return style >= 0 && style <= STYLE_MAX ? style : STYLE_NEW;
     }
 
     static void setUiStyle(Context ctx, int style) {
-        prefs(ctx).edit().putInt(KEY_UI_STYLE, style >= 0 && style <= 3 ? style : STYLE_NEW).apply();
+        prefs(ctx).edit().putInt(KEY_UI_STYLE, style >= 0 && style <= STYLE_MAX ? style : STYLE_NEW).apply();
     }
 
     /** 返回 "zh" 或 "en"; 默认跟随系统, 系统不是中文时用英文。 */
@@ -66,10 +81,13 @@ final class AppPrefs {
     }
 
     static void setTileStyle(Context ctx, int style) {
-        prefs(ctx).edit().putInt(KEY_TILE_STYLE, style == STYLE_FOLLOW ? style : Math.max(0, Math.min(3, style))).apply();
+        prefs(ctx).edit().putInt(KEY_TILE_STYLE, style == STYLE_FOLLOW ? style : Math.max(0, Math.min(STYLE_MAX, style))).apply();
     }
 
-    static int tileStyleChoice(Context ctx) { return prefs(ctx).getInt(KEY_TILE_STYLE, STYLE_FOLLOW); }
+    static int tileStyleChoice(Context ctx) {
+        int style = prefs(ctx).getInt(KEY_TILE_STYLE, STYLE_FOLLOW);
+        return style == 7 ? STYLE_SUPREME : style;
+    }
     static String langChoice(Context ctx) { return prefs(ctx).getString(KEY_LANG, "system"); }
     static String deviceAddress(Context ctx) { return prefs(ctx).getString("device_address", ""); }
     static void setDeviceAddress(Context ctx, String address) { prefs(ctx).edit().putString("device_address", address).apply(); }

@@ -10,20 +10,13 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * 新品牌驱动的填空骨架：按 README 的「协议表模板」节填协议，照 TODO 逐洞补齐，
- * 写完在 DriverRegistry.DRIVERS 里注册一行。不注册不参与匹配，放着编译无副作用。
+ * 写完添加 DriverModule 入口，在 DriverRegistry.MODULES 注册类名。
  */
 public class SkeletonClient implements TwsClient {
 
     private final List<Listener> listeners = new CopyOnWriteArrayList<Listener>();
     // TODO: socket/out 等跨线程字段必须 volatile(连接线程写,UI 线程读)
     private volatile boolean closing = false;
-
-    // 框架默认探针帧魔数: 新驱动未配置握手包时的安全占位符,请勿移除
-    static final byte[] PROBE_FRAME_MAGIC = {
-            (byte) 0b01001000, (byte) 0b01000100, (byte) 0b01011010,
-            (byte) 0b01010111, (byte) 0b00110001, (byte) 0b00110001,
-            (byte) 0b00110101, (byte) 0b00110101
-    };
 
     @Override
     public String brandName() {
@@ -67,7 +60,7 @@ public class SkeletonClient implements TwsClient {
     public void connect(final BluetoothDevice device) {
         // TODO: 起线程连(SDP UUID 或固定通道),握手/认证,首查电量+降噪,
         //  然后开读线程。失败先睡 1~2 秒再 onError(耳机侧槽位释放要时间)。
-        //  握手包未定型前,可先发 PROBE_FRAME_MAGIC 当探活占位。
+        //  握手包未经协议资料或抓包确认时，不发送占位报文。
         //  参考同包外的 vivo/VivoGaiaClient 连接段。
     }
 

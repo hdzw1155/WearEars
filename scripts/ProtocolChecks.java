@@ -4,6 +4,7 @@ import com.hdz.wearcontrol.xiaomi.XiaomiAuth;
 import com.hdz.wearcontrol.xiaomi.XiaomiProtocol;
 import com.hdz.wearcontrol.oppo.OppoProtocol;
 import com.hdz.wearcontrol.vivo.VivoProtocol;
+import com.hdz.wearcontrol.huawei.HuaweiSoundProtocol;
 import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,8 +27,233 @@ public final class ProtocolChecks {
         scrollFeedback();
         indicatorMotion();
         snapshots();
+        liveState();
+        volumeGuard();
+        soundEffects();
+        tileActions();
+        auditRegressions();
         writer();
         System.out.println("PASS: " + checks + " protocol/state checks");
+    }
+
+    private static void tileActions() {
+        TileSnapshot resource = TileSnapshot.forResources(50, 60, 70, -1, 0, TwsClient.MODE_OFF,
+                TwsClient.CAP_BATTERY | TwsClient.CAP_NOISE, TwsClient.MODE_ANC, 1L, BluetoothLink.CONNECTED);
+        check(resource.pendingMode == TwsClient.MODE_ANC, "late resource request must restore issued pending image");
+        check(resource.withoutPending().mode == TwsClient.MODE_OFF, "timeline fallback has a distinct confirmed image");
+        check(TileSnapshot.forResources(50, 60, 70, -1, 0, TwsClient.MODE_OFF,
+                TwsClient.CAP_BATTERY, TwsClient.MODE_ANC, 1L, BluetoothLink.DISCONNECTED).battL == -1,
+                "resource restoration cannot light offline battery or pending state");
+        String address = "AA:BB:CC:DD:EE:FF";
+        String id = TileCommand.id(4, TwsClient.MODE_ANC, address);
+        check(TileCommand.parse(id, address, 4, 3, 15) != null, "fresh tile click is accepted");
+        check(TileCommand.parse(id, address, 5, 4, 2) == null, "replayed host state cannot resend command");
+        check(TileCommand.parse(TileCommand.id(4, TwsClient.MODE_OFF, address), address, 4, 4, 2) != null,
+                "another target on same rendered tile remains usable");
+        check(TileCommand.parse(id, address, 5, 5, 0) == null, "out-of-order old render cannot override new target");
+        check(TileCommand.parse(id, "00:00:00:00:00:00", 5, 0, 0) == null, "cached tile cannot control another device");
+        check(TileCommand.parse(id, address, 3, 0, 0) == null, "unissued click token is rejected");
+        check(TileCommand.parse(TileCommand.id(4, -1, address), address, 4, 3, 0).mode == -1, "refresh is explicit, never cycles noise");
+        for (String bad : new String[]{"", "refresh", "mode_0", "4/3/" + address, "-1/0/" + address, "x/0/" + address})
+            check(TileCommand.parse(bad, address, 4, 0, 0) == null, "malformed tile action has no side effect");
+        check((TileSnapshot.displayCaps(TwsClient.CAP_NOISE, TwsClient.CAP_BATTERY,
+                TwsClient.CAP_BATTERY | TwsClient.CAP_NOISE) & TwsClient.CAP_NOISE) != 0,
+                "reconnect does not collapse previously confirmed tile ANC row");
+        check((TileSnapshot.displayCaps(TwsClient.CAP_NOISE, TwsClient.CAP_BATTERY_SINGLE,
+                TwsClient.CAP_BATTERY_SINGLE) & TwsClient.CAP_NOISE) == 0,
+                "unsupported fallback cannot inherit an active ANC capability");
+    }
+
+    private static void liveState() {
+        DeviceState state = new DeviceState();
+        state.begin("A", "Earbuds", TwsClient.CAP_BATTERY, TwsClient.CAP_BATTERY | TwsClient.CAP_NOISE);
+        check(state.capability(TwsClient.CAP_NOISE) == DeviceState.UNKNOWN, "ANC waiting is not unsupported");
+        state.connected = true;
+        state.battery(80, 255, 255, -1);
+        state.battery(255, 70, 20, 0);
+        check(state.left == 80 && state.right == 70 && state.box == 20, "partial reports merge in current session");
+        state.capabilities(TwsClient.CAP_NOISE | TwsClient.CAP_BATTERY, TwsClient.CAP_NOISE);
+        check(state.capability(TwsClient.CAP_NOISE) == DeviceState.SUPPORTED, "valid response enables ANC");
+        state.disconnect();
+        state.battery(99, 99, 99, 7);
+        check(state.left == -1 && state.charge == -1 && state.mode == -1, "disconnect cannot display old live values");
+        check(state.capability(TwsClient.CAP_NOISE) == DeviceState.UNKNOWN, "disconnect retains waiting card");
+        state.presets = SoundPreset.vivo();
+        state.begin("B", "Speaker", TwsClient.CAP_BATTERY_SINGLE, TwsClient.CAP_BATTERY_SINGLE);
+        check(state.presets.length == 0 && state.capability(TwsClient.CAP_NOISE) == DeviceState.UNSUPPORTED,
+                "new device cannot inherit optional controls");
+        state.connected = true;
+        state.battery(55, 60, 70, 7);
+        check(state.left == 55 && state.right == -1 && state.box == -1 && state.charge == -1,
+                "single battery never creates extra earbuds");
+        state.capabilities(TwsClient.CAP_BATTERY, TwsClient.CAP_BATTERY);
+        check(state.left == -1, "topology change discards incompatible values");
+
+        TileSnapshot history = new TileSnapshot("A", 1234, 90, 80, 50, -1, 3, TwsClient.MODE_OFF,
+                TwsClient.CAP_BATTERY | TwsClient.CAP_NOISE, 0, TwsClient.MODE_ANC, System.currentTimeMillis() + 10000L);
+        for (int connection : new int[]{BluetoothLink.UNKNOWN, BluetoothLink.DISCONNECTED}) {
+            TileSnapshot display = history.forConnection(connection);
+            check(!display.hasBattery() && display.mode == -1 && display.chargeFlags == -1 && display.pendingMode == -1,
+                    "unconfirmed connection hides saved battery and mode");
+            check(display.lastOk == history.lastOk && display.caps == history.caps, "presentation retains history metadata");
+        }
+        TileSnapshot online = history.forConnection(BluetoothLink.CONNECTED);
+        check(online.battL == 90 && online.mode == TwsClient.MODE_ANC && online.confirmedMode == TwsClient.MODE_OFF,
+                "online tile keeps pending target separate from confirmed mode");
+        check(history.battL == 90 && history.confirmedMode == TwsClient.MODE_OFF, "masking never mutates stored history");
+        check(online.withoutPending().mode == TwsClient.MODE_OFF && online.withoutPending().pendingExpiresAt() == 0L,
+                "tile timeline fallback never confirms an abandoned target");
+    }
+
+    private static void volumeGuard() {
+        VolumeGuard guard = new VolumeGuard();
+        check(!guard.isUnlocked() && guard.limit(2, 10, 10) == 2, "volume starts locked");
+        check(guard.limit(10, 2, 10) == 2 && !guard.isUnlocked(), "locked volume can always be lowered");
+        guard.unlock();
+        check(guard.limit(2, 6, 10) == 6 && guard.isUnlocked(), "unlocked low range is usable");
+        check(guard.limit(6, 7, 10) == 7 && !guard.isUnlocked() && guard.needsHighConfirmation(),
+                "reaching exactly 70 percent relocks");
+        check(guard.limit(7, 10, 10) == 7, "continuing same drag cannot cross guard");
+        guard.unlock();
+        check(guard.limit(7, 10, 10) == 10, "second explicit unlock permits high range");
+        guard.lock(); guard.unlock();
+        check(guard.limit(9, 10, 10) == 9 && guard.needsHighConfirmation(), "already high volume never jumps or drops on first increase");
+        guard.lock(); guard.unlock();
+        check(guard.limit(9, 3, 10) == 3, "guard allows lowering an existing high volume");
+        guard.lock(); guard.unlock();
+        check(guard.limit(2, 15, 15) == 10, "system steps round down, never above 70 percent");
+        guard.unlock(); guard.lock();
+        check(guard.limit(10, 15, 15) == 10 && !guard.needsHighConfirmation(), "page reentry resets both unlocks");
+        guard.unlock();
+        check(guard.limit(0, 1, 1) == 0, "coarse system range cannot skip confirmation");
+        guard.unlock();
+        check(guard.limit(0, 1, 1) == 1, "coarse range is usable after second unlock, not permanently locked");
+        guard.lock(); guard.unlock();
+        guard.limit(0, 10, 10); guard.unlock();
+        check(guard.limit(10, 3, 10) == 3 && guard.limit(3, 10, 10) == 7,
+                "lowering below boundary rearms high-volume confirmation");
+        check(guard.limit(7, 2, 10) == 2 && !guard.needsHighConfirmation(),
+                "locked lowering cancels stale high-volume confirmation");
+        guard.unlock();
+        check(guard.limit(2, 10, 10) == 7, "unlock after lowering cannot bypass next threshold");
+        check(guard.limit(0, 99, 0) == 0, "zero range is safe");
+        for (int max = 2; max <= 100; max++) {
+            guard.lock(); guard.unlock();
+            check(guard.limit(0, max, max) <= max * 7 / 10 && !guard.isUnlocked(), "all volume ranges stop before threshold");
+        }
+    }
+
+    /** 外部审计线索的真实实现回归：断言应有行为，不以“检测出问题”作为 PASS。 */
+    private static void auditRegressions() {
+        byte[] vivo = hex("FF 04 00 05 00 1B 82 07 00 50 4A 64 00");
+        byte[] stream = concat(hex("FF 55 FF 04 FF"), vivo, vivo);
+        for (int cut = 0; cut <= stream.length; cut++) {
+            VivoProtocol.Decoder decoder = new VivoProtocol.Decoder();
+            List<VivoProtocol.Frame> frames = new ArrayList<VivoProtocol.Frame>();
+            frames.addAll(decoder.feed(Arrays.copyOfRange(stream, 0, cut), cut));
+            frames.addAll(decoder.feed(null, 1));
+            frames.addAll(decoder.feed(Arrays.copyOfRange(stream, cut, stream.length), stream.length - cut));
+            check(frames.size() == 2 && frames.get(0).vendor == 0x1B && frames.get(0).command == 0x8207,
+                    "vivo survives false headers, all split boundaries and coalesced frames");
+            check(Arrays.equals(VivoProtocol.battery(frames.get(0).payload), new int[]{80, 74, 100, 0}),
+                    "vivo preserves battery payload after resynchronization");
+        }
+        byte[] nice = hex("4E 06 00 00 05 00 50 4A 64");
+        byte[] niceStream = concat(hex("4E 05 00 99"), nice, nice);
+        check(new NiceHckProtocol().feed(niceStream, niceStream.length).size() == 2,
+                "NiceHCK false header cannot swallow a following valid frame");
+        byte[] oppo = hex("AA 0C 00 00 0C 81 22 05 00 00 01 01 10 00");
+        byte[] oppoStream = concat(hex("AA 08 01 00"), oppo, oppo);
+        check(new OppoProtocol.Decoder().feed(oppoStream, oppoStream.length).size() == 2,
+                "OPPO invalid slice resynchronizes without losing following frames");
+        byte[] rose = hex("DD 00 04 0C E4 63 FF 02 09 01 3F AA");
+        byte[] roseStream = concat(hex("DD 00 0D 77"), rose, hex("00 AA"));
+        check(new RoseProtocol.Decoder(RoseProtocol.V2).feed(roseStream, roseStream.length).size() == 2,
+                "Rose checksum failure cannot discard embedded valid frame");
+        byte[] sony = SonyProtocol.encode(12, 0, new byte[200]);
+        check(new SonyProtocol.Decoder().feed(sony).get(0).payload.length == 200,
+                "Sony high-bit length is unsigned and does not deadlock");
+        check(XiaomiProtocol.noise(hex("04 00 0B 01 00 02 00 0B")) == -1,
+                "duplicate truncated Xiaomi noise TLV is rejected");
+        check(OppoProtocol.battery(hex("01 02 01 50 02 50"), true)[1] == 80,
+                "OPPO battery event parser already accepts push packets");
+        check(EdifierProtocol.battery(0xD0, null) == null && SonyProtocol.battery(1, null) == null
+                && TechnicsProtocol.battery(null) == null && RoseProtocol.battery(RoseProtocol.V2, null) == null
+                && OppoProtocol.battery(null, true) == null && XiaomiProtocol.battery(null) == null,
+                "null battery payloads are never published");
+        check(SonyProtocol.mode(1, null) == -1 && TechnicsProtocol.mode(null) == -1
+                && OppoProtocol.noiseMask(null) == -1 && XiaomiProtocol.noise(null) == -1,
+                "null noise payloads remain unknown");
+        check(new EdifierProtocol.Decoder().feed(null, 1).isEmpty()
+                && new NiceHckProtocol().feed(null, 1).isEmpty()
+                && new RoseProtocol.Decoder(RoseProtocol.V2).feed(null, 1).isEmpty()
+                && new OppoProtocol.Decoder().feed(null, 1).isEmpty()
+                && new XiaomiProtocol.Decoder().feed(null, 1).isEmpty()
+                && new SonyProtocol.Decoder().feed(null).isEmpty()
+                && new TechnicsProtocol.Decoder().feed(null).isEmpty(), "null decoder chunks are harmless");
+        check(new VivoProtocol.Decoder().feed(vivo, vivo.length + 1).isEmpty()
+                && new NiceHckProtocol().feed(nice, nice.length + 1).isEmpty()
+                && new OppoProtocol.Decoder().feed(oppo, oppo.length + 1).isEmpty()
+                && new RoseProtocol.Decoder(RoseProtocol.V2).feed(rose, rose.length + 1).isEmpty()
+                && new EdifierProtocol.Decoder().feed(new byte[1], 2).isEmpty()
+                && new XiaomiProtocol.Decoder().feed(new byte[1], 2).isEmpty(), "invalid chunk lengths are rejected before mutation");
+        for (byte[] invalid : new byte[][]{null, new byte[0], new byte[15], new byte[17]}) {
+            boolean rejected = false;
+            try { XiaomiAuth.e21(invalid); } catch (IllegalArgumentException expected) { rejected = true; }
+            check(rejected, "authentication validates exact challenge size");
+        }
+        DeviceState state = new DeviceState();
+        state.begin("A", "Known earbuds", TwsClient.CAP_BATTERY, TwsClient.CAP_NOISE);
+        state.begin("A", null, TwsClient.CAP_BATTERY_SINGLE, TwsClient.CAP_NOISE);
+        check("Known earbuds".equals(state.name) && state.capability(TwsClient.CAP_NOISE) == DeviceState.UNKNOWN,
+                "same-device fallback keeps only a disabled ANC candidate and name");
+        state.begin("B", null, TwsClient.CAP_BATTERY_SINGLE, TwsClient.CAP_BATTERY_SINGLE);
+        check(state.name.isEmpty() && state.capability(TwsClient.CAP_NOISE) == DeviceState.UNSUPPORTED,
+                "new identity cannot inherit remembered name or ANC");
+        java.util.Random random = new java.util.Random(20261117L);
+        for (int i = 0; i < 128; i++) {
+            byte[] bytes = new byte[i * 17]; random.nextBytes(bytes);
+            new VivoProtocol.Decoder().feed(bytes, bytes.length);
+            new EdifierProtocol.Decoder().feed(bytes, bytes.length);
+            new NiceHckProtocol().feed(bytes, bytes.length);
+            new OppoProtocol.Decoder().feed(bytes, bytes.length);
+            new RoseProtocol.Decoder(RoseProtocol.V2).feed(bytes, bytes.length);
+            new SonyProtocol.Decoder().feed(bytes);
+            new TechnicsProtocol.Decoder().feed(bytes);
+            new XiaomiProtocol.Decoder().feed(bytes, bytes.length);
+            check(true, "deterministic malformed byte streams terminate without exceptions");
+        }
+    }
+
+    private static void soundEffects() {
+        check(VivoProtocol.spatial(hex("00"), true) == null, "spatial ACK-only is not off state");
+        check(Boolean.FALSE.equals(VivoProtocol.spatial(hex("00"), false)), "spatial query single-byte off");
+        check(VivoProtocol.spatial(hex("00 01"), true) == null, "spatial ACK with an echoed target cannot confirm a switch");
+        check(Boolean.TRUE.equals(VivoProtocol.spatial(hex("00 01 01"), false)), "Air3 Pro extended report enables spatial capability");
+        check(Boolean.FALSE.equals(VivoProtocol.spatial(hex("00 00 01"), false)), "extended report state is second byte, not extension");
+        check(VivoProtocol.spatial(hex("00 01 00"), true) == null, "extended ACK cannot confirm a switch or expose sound scenes");
+        check(VivoProtocol.spatial(hex("01 01 01"), false) == null, "failed extended report is not a spatial confirmation");
+        check(VivoProtocol.spatial(hex("00 99 01"), false) == null, "unknown spatial report format rejected");
+        check(SoundPreset.vivo()[4].id == 5, "audiobook uses wire preset 5, never 4");
+        check(HuaweiSoundProtocol.supportsQuery("HUAWEI FreeBuds 6i") && HuaweiSoundProtocol.supportsQuery("FreeBuds 5i"),
+                "Huawei EQ exact documented model scope");
+        check(!HuaweiSoundProtocol.supportsQuery("FreeBuds Pro 6") && !HuaweiSoundProtocol.supportsQuery("FreeBuds 6"),
+                "Huawei EQ not inferred for unrelated models");
+        byte[] report = hex("01 01 00 02 01 02 03 06 01 02 03 09 02 7F");
+        HuaweiSoundProtocol.State state = HuaweiSoundProtocol.decode(report, 0, report.length);
+        check(state != null && state.current == 2 && state.presets.length == 4, "EQ uses reported known presets, deduplicates");
+        check(state.presets[3].id == 9, "Huawei vocals wire ID");
+        byte[] framed = concat(hex("AA BB"), report, hex("CC"));
+        check(HuaweiSoundProtocol.decode(framed, 2, report.length) != null, "EQ respects frame payload slice");
+        for (int length = 0; length < report.length; length++)
+            check(HuaweiSoundProtocol.decode(report, 0, length) == null, "truncated EQ TLV cannot enable writes");
+        for (String invalid : new String[]{"02 02 01 02 03 01 01", "02 01 01 02 01 02 03 01 01",
+                "02 01 01 03 01 01 03 01 02", "02 01 01 03 01 7F", "02 01 01"}) {
+            byte[] bytes = hex(invalid);
+            check(HuaweiSoundProtocol.decode(bytes, 0, bytes.length) == null, "invalid EQ capability is not writable");
+        }
+        check(HuaweiSoundProtocol.decode(report, -1, 2) == null && HuaweiSoundProtocol.decode(report, 1, Integer.MAX_VALUE) == null,
+                "EQ slice bounds reject overflow");
     }
     private static void edifier() {
         equal(hex("AA EC D0 00 00 66"), EdifierProtocol.encode(0xD0, new byte[0], true, true), "BES V2 battery query");

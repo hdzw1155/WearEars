@@ -44,17 +44,11 @@ public class VivoGaiaClient implements TwsClient {
     public static final int RESP_SPATIAL = 0x8239;
 
     // DeepX 音效: 命令号与格式已真机验证(Air3 Pro)——SET 单字节 [mode], ACK 0x8118 回 [00,mode],
-    // 查询 0x8218 回 [00,mode]; mode 0=标准 1=清澈人声 2=超重低音(真机验证), 3=清亮高音 4=悠扬听书(按官方 App 显示顺序推断,未实测)
+    // 查询 0x8218 回 [00,mode]; mode 0=标准 1=清澈人声 2=超重低音, 3=清亮高音 5=悠扬听书。
     public static final int CMD_DEEPX_SET = 0x0118;
     public static final int CMD_DEEPX_QUERY = 0x0218;
     public static final int RESP_DEEPX_ACK = 0x8118;
     public static final int RESP_DEEPX = 0x8218;
-
-    // 空间音效预设(标准/剧场/音乐厅/录音棚/演唱会): 命令号来自官方 APK 反编译,未实测
-    public static final int CMD_SPATIALFX_SET = 0x013E;
-    public static final int CMD_SPATIALFX_QUERY = 0x023E;
-    public static final int RESP_SPATIALFX_ACK = 0x813E;
-    public static final int RESP_SPATIALFX = 0x823E;
 
     public static final int MODE_ANC = 0x00;
     public static final int MODE_OFF = 0x01;
@@ -313,6 +307,7 @@ public class VivoGaiaClient implements TwsClient {
      *  (真机探测确认: Air3 Pro 上 v3 [01] 使 0x8239 状态翻转为 01) */
     @Override
     public void setSpatial(boolean on) {
+        if (!spatialConfirmed) { querySpatial(); return; }
         boolean v4 = cfg == CFG_FAMILY_V4;
         writeFrame(v4 ? 0x04 : 0x03, VENDOR_VIVO, CMD_SPATIAL_SET,
                 new byte[]{(byte) (on ? 0x01 : 0x00)});
@@ -331,38 +326,11 @@ public class VivoGaiaClient implements TwsClient {
      *  verb 按 cfg 取, ACK 0x8118 回 [00, mode],与降噪/空间音频同款套路 */
     @Override
     public void setDeepX(int mode) {
+        if (!deepxConfirmed || !(mode >= 0 && mode <= 3 || mode == 5)) return;
         boolean v4 = cfg == CFG_FAMILY_V4;
         writeFrame(v4 ? 0x04 : 0x03, VENDOR_VIVO, CMD_DEEPX_SET,
                 new byte[]{(byte) mode});
     }
-
-    // ---- 空间音效预设(实验,APK 反编译推断) ----
-
-    public void querySpatialFx() {
-        boolean v4 = cfg == CFG_FAMILY_V4;
-        writeFrame(v4 ? 0x04 : 0x03, VENDOR_VIVO, CMD_SPATIALFX_QUERY,
-                v4 ? new byte[]{0x00} : null);
-    }
-
-    /** 空间音效预设: payload 格式未知,探针轮换候选,每次调用发一种并留日志 */
-    public void setSpatialFx(int preset) {
-        final int[][] probes = {
-                {0x03, preset},             // 0: v3 [preset]
-                {0x03, preset, 0x00},       // 1: v3 [preset 00]
-                {0x04, preset},             // 2: v4 [preset]
-                {0x03, 0x00, preset},       // 3: v3 [00 preset]
-                {0x04, 0x00, preset},       // 4: v4 [00 preset]
-        };
-        int i = spatialFxProbeIdx++ % probes.length;
-        int verb = probes[i][0];
-        byte[] payload = new byte[probes[i].length - 1];
-        for (int k = 1; k < probes[i].length; k++) payload[k - 1] = (byte) probes[i][k];
-        android.util.Log.d("GaiaClient", "sfx probe#" + i + " verb=0x"
-                + Integer.toHexString(verb) + " payload=" + toHex(payload));
-        writeFrame(verb, VENDOR_VIVO, CMD_SPATIALFX_SET, payload);
-    }
-
-    private static int spatialFxProbeIdx = 0;
 
     // ---- 接收 ----
 
@@ -373,28 +341,15 @@ public class VivoGaiaClient implements TwsClient {
             @Override public void run() {
                 try {
                     InputStream in = source.getInputStream();
-                    // 单字节流: 头不对只吐 1 字节重试,真帧头藏在 8 字节块中间也不会漏
-                    int first = in.read();
-                    while (!closing && socket == source && first >= 0) {
-                        if ((first & 0xFF) != 0xFF) {
-                            first = in.read();
-                            continue;
-                        }
-                        byte[] head = new byte[8];
-                        head[0] = (byte) first;
-                        if (!readFully(in, head, 1, 7)) break;
-                        int len = head[3] & 0xFF;
-                        int vendor = ((head[4] & 0xFF) << 8) | (head[5] & 0xFF);
-                        int cmd = ((head[6] & 0xFF) << 8) | (head[7] & 0xFF);
-                        if (head[2] != 0x00 || (head[1] != 0x03 && head[1] != 0x04)) {
-                            first = in.read();
-                            continue;
-                        }
-                        byte[] payload = new byte[len];
-                        if (len > 0 && !readFully(in, payload, len)) break;
+                    VivoProtocol.Decoder decoder = new VivoProtocol.Decoder();
+                    byte[] chunk = new byte[512];
+                    int count;
+                    while (!closing && socket == source && (count = in.read(chunk)) >= 0) {
                         if (closing || socket != source) break;
-
-
+                        for (VivoProtocol.Frame frame : decoder.feed(chunk, count)) {
+                            if (closing || socket != source) break;
+                            int vendor = frame.vendor, cmd = frame.command;
+                            byte[] payload = frame.payload;
                         if (vendor == VENDOR_VIVO && cmd == RESP_BATT) {
                             int[] value = VivoProtocol.battery(payload);
                             if (value != null) fireBattery(value[0], value[1], value[2], value[3]);
@@ -412,7 +367,7 @@ public class VivoGaiaClient implements TwsClient {
                             android.util.Log.d("GaiaClient",
                                     "spatial cmd=0x" + Integer.toHexString(cmd)
                                             + " payload=" + toHex(payload));
-                            Boolean state = VivoProtocol.spatial(payload);
+                            Boolean state = VivoProtocol.spatial(payload, cmd == RESP_SPATIAL_ACK);
                             if (state != null) { spatialConfirmed = true; fireSpatial(state); }
                         } else if (vendor == VENDOR_VIVO
                                 && (cmd == RESP_DEEPX || cmd == RESP_DEEPX_ACK)) {
@@ -427,7 +382,7 @@ public class VivoGaiaClient implements TwsClient {
                                     "unknown cmd=0x" + Integer.toHexString(cmd)
                                             + " payload=" + toHex(payload));
                         }
-                        first = in.read();
+                        }
                     }
                     if (!closing && socket == source) fireDisconnected("连接已关闭");
                 } catch (IOException e) {
@@ -439,17 +394,18 @@ public class VivoGaiaClient implements TwsClient {
         }, "gaia-reader").start();
     }
 
-    private static boolean readFully(InputStream in, byte[] buf, int n) throws IOException {
-        return readFully(in, buf, 0, n);
+    @Override public int potentialCaps() { return caps() | CAP_NOISE | CAP_SPATIAL | CAP_DEEPX; }
+    @Override public com.hdz.wearcontrol.SoundPreset[] equalizerPresets() { return com.hdz.wearcontrol.SoundPreset.vivo(); }
+    @Override public void queryEqualizer() { queryDeepX(); }
+    @Override public void setEqualizer(int preset) { setDeepX(preset); }
+
+    /** 可选模块的唯一注册入口，匹配规则与协议实现一起增删。 */
+    public static final class Module implements com.hdz.wearcontrol.DriverModule {
+        @Override public boolean matches(String name) {
+            String n = name.toLowerCase(java.util.Locale.ROOT);
+            return n.contains("vivo") || n.contains("iqoo");
+        }
+        @Override public TwsClient create() { return new VivoGaiaClient(); }
     }
 
-    private static boolean readFully(InputStream in, byte[] buf, int off, int n) throws IOException {
-        while (n > 0) {
-            int r = in.read(buf, off, n);
-            if (r < 0) return false;
-            off += r;
-            n -= r;
-        }
-        return true;
-    }
 }

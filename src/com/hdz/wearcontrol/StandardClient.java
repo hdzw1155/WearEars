@@ -1,9 +1,6 @@
 package com.hdz.wearcontrol;
 
-import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
-import android.bluetooth.BluetoothHeadset;
-import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -49,7 +46,6 @@ public class StandardClient implements TwsClient {
     private final List<Listener> listeners = new ArrayList<Listener>();
 
     private Context app;
-    private BluetoothAdapter adapter;
     private BluetoothDevice device;
     private String address;
     private String deviceName;
@@ -57,9 +53,8 @@ public class StandardClient implements TwsClient {
     private volatile boolean closing = true;
     private volatile int session;
     private boolean receiverOn;
-    private boolean triedHeadsetProfile;
+    private int disconnectedProfiles, linkRequest;
     private boolean linkCheckRunning;
-    private int lastBattery = -1;
 
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override public void onReceive(Context ctx, Intent intent) {
@@ -73,13 +68,23 @@ public class StandardClient implements TwsClient {
             if (BluetoothDevice.ACTION_ACL_CONNECTED.equals(action)) {
                 if (!connected) {
                     if (d != null && d.getName() != null) deviceName = d.getName();
-                    linkUp();
+                    disconnectedProfiles = 0;
+                    checkCurrentLink();
                 }
             } else if (BluetoothDevice.ACTION_ACL_DISCONNECTED.equals(action)) {
                 if (connected) {
                     connected = false;
                     fireDisconnected("耳机已断开");
                 }
+            } else if (AudioConnections.profile(action) >= 0) {
+                int profile = AudioConnections.profile(action);
+                int value = intent.getIntExtra(BluetoothProfile.EXTRA_STATE, -1);
+                if (value == BluetoothProfile.STATE_CONNECTED) disconnectedProfiles &= ~(1 << profile);
+                else if (value == BluetoothProfile.STATE_DISCONNECTED || value == BluetoothProfile.STATE_DISCONNECTING)
+                    disconnectedProfiles |= 1 << profile;
+                else return;
+                // 明确断开的 Profile 不再接受代理中尚未更新的旧 connected 列表。
+                checkCurrentLink();
             } else if (ACTION_HF_IND_VALUE_CHANGED.equals(action)) {
                 int id = intent.getIntExtra(EXTRA_HF_IND_ID, -1);
                 int value = intent.getIntExtra(EXTRA_HF_IND_VALUE, -1);
@@ -97,6 +102,7 @@ public class StandardClient implements TwsClient {
 
     @Override
     public void connect(BluetoothDevice target) {
+        disconnect();
         closing = false;
         ++session;
         device = target;
@@ -104,7 +110,7 @@ public class StandardClient implements TwsClient {
             address = target.getAddress();
             deviceName = target.getName();
         }
-        triedHeadsetProfile = false;
+        disconnectedProfiles = 0;
         linkCheckRunning = false;
         ensureReceiver();
         checkCurrentLink();
@@ -115,6 +121,9 @@ public class StandardClient implements TwsClient {
         IntentFilter f = new IntentFilter();
         f.addAction(BluetoothDevice.ACTION_ACL_CONNECTED);
         f.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
+        f.addAction("android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED");
+        f.addAction("android.bluetooth.headset.profile.action.CONNECTION_STATE_CHANGED");
+        f.addAction("android.bluetooth.action.LE_AUDIO_CONNECTION_STATE_CHANGED");
         f.addAction(ACTION_HF_IND_VALUE_CHANGED);
         f.addAction(ACTION_BATTERY_LEVEL_CHANGED);
         try {
@@ -125,83 +134,28 @@ public class StandardClient implements TwsClient {
         }
     }
 
-    /** 问系统: 目标耳机现在连着没有? 先用 A2DP, 再看 HFP(有些耳机只连了通话通道) */
+    /** 同时查询 A2DP/HFP/LE Audio，单一 Profile 断开不误判其他有效音频连接。 */
     private void checkCurrentLink() {
-        if (closing) return;
-        if (app == null || device == null) {
-            fireError("缺少上下文");
-            return;
-        }
-        BluetoothManager bm = (BluetoothManager) app.getSystemService(Context.BLUETOOTH_SERVICE);
-        final BluetoothAdapter a = bm != null ? bm.getAdapter() : null;
-        if (a == null) {
-            fireError("蓝牙不可用");
-            return;
-        }
-        adapter = a;
+        if (closing || app == null || device == null) return;
+        final int request = ++linkRequest, sourceSession = session;
         linkCheckRunning = true;
-        askProfile(BluetoothProfile.A2DP);
-    }
-
-    private void askProfile(int profileId) {
-        if (closing) return;
-        final int request = session;
-        final BluetoothAdapter source = adapter;
-        if (adapter == null) {
-            onLinkCheckResult(false);
-            return;
-        }
-        final BluetoothProfile.ServiceListener sl = new BluetoothProfile.ServiceListener() {
-            @Override public void onServiceConnected(int profile, BluetoothProfile proxy) {
+        AudioConnections.query(app, disconnectedProfiles, new AudioConnections.Callback() {
+            @Override public void onResult(List<BluetoothDevice> devices, boolean complete) {
+                if (closing || sourceSession != session || request != linkRequest) return;
+                linkCheckRunning = false;
                 boolean found = false;
                 try {
-                    if (closing || request != session) return;
-                    List<BluetoothDevice> connectedDevices = proxy.getConnectedDevices();
-                    if (connectedDevices != null) {
-                        for (BluetoothDevice d : connectedDevices) {
-                            if (d != null && address != null && address.equals(d.getAddress())) {
-                                found = true;
-                                break;
-                            }
-                        }
-                    }
-                } catch (Throwable ignored) {
-                    // 没权限/代理异常都当"没连上"处理
-                } finally {
-                    try {
-                        source.closeProfileProxy(profile, proxy);
-                    } catch (Throwable ignored) {
-                    }
+                    for (BluetoothDevice d : devices) if (address.equals(d.getAddress())) found = true;
+                } catch (SecurityException revoked) { complete = false; }
+                if (found) { linkUp(); return; }
+                if (connected) {
+                    connected = false;
+                    fireDisconnected(complete ? "耳机音频已断开" : "耳机连接状态待确认");
+                } else {
+                    fireError(complete ? "耳机还没连上手表, 请先在系统蓝牙设置里连接" : "无法确认耳机连接状态");
                 }
-                if (!closing && request == session) onLinkCheckResult(found);
             }
-
-            @Override public void onServiceDisconnected(int profile) {
-                if (!closing && request == session) onLinkCheckResult(false);
-            }
-        };
-        try {
-            if (!adapter.getProfileProxy(app, sl, profileId)) onLinkCheckResult(false);
-        } catch (Throwable t) {
-            onLinkCheckResult(false);
-        }
-    }
-
-    private void onLinkCheckResult(boolean found) {
-        if (closing) return;
-        if (found) {
-            linkUp();
-            return;
-        }
-        if (!triedHeadsetProfile) {
-            triedHeadsetProfile = true;
-            askProfile(BluetoothProfile.HEADSET);
-            return;
-        }
-        linkCheckRunning = false;
-        if (!connected && device != null) {
-            fireError("耳机还没连上手表, 请先在系统蓝牙设置里连接");
-        }
+        });
     }
 
     private void linkUp() {
@@ -234,8 +188,7 @@ public class StandardClient implements TwsClient {
     }
 
     private void deliverBattery(int value) {
-        if (closing || value < 0 || value > 100) return;
-        lastBattery = value;
+        if (closing || !connected || value < 0 || value > 100) return;
         Listener[] arr = snapshot();
         for (Listener l : arr) {
             try {

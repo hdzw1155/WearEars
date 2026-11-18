@@ -5,8 +5,6 @@ import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
 
-import androidx.wear.tiles.TileService;
-
 /**
  * 磁贴数据契约: 全 App 只有这里知道磁贴读写哪些键。
  *
@@ -66,6 +64,8 @@ final class TileStore {
                 p.getInt(KEY_VERIF, TwsClient.VERIF_UNTESTED),
                 p.getInt("tile_pending", -1), p.getLong("tile_pending_until", 0L));
     }
+
+    static String deviceAddress(Context ctx) { return prefs(ctx).getString("tile_address", ""); }
 
     /**
      * {@link #read} 的兜底版: 磁贴服务里读 prefs 万一抛异常, 也要给出一份能渲染的空快照,
@@ -154,7 +154,8 @@ final class TileStore {
 
     /** @return 名字是否发生变化 */
     static synchronized boolean saveName(Context ctx, String name) {
-        String n = (name == null || name.length() == 0) ? defaultName(ctx) : name;
+        if (name == null || name.isEmpty()) return false;
+        String n = name;
         SharedPreferences p = prefs(ctx);
         if (n.equals(p.getString(KEY_NAME, null))) return false;
         p.edit().putString(KEY_NAME, n).apply();
@@ -167,8 +168,9 @@ final class TileStore {
      *
      * @return 能力位或验证等级是否变化
      */
-    static synchronized boolean saveCaps(Context ctx, int caps, int verifLevel) {
+    static synchronized boolean saveCaps(Context ctx, int caps, int potentialCaps, int verifLevel) {
         SharedPreferences p = prefs(ctx);
+        caps = TileSnapshot.displayCaps(p.getInt(KEY_CAPS, 0), caps, potentialCaps);
         if (p.getInt(KEY_CAPS, 0) == caps && p.getInt(KEY_VERIF, -1) == verifLevel) {
             return false;
         }
@@ -178,14 +180,22 @@ final class TileStore {
 
     /** 换设备时原子清理旧快照，避免新名字配上旧耳机电量。 */
     static synchronized void selectDevice(Context ctx, String address, String name, int caps, int verif) {
+        selectDevice(ctx, address, name, caps, caps, verif);
+    }
+
+    static synchronized void selectDevice(Context ctx, String address, String name, int caps, int potentialCaps, int verif) {
         SharedPreferences p = prefs(ctx);
         SharedPreferences.Editor e = p.edit();
-        if (!address.equals(p.getString("tile_address", ""))) {
+        boolean sameDevice = address.equals(p.getString("tile_address", ""));
+        if (!sameDevice) {
             e.remove(KEY_BATT_L).remove(KEY_BATT_R).remove(KEY_BATT_C).remove(KEY_BATT_TOTAL)
                     .remove(KEY_CHARGE).remove(KEY_MODE).remove(KEY_LAST_OK)
                     .remove("tile_pending").remove("tile_pending_until");
+        } else {
+            caps = TileSnapshot.displayCaps(p.getInt(KEY_CAPS, 0), caps, potentialCaps);
         }
-        e.putString("tile_address", address).putString(KEY_NAME, name == null ? defaultName(ctx) : name)
+        if (name == null || name.isEmpty()) name = sameDevice ? p.getString(KEY_NAME, defaultName(ctx)) : defaultName(ctx);
+        e.putString("tile_address", address).putString(KEY_NAME, name)
                 .putInt(KEY_CAPS, caps).putInt(KEY_VERIF, verif).apply();
     }
 
@@ -208,7 +218,11 @@ final class TileStore {
     }
 
     static void pushNow(Context ctx) {
-        try { TileService.getUpdater(ctx).requestUpdate(TwsTileService.class); }
+        // 可选磁贴模块缺席时，共享状态仍可供主页使用。
+        try { Class.forName("com.hdz.wearcontrol.TwsTileService")
+                .getMethod("requestUpdate", Context.class).invoke(null, ctx); }
+        catch (ReflectiveOperationException ignored) { }
+        catch (LinkageError ignored) { }
         catch (RuntimeException ignored) { }
     }
 }

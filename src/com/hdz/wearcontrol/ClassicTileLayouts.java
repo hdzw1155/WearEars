@@ -21,20 +21,15 @@ import java.util.Locale;
  * (432x432 表盘上刚好不压边), 再往里加东西会把"打开控制"挤出屏幕, 别加。
  *
  * <p>纯"数据 → 布局树"的翻译层, 不做 IO 也不碰 prefs, 方便单独对着改视觉。
- * 三个点击区 id 必须保持 "mode_"+目标档位 / "open", 磁贴重启后系统靠它们续上点击。
+ * 模式与刷新点击由 TileActions 绑定设备、去重；打开控制保留 Activity 跳转。
  */
 final class ClassicTileLayouts {
 
     /** 点击事件 id: 打开主界面 */
     static final String ID_OPEN = "open";
-    /** 点击事件 id 前缀: 直接切到某个降噪档位, 完整 id = 前缀 + 目标档位 */
-    static final String ID_MODE_PREFIX = "mode_";
 
     private static final String PACKAGE_NAME = "com.hdz.wearcontrol";
-    private static final String MODE_ACTIVITY = "com.hdz.wearcontrol.ModeCyclerActivity";
     private static final String MAIN_ACTIVITY = "com.hdz.wearcontrol.MainActivity";
-    /** ModeCyclerActivity 的 Intent extra: 要切到哪个档位 */
-    private static final String EXTRA_TARGET_MODE = "target_mode";
 
     // 颜色(spec §2.2; 与主界面同一套)
     private static final int COLOR_TEXT = 0xFFFFFFFF;
@@ -48,7 +43,7 @@ final class ClassicTileLayouts {
     private static final int COLOR_HAIRLINE = 0xFF4A4A50;
     /** 顶行设备名: 柔和浅灰白, 不用纯白抢戏 */
     private static final int COLOR_TITLE = 0xFFD1D1D6;
-    /** 顶行小圆点(上次通讯在 24h 内亮绿, 否则暗灰): 只表达"最近同步过", 不声称实时连接 */
+    /** 本次系统查询确认连接时点亮。 */
     private static final int COLOR_DOT_ON = 0xFF34C759;
     /** 次级胶囊(打开控制)的文字色: 内敛中灰 */
     private static final int COLOR_PILL_TEXT = 0xFF98989F;
@@ -85,15 +80,13 @@ final class ClassicTileLayouts {
     private static final float SEG_LABEL_SP = 10f;
     private static final float PILL_LABEL_SP = 11f;
 
-    /** 顶行名字最多显示的字符数: 长了会跟时间一起把 176dp 撑爆 */
-    private static final int NAME_MAX_CHARS = 9;
     /** 没连过/读不到时的时间占位 */
     private static final String TIME_UNKNOWN = "--";
 
     private ClassicTileLayouts() {
     }
 
-    static LayoutElementBuilders.Layout build(Context ctx, TileSnapshot s) {
+    static LayoutElementBuilders.Layout build(Context ctx, TileSnapshot s, TileActions actions) {
         return new LayoutElementBuilders.Layout.Builder()
                 .setRoot(new LayoutElementBuilders.Box.Builder()
                         .setWidth(DimensionBuilders.expand())
@@ -104,9 +97,9 @@ final class ClassicTileLayouts {
                                 .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
                                 .addContent(header(ctx, s))
                                 .addContent(gapV(GAP_DP))
-                                .addContent(dial(ctx, s))
+                                .addContent(dial(ctx, s, actions))
                                 .addContent(gapV(GAP_DP))
-                                .addContent(s.hasCapability(TwsClient.CAP_NOISE) ? segmented(ctx, s) : gapV(0))
+                                .addContent(s.hasCapability(TwsClient.CAP_NOISE) ? segmented(ctx, s, actions) : gapV(0))
                                 .addContent(gapV(PILL_GAP_DP))
                                 .addContent(openPill(ctx.getString(R.string.tile_open)))
                                 .build())
@@ -156,27 +149,24 @@ final class ClassicTileLayouts {
 
     // ---- 顶行 ----
 
-    /**
-     * 顶行: 设备名 + "· 时间"。时间只是"上一次成功通讯"的时刻, 磁贴不表示实时连接,
-     * 所以不加"已连接"之类的措辞(0.3.7 的教训: 猜连接状态会抖)。
-     */
+    /** 顶行显示本次系统查询的连接状态；电量仍为明确标注时间的缓存。 */
     private static LayoutElementBuilders.Row header(Context ctx, TileSnapshot s) {
-        // 小圆点只表达"最近 24h 内成功同步过", 磁贴不声称实时连接(lastOk 只是快照时间戳)
-        boolean recent = s.lastOk > 0L
-                && System.currentTimeMillis() - s.lastOk < 24L * 60L * 60L * 1000L;
+        boolean connected = s.connection == BluetoothLink.CONNECTED;
         return new LayoutElementBuilders.Row.Builder()
+                .setModifiers(new ModifiersBuilders.Modifiers.Builder().setSemantics(
+                        new ModifiersBuilders.Semantics.Builder().setContentDescription(s.name + ", " + TileState.connectionText(ctx, s) + ", " + TileState.lastSeenText(ctx, s.lastOk)).build()).build())
                 .setHeight(DimensionBuilders.dp(HEADER_H_DP))
                 .setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
                 // 小圆点用 Box 画: 字符 "●" 的基线/行高跟文字不同, 会被 Row 居中对成两条水平线
-                .addContent(dot(recent ? COLOR_DOT_ON : COLOR_TEXT_DIM))
+                .addContent(dot(connected ? COLOR_DOT_ON : COLOR_TEXT_DIM))
                 .addContent(gapH(DOT_GAP_DP))
-                .addContent(text(ellipsize(shortName(s.name), NAME_MAX_CHARS),
-                        HEADER_NAME_SP, COLOR_TITLE, 500))
+                .addContent(text(TileState.connectionText(ctx, s),
+                        10f, COLOR_TITLE, 500))
                 .addContent(gapH(NAME_TIME_GAP_DP))
                 // 时间与设备名同字号: 磁贴的 Row 只有"垂直居中"没有基线对齐,
                 // 两个不同字号会被各自行高居中成两条水平线(用户报的 bug)
-                .addContent(text("· " + shortTime(ctx, s.lastOk),
-                        HEADER_NAME_SP, COLOR_FAINT, 400))
+                .addContent(text(s.connection == BluetoothLink.CONNECTED ? ctx.getString(R.string.tile_cached_at, shortTime(ctx, s.lastOk)) : "",
+                        10f, COLOR_FAINT, 400))
                 .build();
     }
 
@@ -194,29 +184,6 @@ final class ClassicTileLayouts {
                                 .build())
                         .build())
                 .build();
-    }
-
-    /**
-     * 顶行只放得下短名: 去掉厂商前缀和 "TWS" 这类冗余词, "vivo TWS Air3 Pro" -> "Air3 Pro"。
-     * 型号才是用户要看的, 12sp 下也不会再出现 "vivo TWS ..." 的省略号。
-     */
-    private static String shortName(String raw) {
-        if (raw == null || raw.trim().length() == 0) {
-            return "";
-        }
-        String[] parts = raw.trim().split("\\s+");
-        StringBuilder sb = new StringBuilder();
-        for (String part : parts) {
-            String lower = part.toLowerCase(Locale.US);
-            if ("vivo".equals(lower) || "iqoo".equals(lower) || "tws".equals(lower)) {
-                continue;
-            }
-            if (sb.length() > 0) {
-                sb.append(' ');
-            }
-            sb.append(part);
-        }
-        return sb.length() == 0 ? raw.trim() : sb.toString();
     }
 
     /**
@@ -247,24 +214,12 @@ final class ClassicTileLayouts {
                 && ca.get(Calendar.DAY_OF_YEAR) == cb.get(Calendar.DAY_OF_YEAR);
     }
 
-    /** 按"显示字符数"截断(中文/emoji 算 1 个), 超了补省略号; 不按 char 切, 免得切出半个汉字 */
-    private static String ellipsize(String s, int maxChars) {
-        if (s == null || s.length() == 0) {
-            return "";
-        }
-        if (s.codePointCount(0, s.length()) <= maxChars) {
-            return s;
-        }
-        int end = s.offsetByCodePoints(0, maxChars);
-        return s.substring(0, end) + "…";
-    }
-
     // ---- 仪表盘 ----
 
     /** 复合仪表盘: 位图由 TileResources 在 onResourcesRequest 里生成, 这里只放图 */
-    private static LayoutElementBuilders.Image dial(Context ctx, TileSnapshot s) {
+    private static LayoutElementBuilders.Image dial(Context ctx, TileSnapshot s, TileActions actions) {
         ModifiersBuilders.Modifiers modifiers = new ModifiersBuilders.Modifiers.Builder()
-                .setClickable(TileRenderSpec.refresh())
+                .setClickable(actions.mode(-1))
                 .setSemantics(new ModifiersBuilders.Semantics.Builder()
                         .setContentDescription(dialDescription(ctx, s) + ", " + ctx.getString(R.string.tile_refresh_hint))
                         .build())
@@ -305,19 +260,19 @@ final class ClassicTileLayouts {
 
     // ---- 分段模式轨 ----
 
-    private static LayoutElementBuilders.Box segmented(Context ctx, TileSnapshot s) {
+    private static LayoutElementBuilders.Box segmented(Context ctx, TileSnapshot s, TileActions actions) {
         LayoutElementBuilders.Row row = new LayoutElementBuilders.Row.Builder()
                 .setWidth(DimensionBuilders.dp(SEG_ROW_W_DP))
                 .setHeight(DimensionBuilders.dp(SEG_ROW_H_DP))
                 .setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
                 .addContent(segment(ctx, s, R.drawable.ic_off, TwsClient.MODE_OFF,
-                        R.string.tile_mode_off, R.string.tile_mode_off_selected))
+                        R.string.tile_mode_off, R.string.tile_mode_off_selected, actions))
                 .addContent(gapH(SEG_CELL_GAP_DP))
                 .addContent(segment(ctx, s, R.drawable.ic_trans, TwsClient.MODE_TRANS,
-                        R.string.tile_mode_trans, R.string.tile_mode_trans_selected))
+                        R.string.tile_mode_trans, R.string.tile_mode_trans_selected, actions))
                 .addContent(gapH(SEG_CELL_GAP_DP))
                 .addContent(segment(ctx, s, R.drawable.ic_anc, TwsClient.MODE_ANC,
-                        R.string.tile_mode_anc, R.string.tile_mode_anc_selected))
+                        R.string.tile_mode_anc, R.string.tile_mode_anc_selected, actions))
                 .build();
 
         return new LayoutElementBuilders.Box.Builder()
@@ -339,27 +294,15 @@ final class ClassicTileLayouts {
 
     /**
      * 一格模式: 选中 = 蓝底白字, 未选中 = 无底色浅灰字。
-     * id 用 "mode_" + 目标档位(关闭 1 / 通透 2 / 降噪 0), 与主界面既有的约定一致。
+     * LoadAction 在当前磁贴处理，避免启动中转 Activity 使宿主收起。
      */
     private static LayoutElementBuilders.Box segment(Context ctx, TileSnapshot s, int iconRes,
-                                                     int target, int labelRes, int selectedLabelRes) {
+                                                     int target, int labelRes, int selectedLabelRes, TileActions actions) {
         boolean active = s.mode == target;
         ModifiersBuilders.Modifiers.Builder modifiers = new ModifiersBuilders.Modifiers.Builder()
-                .setClickable(new ModifiersBuilders.Clickable.Builder()
-                        .setId(ID_MODE_PREFIX + target)
-                        .setOnClick(new ActionBuilders.LaunchAction.Builder()
-                                .setAndroidActivity(new ActionBuilders.AndroidActivity.Builder()
-                                        .setClassName(MODE_ACTIVITY)
-                                        .setPackageName(PACKAGE_NAME)
-                                        .addKeyToExtraMapping(EXTRA_TARGET_MODE,
-                                                new ActionBuilders.AndroidIntExtra.Builder()
-                                                        .setValue(target)
-                                                        .build())
-                                        .build())
-                                .build())
-                        .build())
+                .setClickable(actions.mode(target))
                 .setSemantics(new ModifiersBuilders.Semantics.Builder()
-                        .setContentDescription(ctx.getString(active ? selectedLabelRes : labelRes))
+                        .setContentDescription(ctx.getString(s.pendingMode == target ? R.string.tile_switching : active ? selectedLabelRes : labelRes))
                         .build());
         if (active) {
             modifiers.setBackground(new ModifiersBuilders.Background.Builder()

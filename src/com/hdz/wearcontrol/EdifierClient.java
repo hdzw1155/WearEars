@@ -570,4 +570,15 @@ public class EdifierClient implements TwsClient {
     @Override public String brandName() {
         return "漫步者";
     }
+    @Override public int potentialCaps() { return caps() | CAP_NOISE; }
+
+    /** 可选模块的唯一注册入口，匹配规则与协议实现一起增删。 */
+    public static final class Module implements com.hdz.wearcontrol.DriverModule {
+        @Override public boolean matches(String name) {
+            String n = name.toLowerCase(java.util.Locale.ROOT);
+            return n.matches(".*(edifier|漫步者|neobuds|lollipods|fitbuds|fitclip|w820|w860|w260).*");
+        }
+        @Override public TwsClient create() { return new EdifierClient(); }
+    }
+
 }

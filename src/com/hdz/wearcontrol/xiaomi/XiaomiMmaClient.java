@@ -506,4 +506,15 @@ public class XiaomiMmaClient implements TwsClient {
         if (!ready && profile == 1) markReady();
         if (noiseSupported) for (Listener listener : listeners) listener.onNoiseMode(uiMode(wire));
     }
+    @Override public int potentialCaps() { return caps() | (noNoiseModel ? 0 : CAP_NOISE); }
+
+    /** 可选模块的唯一注册入口，匹配规则与协议实现一起增删。 */
+    public static final class Module implements com.hdz.wearcontrol.DriverModule {
+        @Override public boolean matches(String name) {
+            String n = name.toLowerCase(java.util.Locale.ROOT);
+            return !n.replaceAll("[^a-z0-9]", "").equals("xiaomibuds5pro") && (n.contains("xiaomi") || n.contains("redmi") || n.contains("mibuds") || n.contains("红米") || n.contains("小米"));
+        }
+        @Override public TwsClient create() { return new XiaomiMmaClient(); }
+    }
+
 }

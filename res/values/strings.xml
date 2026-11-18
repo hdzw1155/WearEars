@@ -4,6 +4,12 @@
     <string name="status_idle">未连接</string>
     <string name="status_connecting">连接中…</string>
     <string name="noise_title">噪声控制</string>
+    <string name="noise_waiting">正在确认降噪能力</string>
+    <string name="volume_locked">锁定时可调小。点锁按钮或长按音量条，松手后可拖动增大。</string>
+    <string name="volume_high_guard">已触发 70% 音量保护。请松手，再次点锁或长按解锁后才能继续增大。</string>
+    <string name="tile_connection_unknown">连接待确认</string>
+    <string name="tile_cached_at">缓存 %1$s</string>
+    <string name="tile_switching">切换中</string>
     <string name="btn_anc">降噪开</string>
     <string name="btn_off">降噪关</string>
     <string name="btn_trans">通透</string>
@@ -15,8 +21,9 @@
     <string name="spatial_caption">实验功能，作者感觉无效；目前仅部分 vivo 机型（TWS Air 3 Pro）验证过；⚠️ 切换前必须摘下耳机、音量调至最低，谨防突发爆音损伤听力</string>
     <string name="spatial_toast">实验功能：请摘下耳机调试，音效可能突变</string>
     <string name="spatial_dialog_title">实验性功能</string>
-    <string name="spatial_dialog_msg">空间音频为实验性功能，作者感觉无效：目前仅部分 vivo 机型（TWS Air 3 Pro）适配过，指令来自社区逆向协议、未获官方认证，未来固件更新后可能失效。\n\n⚠️ 切换瞬间可能出现音量突变、爆音或啸叫，务必先摘下耳机（勿佩戴入耳）并将音量调至最低，确认安全后再佩戴试听。\n\n是否已了解风险并继续？</string>
+    <string name="spatial_dialog_msg">此开关为实验功能。vivo TWS Air3 Pro 可以读回开关状态，实际听感仍待验证。\n\n⚠️ 切换可能引起音量突变、爆音或啸叫。请先摘下耳机并把音量调至最低，确认安全后再佩戴。\n\n是否已了解风险并继续？</string>
     <string name="deepx_label">DeepX 音效</string>
+    <string name="equalizer_label">内置 EQ（实验）</string>
     <string name="deepx_caption">因不明原因，点击后请等待几秒生效；目前仅部分 vivo 机型（TWS Air 3 Pro）验证过；调试时请先摘下耳机、调低音量，请不要连续切换，功能可能会失效</string>
     <string name="dialog_ok">已了解风险，继续</string>
     <string name="dialog_cancel">取消</string>
@@ -65,7 +72,10 @@
     <string name="label_case">充电盒</string>
     <string name="label_total">总电量</string>
     <string name="battery_title">电量</string>
-    <string name="spatial_hint_inline">实验功能 · 先摘下耳机</string>
+    <string name="spatial_state_unknown">耳机状态未知</string>
+    <string name="spatial_waiting">等待耳机确认…</string>
+    <string name="spatial_unconfirmed">耳机未确认空间音频切换</string>
+    <string name="spatial_scenes_on_phone">声场请在兼容手机上切换</string>
     <string name="spatial_caption_short">实验性功能 · 仅 Air 3 Pro 可尝试 · 切换前摘耳机</string>
     <string name="deepx_std">标准</string>
     <string name="deepx_vocal">人声</string>
@@ -93,7 +103,7 @@
     <string name="tile_mode_anc_selected">降噪，当前已选中</string>
 
     <!-- 2026-10 视觉统一: 空间音频副标题拆两行 + 免责声明分段 -->
-    <string name="spatial_caption_lines">实验性功能 · 仅 Air 3 Pro 可尝试\n切换前请先摘下耳机</string>
+    <string name="spatial_caption_lines">实验功能 · 切换前请摘下耳机</string>
     <string name="disclaimer_heading_official">非官方工具</string>
     <string name="disclaimer_body_official">本应用为非官方、未获授权的第三方学习研究工具，通过逆向私有协议控制耳机，不收集、不上传任何数据。\nGitHub 开源：https://github.com/hdzw1155/WearEars</string>
     <string name="disclaimer_heading_safety">安全提示</string>
@@ -136,6 +146,9 @@
     <string name="settings_volume_hide">隐藏音量条</string>
     <string name="tile_refresh_hint">，点按刷新电量</string>
     <string name="settings_style_supreme">至上</string>
+    <string name="settings_style_neo_new">新极简</string>
+    <string name="settings_style_neo_classic">新经典</string>
+    <string name="settings_style_neo_liquid">新液位</string>
     <string name="sup_sec_power">01 / 电量</string>
     <string name="sup_sec_acoustic">02 / 降噪控制</string>
     <string name="sup_sec_control">02 / 控制</string>
@@ -143,7 +156,7 @@
     <string name="sup_sec_notice">使用须知 / NOTICE</string>
     <string name="sup_open_settings">打开设置 · 风格 / 设备 →</string>
     <string name="sup_swipe_hint">弧滑翻页</string>
-    <string name="sup_vol_guard_hint">长按「音」解锁</string>
+    <string name="sup_vol_guard_hint">点音符或长按音量条，松手后向右拖动</string>
     <string name="sup_vol_unlocked_hint">已解锁 · 拖/-+</string>
     <string name="sup_noise_disconnected">未连接耳机 · 点按任一档位重连</string>
     <string name="sup_noise_unsupported">当前机型协议不支持主动降噪</string>

@@ -70,4 +70,14 @@ final class TechnicsClient extends RfcommClient {
     }
     @Override public int caps() { return CAP_BATTERY | (noiseConfirmed ? CAP_NOISE : 0); }
     @Override public String brandName() { return "Technics"; }
+    @Override public int potentialCaps() { return caps() | CAP_NOISE; }
+
+    /** 可选模块的唯一注册入口，匹配规则与协议实现一起增删。 */
+    public static final class Module implements com.hdz.wearcontrol.DriverModule {
+        @Override public boolean matches(String name) {
+            return TechnicsProtocol.matches(name);
+        }
+        @Override public TwsClient create() { return new TechnicsClient(); }
+    }
+
 }

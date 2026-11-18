@@ -23,7 +23,7 @@ final class SonyProtocol {
     }
 
     static byte[] encode(int type, int sequence, byte[] payload) {
-        if (payload.length > 1024 || sequence < 0 || sequence > 1) throw new IllegalArgumentException("MDR frame");
+        if (payload == null || payload.length > 1024 || sequence < 0 || sequence > 1) throw new IllegalArgumentException("MDR frame");
         byte[] body = new byte[payload.length + 7];
         body[0] = (byte) type; body[1] = (byte) sequence;
         body[4] = (byte) (payload.length >> 8); body[5] = (byte) payload.length;
@@ -56,6 +56,7 @@ final class SonyProtocol {
         private boolean inside, escaped;
         List<Frame> feed(byte[] bytes) {
             List<Frame> result = new ArrayList<Frame>();
+            if (bytes == null) return result;
             for (byte value : bytes) {
                 int b = value & 255;
                 if (b == 0x3E) { inside = true; escaped = false; size = 0; continue; }
@@ -86,13 +87,13 @@ final class SonyProtocol {
     }
 
     static int generation(byte[] payload) {
-        if (payload.length < 2 || payload[0] != 1 || payload[1] != 0) return 0;
+        if (payload == null || payload.length < 2 || payload[0] != 1 || payload[1] != 0) return 0;
         return payload.length == 4 ? 1 : payload.length == 8 ? 2 : 0;
     }
 
     /** 已验证的字段：左/右/盒、充电位；单电池也放在左槽，由能力位决定显示方式。 */
     static int[] battery(int generation, byte[] p) {
-        if (p.length < 2) return null;
+        if (p == null || p.length < 2) return null;
         int command = p[0] & 255;
         if (generation == 1 ? command != 0x11 && command != 0x13 : command != 0x23 && command != 0x25) return null;
         int type = p[1] & 255;
@@ -110,7 +111,7 @@ final class SonyProtocol {
     }
 
     static int mode(int generation, byte[] p) {
-        if (p.length < 2 || (p[0] != 0x67 && p[0] != 0x69)) return -1;
+        if (p == null || p.length < 2 || (p[0] != 0x67 && p[0] != 0x69)) return -1;
         if (generation == 1) {
             if (p.length != 8 || p[1] != 2 || (p[2] & 255) > 1 || (p[3] & 255) > 2
                     || (p[5] & 255) > 1 || (p[6] & 255) > 1 || (p[7] & 255) > 20) return -1;

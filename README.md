@@ -31,12 +31,17 @@
   * **切降噪**：降噪 / 关闭 / 通透三档切换，当前状态会直接高亮显示。
   * **看电量**：实时显示左耳、右耳、充电盒电量与充电状态；会自动记住上次电量，切回前台自动同步，断连后也会自动重试（最多 3 次）。
   * **表圈 / 表冠与滚动反馈**：手表上转表圈或表冠按位移有细分段落微震，滑到头有触底反馈；圆表右侧是 1/4 短弧滚动条，手机端自动切为直边滚动条（设置页里可以换动态渐变或经典青蓝配色），滑动带回弹。
-  * **桌面磁贴**：不用打开 App，在手表磁贴里就能直接切降噪、看上次连接电量，点电量区域还能手动刷新。
-  * **四套界面风格 + 设置页「白天 / 夜晚」切换**：新做了 **「至上」（Suprematist）** 风格——米白纸底配红蓝黄黑斜切降噪块、无数字 7 段斜格电量条、长按/双击解锁的防误触 `♪` 音量条，外加左右下角交替翻页动效；原先的极简、液位、经典三种风格也都留着。设置页里可以切夜晚/白天背景、换界面风格、指定要控制的耳机、开关音量条和切换中英文。
+  * **桌面磁贴**：在磁贴内切降噪、点电量区域刷新；“打开控制”才进入 App。连接状态单独查询，未连接或无法确认时不展示旧数值；电量缓存标明时间，切换中的目标与确认档位分开。
+  * **音量防误触**：每次进入默认锁定，可直接调小。从 0 调大时，点一下音量条上的锁（「至上」点音符），松手后再向右拖；也可以长按音量条解锁。到达不超过 70% 的系统档位会停下，需要再次确认才能继续增大。降回保护档以下会重新设防。
+  * **七套界面风格 + 设置页「白天 / 夜晚」切换**：在原有的极简、液位、经典和 **「至上」（Suprematist）** 基础上，新增了 **「新极简」「新经典」「新液位」** 三套新系列风格（重绘电量区、各自配套的音量条与桌面磁贴），原有四套风格完整保留。设置页里可以切夜晚/白天背景、换界面风格、指定要控制的耳机、开关音量条和切换中英文。
   * **多品牌驱动**：原单品牌 `vivo-tws-watch-control` 的功能已全量合并进来（顺手修掉了 `vivo` GAIA 读流偶发错位 1 字节导致降噪/DeepX 失效的问题）。目前驱动已覆盖 vivo、华为/荣耀、小米/Redmi、OPPO/一加/realme、漫步者、弱水时砂、原道、Sony（MDR）和松下 Technics；认不出私有协议的耳机也会安全落回系统标准蓝牙电量，不会乱发指令。截至 2026-11，已真机确认可用的 9 款型号：**vivo TWS Air3 Pro、Sony WF-1000XM5、Redmi Buds 6（红米 Buds 6）、OPPO Enco Air5 Pro、OPPO Enco Free4、HONOR Earbuds X9、华为 FreeBuds 6i、华为 FreeBuds SE 4 ANC、原道原点（NiceHCK OriG in）**。
-  * **vivo 实验功能**：连点 5 下应用里的「开发者设置」，可以解锁空间音频和 DeepX 音效调节（目前只在 vivo TWS Air3 Pro 上验证过，用之前记得先摘耳机调低音量，详见应用内免责声明）。
+  * **vivo 实验功能**：连点 5 下「开发者设置」，可使用空间音频开关和 DeepX。vivo TWS Air3 Pro 已验证开关状态读回，实际听感待测。标准、剧场、音乐厅、录音棚和演唱会由兼容手机端选择。切换前先摘下耳机并调低音量，详见[交接记录](docs/feedback-fixes-2026-11-18.md)。
 
 最新改动与真机验证记录见 [改动说明](docs/0.4-integration.md)、[协议验证记录](docs/protocol-validation.md) 与 [本轮核查记录](docs/scroll-and-driver-review.md)。
+
+本地开发中的磁贴点击修复、降噪能力分层、模块裁剪及 vivo/华为音效范围，见 [本轮交接记录](docs/session-modules-review.md)。新增 FreeBuds 5i/6i 内置 EQ 仍未真机验证；不代表其他品牌的空间音频或 EQ 已适配。[工作经验](docs/work-experience.md) 记录了维护这些功能时的注意点。
+
+2026-11-17 对当前源码的 [审计复核与修复交接](docs/redteam-review-2026-11-17.md) 补充了锁定时调小音量、系统音频连接查询、协议坏包恢复和旧磁贴入口迁移，包含逐条审计结论、离线验证及待实机确认项。
 
 ## 📸 界面预览
 
@@ -58,7 +63,7 @@
 
 | 耳机品牌 | 蓝牙传输协议 | 降噪控制 | 电量显示 | 当前验证状态 |
 | --- | --- | --- | --- | --- |
-| **vivo / iQOO TWS 家族** | RFCOMM (GAIA) | 开 / 关 / 通透三态 | 左 / 右 / 盒 | ✅ **已真机实测**（vivo TWS Air3 Pro 全功能正常，含 DeepX/实验性空间音频） |
+| **vivo / iQOO TWS 家族** | RFCOMM (GAIA) | 开 / 关 / 通透三态 | 左 / 右 / 盒 | ✅ **已真机实测**（vivo TWS Air3 Pro 的电量、降噪、DeepX 状态和实验性空间音频开关读回） |
 | **华为 FreeBuds / 荣耀 HONOR** | RFCOMM (SPP) | 开 / 关 / 通透三态 | 左 / 右 / 盒（含充电状态） | ✅ **已真机验证 3 款**（FreeBuds 6i、FreeBuds SE 4 ANC、HONOR Earbuds X9 真机可用；其他型号 ⚠️ 实验性） |
 | **小米 / Redmi Buds** | RFCOMM (RCSP / MMA) | 按型号及状态确认三态；6 Play / 6 Active 不开放 | 左 / 右 / 盒（含充电状态） | ✅ **已真机验证 1 款**（Redmi Buds 6 / 红米 Buds 6 真机可用；Buds 5、3 Pro、6 Lite ⚠️ 实验性，XiaomiAuth 经 36 组真值单测） |
 | **OPPO / 一加 / realme / Enco** | RFCOMM (OPOv1 / HeyMelody) | 开 / 关 / 通透三态 | 左 / 右 / 盒（含充电状态） | ✅ **已真机验证 2 款**（OPPO Enco Air5 Pro、OPPO Enco Free4 真机可用；其他 OPOv1 型号 ⚠️ 实验性） |
@@ -119,12 +124,12 @@
 
 请你严格按以下两步帮我完成开发：
 第一步：先帮我把协议资料整理并填入 README 的「协议表模板」中，缺失或没把握的命令留空，绝不允许臆造帧格式或指令字节；
-第二步：严格遵守「驱动标准契约」与实现守则（纯 Java 8 匿名内部类、严禁使用 lambda、未真机验证一律返回 VERIF_UNTESTED、没有的能力做空实现），基于 SkeletonClient.java 写出完整的驱动类代码，并明确告诉我需要在 DriverRegistry.DRIVERS 里注册哪一行代码。
+第二步：严格遵守「驱动标准契约」与实现守则（纯 Java 8 匿名内部类、严禁使用 lambda、未真机验证一律返回 VERIF_UNTESTED、没有的能力做空实现），基于 SkeletonClient.java 写出完整的驱动类代码，并明确告诉我需要在 DriverRegistry.MODULES 里注册哪一行代码。
 ```
 
 ### 第三步：几条命令一键打包出 APK
 
-拿回 AI 写好的驱动代码放进工程，并在 `DriverRegistry.DRIVERS` 加上注册行后，本项目**免 Gradle 构建**，在 Windows 下直接运行几条脚本即可生成 APK：
+拿回 AI 写好的驱动代码放进工程，并在 `DriverRegistry.MODULES` 加上注册行后，本项目**免 Gradle 构建**，在 Windows 下直接运行几条脚本即可生成 APK：
 
 1. 首次配置环境：运行 `scripts\setup-env.bat`
 2. 抓磁贴依赖：运行 `scripts\fetch-libs.bat`（从 Google Maven 下载 5 个 androidx 磁贴 jar，约 1.4MB，只需跑一次，`libs/` 不入库）
@@ -151,14 +156,16 @@ TwsClient                    统一接口(驱动标准: 连接/电量/降噪三�
 ├── NiceHckClient           原道 4E 帧(SPP, OriG in 原点真机验证, 其他型号实验性)
 ├── SonyClient              MDR V1/V2(WF-1000XM5 真机验证, 其他候选型号实验性)
 ├── TechnicsClient          EAH-AZ RACE（未真机验证，不含 A800）
-├── StandardClient          标准协议兜底(系统 A2DP/HFP + HF Indicator, 只读电量)
+├── StandardClient          标准协议兜底(系统 A2DP/HFP/受支持的 LE Audio + HF Indicator, 只读电量)
 └── DriverRegistry           按蓝牙设备名自动挑品牌, 匹配规则内聚在各驱动里
 
 界面与磁贴(共用同一套数据契约):
-MainActivity(至上/极简/液位/经典四风格) ── SettingsActivity(风格/语言/磁贴样式)
+MainActivity(现有各界面风格) ── SettingsActivity(风格/语言/磁贴样式)
+             └─ MainPanels ── BatteryPanel / NoisePanel / VolumePanel / EffectsPanel
 TwsTileService ── TileLayouts(新式布局树) / ClassicTileLayouts(经典样式) / TileResources(仪表盘位图)
               └─ TileStore(prefs 数据契约) ── TileSnapshot(快照值对象) / TileState(上一次连接文案)
-磁贴按键 ── ModeCyclerActivity(秒退跳板) ── ModeCyclerService(无界面连耳机切档)
+磁贴按键 ── LoadAction ── TwsTileService ── HeadsetController(共享会话与指令)
+旧缓存磁贴 ── ModeCyclerActivity(只更新磁贴并打开现有控制页)
 ```
 
 ### 驱动标准契约
@@ -178,6 +185,8 @@ TwsClient（驱动标准接口）
 
 新品牌适配 = **一个驱动类 + DriverRegistry 里一行注册**，UI、布局、表冠、省电策略全部复用。
 
+品牌实现提供一个 `public static final class Module implements DriverModule`，实现 `matches(String)` 与 `create()`；在 `DriverRegistry.MODULES` 注册该类的完整名字（内部类使用 `$Module`）。匹配规则随品牌模块一起增删，缺少模块时跳过。UI 功能分别注册在 `MainPanels`，裁剪时的 manifest/XML 依赖和验证方法见交接记录。
+
 #### 2. 生命周期
 
 1. `init(Context)`——创建方在 connect 前注入系统上下文；不需要系统服务的驱动空实现；必须容忍 `ctx == null`。
@@ -196,7 +205,9 @@ TwsClient（驱动标准接口）
 | `CAP_SPATIAL` | 空间音频开关 | 显示开发者区空间音频开关（实验） |
 | `CAP_DEEPX` | 音效档位 | 显示开发者区音效按钮（实验） |
 
-没有的能力：相关 query/set 方法做**空实现**即可，UI 已按 `caps()` 隐藏入口，不会调到。
+没有的能力：相关 query/set 方法做**空实现**即可，不在候选能力中声明；界面不会提供可操作入口。
+
+`potentialCaps()` 表示已知可查询的候选能力；`caps()` 表示当前会话已确认可操作的能力。候选降噪卡片在确认前保留并禁用，避免首包延迟导致整卡消失。内置 EQ 使用 `CAP_EQUALIZER`、`equalizerPresets()`、`queryEqualizer()`、`setEqualizer(id)` 和 `onEqualizer(id)`；预设 ID 保留协议原值，界面不写品牌分支。
 
 #### 4. 验证等级 verifLevel()
 
@@ -205,7 +216,7 @@ TwsClient（驱动标准接口）
 
 诚实标注是硬要求：新驱动上线一律 `VERIF_UNTESTED`，直到有贡献者真机验证并更新上面的支持情况表后再改。
 
-#### 5. Listener 回调语义（7 个）
+#### 5. Listener 回调语义
 
 | 回调 | 线程 | 未知/不支持时的约定 |
 | --- | --- | --- |
@@ -216,8 +227,9 @@ TwsClient（驱动标准接口）
 | `onNoiseMode(mode)` | 后台线程 | 未知用 `-1` |
 | `onSpatial(Boolean)` | 后台线程 | 未知/解析失败用 `null` |
 | `onDeepX(Integer)` | 后台线程 | 未知/解析失败用 `null` |
+| `onEqualizer(Integer)` | 后台线程 | 当前内置预设 ID；未知用 `null`，默认空实现兼容旧驱动 |
 
-UI 侧自行切主线程；驱动侧回调前先查 `closing` 守卫（旧连接的残留帧不得上 UI）。
+HeadsetController 将驱动回调切到主线程并检查会话代数；UI 面板读取当前 DeviceState。驱动自身也要检查取消状态，退出连接后停止收发。
 
 #### 6. 实现守则（都是踩过坑换来的）
 
@@ -368,7 +380,7 @@ App 首次启动有确认弹窗，页面底部与「使用须知 / NOTICE」内�
 * **[spizganed/QuickBuds](https://github.com/spizganed/QuickBuds)** — OPPO / HeyMelody OPOv1 帧、电量与降噪解析参考
 * 前作 **[vivo-tws-watch-control](https://github.com/hdzw1155/vivo-tws-watch-control)** 的全部实机调优经验
 
-**关于华为部分与 GPL-3.0 的边界**：本项目的华为实现是阅读上述仓库的**协议描述文档**（帧格式 / CRC 算法 / 命令号）后独立编写的 Java 代码，未复制、未参考其 GPL 代码实现；协议规格本身属于功能性事实，不受版权保护。小米部分同理（认证算法为按公开算法描述的独立移植，并与公开真值对拍验证）。漫步者 / 弱水时砂 / 原道 / OPPO 系实验性驱动同样只读上游仓库的协议文档与 MIT 实现描述，独立编写 Java 代码，未复制任何 GPL/AGPL 实现。因此本项目整体保持 MIT 许可。
+**关于华为部分与 GPL-3.0 的边界**：本项目的华为实现是阅读上述仓库的**协议描述文档**（帧格式 / CRC 算法 / 命令号）后独立编写的 Java 代码，未复制上游源码；新增内置 EQ 的报文字段另外核对了 OpenFreebuds 的公开实现，范围见 [本轮交接记录](docs/session-modules-review.md)；协议规格本身属于功能性事实，不受版权保护。小米部分同理（认证算法为按公开算法描述的独立移植，并与公开真值对拍验证）。漫步者 / 弱水时砂 / 原道 / OPPO 系实验性驱动同样只读上游仓库的协议文档与 MIT 实现描述，独立编写 Java 代码，未复制任何 GPL/AGPL 实现。因此本项目整体保持 MIT 许可。
 
 ## 📢 开源授权声明
 

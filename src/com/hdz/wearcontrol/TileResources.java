@@ -17,20 +17,18 @@ final class TileResources {
 
     /** 复合仪表盘(三层环 + 全部文字) */
     static final String ID_DIAL = "dial";
+    static final String ID_DIAL_PENDING = "dial_pending";
+    static final String ID_SUP_BG = "sup_bg";
     static final String ID_IC_OFF = "ic_off";
     static final String ID_IC_TRANS = "ic_trans";
     static final String ID_IC_ANC = "ic_anc";
 
     /** 画法版本: 视觉规格一变就 bump(旧值 a1.0 对应三个独立圆环的旧磁贴) */
-    static final String ART_REV = "a4.1";
+    static final String ART_REV = "a6.0";
 
-    /**
-     * 上一份生成的 PNG 与它的版本号。onResourcesRequest 每次都被系统要求给"全量资源表",
-     * 电量/充电标志没变时直接复用, 省掉一次 528x276 的位图绘制与 PNG 编码。
-     * 只在 TileFutures 的单线程里写, volatile 只是给读端一个可见性保证。
-     */
     private static volatile byte[] cachePng;
     private static volatile String cacheVersion;
+    private static volatile byte[] cacheSupBgPng;
 
     private TileResources() {
     }
@@ -48,6 +46,9 @@ final class TileResources {
         if (s.chargeFlags != TileSnapshot.UNKNOWN) {
             v = v + "_c" + s.chargeFlags;
         }
+        if (AppPrefs.family(style) == AppPrefs.STYLE_SUPREME) {
+            v = v + "_m" + s.mode + "_p" + s.pendingMode + "_caps" + s.caps + "_link" + s.connection;
+        }
         return v;
     }
 
@@ -60,26 +61,46 @@ final class TileResources {
             cachePng = png;
             cacheVersion = ver;
         }
-        return new ResourceBuilders.Resources.Builder()
+        boolean supreme = AppPrefs.family(style) == AppPrefs.STYLE_SUPREME;
+        int imgW = supreme ? SuprematistTilePainter.WIDTH_PX : 444;
+        int imgH = supreme ? SuprematistTilePainter.HEIGHT_PX : 228;
+        ResourceBuilders.Resources.Builder res = new ResourceBuilders.Resources.Builder()
                 .setVersion(requestedVersion)
-                .addIdToImageMapping(ID_DIAL, inline(png))
+                .addIdToImageMapping(ID_DIAL, inline(supreme && s.pendingMode >= 0
+                        ? pngFor(ctx, s.withoutPending(), style) : png, imgW, imgH))
                 .addIdToImageMapping(ID_IC_OFF, androidImage(R.drawable.ic_off))
                 .addIdToImageMapping(ID_IC_TRANS, androidImage(R.drawable.ic_trans))
-                .addIdToImageMapping(ID_IC_ANC, androidImage(R.drawable.ic_anc))
-                .build();
+                .addIdToImageMapping(ID_IC_ANC, androidImage(R.drawable.ic_anc));
+        if (supreme) {
+            if (s.pendingMode >= 0) res.addIdToImageMapping(ID_DIAL_PENDING, inline(png, imgW, imgH));
+            res.addIdToImageMapping(ID_SUP_BG, inline(supBgPng(),
+                    SuprematistTilePainter.BG_PX, SuprematistTilePainter.BG_PX));
+        }
+        return res.build();
     }
 
     /**
-     * 单电池设备的资源表: 布局里没有仪表盘, 只需要 3 个模式图标。
-     * 没有模式能力时图标也没人引用, 多给 3 个小 png 不占什么, 保持版本号稳定。
+     * 单电池设备的资源表: 至上磁贴复用完整 450x450 北方工业画布, 其余样式放模式图标。
      */
-    static ResourceBuilders.Resources buildSingle(Context ctx, TileSnapshot s, String requestedVersion) {
-        return new ResourceBuilders.Resources.Builder()
+    static ResourceBuilders.Resources buildSingle(Context ctx, TileSnapshot s, int style, String requestedVersion) {
+        if (AppPrefs.family(style) == AppPrefs.STYLE_SUPREME) {
+            return build(ctx, s, style, requestedVersion);
+        }
+        ResourceBuilders.Resources.Builder res = new ResourceBuilders.Resources.Builder()
                 .setVersion(requestedVersion)
                 .addIdToImageMapping(ID_IC_OFF, androidImage(R.drawable.ic_off))
                 .addIdToImageMapping(ID_IC_TRANS, androidImage(R.drawable.ic_trans))
-                .addIdToImageMapping(ID_IC_ANC, androidImage(R.drawable.ic_anc))
-                .build();
+                .addIdToImageMapping(ID_IC_ANC, androidImage(R.drawable.ic_anc));
+        return res.build();
+    }
+
+    private static byte[] supBgPng() {
+        byte[] bg = cacheSupBgPng;
+        if (bg == null) {
+            bg = SuprematistTilePainter.bgPng();
+            cacheSupBgPng = bg;
+        }
+        return bg;
     }
 
     /**
@@ -93,6 +114,9 @@ final class TileResources {
     }
 
     static byte[] pngFor(Context ctx, TileSnapshot s, int style) {
+        if (AppPrefs.isNeo(style)) {
+            return NeoTilePainter.png(ctx, s, style);
+        }
         if (style == AppPrefs.STYLE_CLASSIC) {
             return ClassicTilePainter.png(ctx, s);
         }
@@ -105,12 +129,12 @@ final class TileResources {
         return BarsTilePainter.png(ctx, s);
     }
 
-    private static ResourceBuilders.ImageResource inline(byte[] png) {
+    private static ResourceBuilders.ImageResource inline(byte[] png, int widthPx, int heightPx) {
         return new ResourceBuilders.ImageResource.Builder()
                 .setInlineResource(new ResourceBuilders.InlineImageResource.Builder()
                         .setData(png)
-                        .setWidthPx(444)
-                        .setHeightPx(228)
+                        .setWidthPx(widthPx)
+                        .setHeightPx(heightPx)
                         .setFormat(ResourceBuilders.IMAGE_FORMAT_UNDEFINED)
                         .build())
                 .build();

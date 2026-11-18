@@ -40,6 +40,17 @@
             </intent-filter>
         </receiver>
 
+        <receiver android:name=".TileConnectionReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
+                <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
+                <action android:name="android.bluetooth.adapter.action.STATE_CHANGED" />
+                <action android:name="android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED" />
+                <action android:name="android.bluetooth.headset.profile.action.CONNECTION_STATE_CHANGED" />
+                <action android:name="android.bluetooth.action.LE_AUDIO_CONNECTION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
         <!-- 磁贴: 系统磁贴宿主通过这条导出服务绑定; 预览图是磁贴列表里显示的那张 -->
         <service
             android:name=".TwsTileService"
@@ -56,7 +67,7 @@
                 android:resource="@drawable/ic_tile_preview" />
         </service>
 
-        <!-- 磁贴按钮的秒退跳板: 只起后台服务切档, 不把主界面拉前台 -->
+        <!-- 旧磁贴缓存迁移入口：只打开现有控制页，忽略外部控制参数。 -->
         <activity
             android:name=".ModeCyclerActivity"
             android:exported="true"
@@ -64,11 +75,6 @@
             android:noHistory="true"
             android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
-
-        <!-- 磁贴切降噪的无界面服务: 连耳机→切档→更新快照→自杀 -->
-        <service
-            android:name=".ModeCyclerService"
-            android:exported="false" />
 
     </application>
 </manifest>

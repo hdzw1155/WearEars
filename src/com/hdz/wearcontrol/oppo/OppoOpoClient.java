@@ -489,4 +489,15 @@ public class OppoOpoClient implements TwsClient {
         for (byte x : b) sb.append(String.format("%02X", x));
         return sb.toString();
     }
+    @Override public int potentialCaps() { return caps() | CAP_NOISE; }
+
+    /** 可选模块的唯一注册入口，匹配规则与协议实现一起增删。 */
+    public static final class Module implements com.hdz.wearcontrol.DriverModule {
+        @Override public boolean matches(String name) {
+            String n = name.toLowerCase(java.util.Locale.ROOT);
+            return n.contains("oppo") || n.contains("enco") || n.contains("oneplus") || n.contains("realme");
+        }
+        @Override public TwsClient create() { return new OppoOpoClient(); }
+    }
+
 }

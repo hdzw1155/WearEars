@@ -65,9 +65,9 @@
                 android:gravity="center"
                 android:orientation="vertical"
                 android:paddingLeft="42dp"
-                android:paddingTop="32dp"
+                android:paddingTop="22dp"
                 android:paddingRight="36dp"
-                android:paddingBottom="32dp"
+                android:paddingBottom="22dp"
                 android:visibility="visible">
 
                 <LinearLayout
@@ -92,8 +92,9 @@
                         android:textStyle="bold" />
                 </LinearLayout>
 
-                <!-- Spatial Audio Card (parentOf depth = 2 from switch_spatial) -->
+                <!-- Spatial Audio Card -->
                 <LinearLayout
+                    android:id="@+id/spatial_card"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
@@ -114,6 +115,7 @@
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
+                            android:importantForAccessibility="no"
                             android:text="@string/spatial_title_short"
                             android:textColor="@color/sup_ink"
                             android:textSize="11sp"
@@ -123,6 +125,7 @@
                             android:id="@+id/switch_spatial"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
+                            android:contentDescription="@string/spatial_switch"
                             android:minHeight="26dp"
                             android:thumbTint="@color/switch_thumb"
                             android:trackTint="@color/switch_track" />
@@ -132,16 +135,22 @@
                         android:id="@+id/spatial_hint"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:ellipsize="end"
-                        android:maxLines="1"
-                        android:text="@string/spatial_hint_inline"
-                        android:textColor="#DF1B22"
+                        android:text="@string/spatial_state_unknown"
+                        android:textColor="@color/sup_ink"
                         android:textSize="8sp"
                         android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/spatial_caption_lines"
+                        android:textColor="@color/sup_ink"
+                        android:textSize="8sp" />
                 </LinearLayout>
 
-                <!-- DeepX Card (parentOf depth = 2 from deepx_current), compact 2-row grid -->
+                <!-- Equalizer Card, compact 2-row grid -->
                 <LinearLayout
+                    android:id="@+id/equalizer_card"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="5dp"
@@ -159,6 +168,7 @@
                         android:orientation="horizontal">
 
                         <TextView
+                            android:id="@+id/equalizer_title"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
@@ -286,10 +296,10 @@
                 android:layout_height="match_parent"
                 android:gravity="center"
                 android:orientation="vertical"
-                android:paddingLeft="28dp"
-                android:paddingTop="24dp"
-                android:paddingRight="24dp"
-                android:paddingBottom="28dp">
+                android:paddingLeft="32dp"
+                android:paddingTop="22dp"
+                android:paddingRight="28dp"
+                android:paddingBottom="22dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -309,7 +319,7 @@
                         android:letterSpacing="0.06"
                         android:text="@string/sup_sec_notice"
                         android:textColor="@color/sup_ink"
-                        android:textSize="10sp"
+                        android:textSize="9.5sp"
                         android:textStyle="bold" />
                 </LinearLayout>
 
@@ -317,38 +327,38 @@
                     android:id="@+id/disclaimer_row"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="5dp"
+                    android:layout_marginTop="4dp"
                     android:background="@drawable/bg_sup_card_paper"
                     android:orientation="vertical"
                     android:paddingLeft="8dp"
-                    android:paddingTop="5dp"
+                    android:paddingTop="4dp"
                     android:paddingRight="8dp"
-                    android:paddingBottom="5dp">
+                    android:paddingBottom="4dp">
 
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:lineSpacingExtra="0.5dp"
+                        android:lineSpacingExtra="0dp"
                         android:text="@string/sup_notice_summary"
                         android:textColor="@color/sup_ink"
-                        android:textSize="9sp" />
+                        android:textSize="8.3sp" />
                 </LinearLayout>
 
                 <TextView
                     android:id="@+id/sup_full_notice"
                     android:layout_width="wrap_content"
-                    android:layout_height="24dp"
+                    android:layout_height="21dp"
                     android:layout_gravity="center_horizontal"
-                    android:layout_marginTop="5dp"
+                    android:layout_marginTop="4dp"
                     android:background="@drawable/bg_sup_cta_blue"
                     android:clickable="true"
                     android:focusable="true"
                     android:gravity="center"
-                    android:paddingLeft="14dp"
-                    android:paddingRight="14dp"
+                    android:paddingLeft="12dp"
+                    android:paddingRight="12dp"
                     android:text="@string/sup_full_notice"
                     android:textColor="@color/sup_paper"
-                    android:textSize="9sp"
+                    android:textSize="8.5sp"
                     android:textStyle="bold" />
             </LinearLayout>
         </FrameLayout>

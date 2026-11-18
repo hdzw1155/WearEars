@@ -261,4 +261,14 @@ public final class RoseLinkClient implements TwsClient {
     @Override public void setSpatial(boolean on) { }
     @Override public void queryDeepX() { }
     @Override public void setDeepX(int mode) { }
+    @Override public int potentialCaps() { return caps() | (name == null || RoseProtocol.supportsNoise(name) ? CAP_NOISE : 0); }
+
+    /** 可选模块的唯一注册入口，匹配规则与协议实现一起增删。 */
+    public static final class Module implements com.hdz.wearcontrol.DriverModule {
+        @Override public boolean matches(String name) {
+            return RoseProtocol.familyForName(name) >= 0;
+        }
+        @Override public TwsClient create() { return new RoseLinkClient(); }
+    }
+
 }

@@ -213,7 +213,7 @@ public class SnapChipRow extends HorizontalScrollView {
             return;
         }
         View chip = group.getChildAt(best);
-        int target = chip.getLeft() + chip.getWidth() / 2 - getWidth() / 2;
+        int target = getPaddingLeft() + chip.getLeft() + chip.getWidth() / 2 - getWidth() / 2;
         animateScrollTo(clampScroll(target));
     }
 

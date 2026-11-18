@@ -147,4 +147,14 @@ final class SonyClient extends RfcommClient {
         return SonyProtocol.isVerifiedReal(deviceName()) ? VERIF_REAL : VERIF_UNTESTED;
     }
     @Override public String brandName() { return "Sony"; }
+    @Override public int potentialCaps() { return caps() | CAP_NOISE; }
+
+    /** 可选模块的唯一注册入口，匹配规则与协议实现一起增删。 */
+    public static final class Module implements com.hdz.wearcontrol.DriverModule {
+        @Override public boolean matches(String name) {
+            return SonyProtocol.matches(name);
+        }
+        @Override public TwsClient create() { return new SonyClient(); }
+    }
+
 }

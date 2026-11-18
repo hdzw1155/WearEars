@@ -7,6 +7,7 @@ import java.util.List;
 /** BES 线格式与字段校验；不依赖 Android，使用公开报文做回归。 */
 final class EdifierProtocol {
     static byte[] encode(int command, byte[] data, boolean v2, boolean xor) {
+        if (data == null) throw new IllegalArgumentException("payload");
         int count = data.length;
         if (count > (v2 ? 512 : 63)) throw new IllegalArgumentException("payload");
         byte[] frame = new byte[count + (v2 ? 6 : 5)];
@@ -50,6 +51,7 @@ final class EdifierProtocol {
         synchronized void reset() { size = 0; }
         synchronized List<Frame> feed(byte[] bytes, int length) {
             List<Frame> frames = new ArrayList<Frame>();
+            if (bytes == null || length < 0 || length > bytes.length) return frames;
             for (int at = 0; at < length; at++) {
                 if (size == pending.length) drop(1);
                 pending[size++] = bytes[at];
@@ -84,6 +86,7 @@ final class EdifierProtocol {
 
     /** F2 的后续字段尚无统一盒电量语义，只接受已证实的左右耳。 */
     static int[] battery(int command, byte[] p) {
+        if (p == null) return null;
         if (command == 0xD0 && p.length == 1) {
             int value = p[0] & 255;
             return value <= 100 ? new int[]{value, 255, 255, -1} : null;

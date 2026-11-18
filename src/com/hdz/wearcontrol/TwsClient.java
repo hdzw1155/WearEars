@@ -23,6 +23,7 @@ public interface TwsClient {
     int CAP_SPATIAL = 4;  // 空间音频开关(实验功能)
     /** DeepX 音效(仅 vivo 系) */
     int CAP_DEEPX = 8;
+    int CAP_EQUALIZER = 32;
 
     // ---- 验证等级: 如实标注, UI 据此挂"实验性支持·未验证" ----
     int VERIF_REAL = 0;     // 本项目真机验证过
@@ -46,6 +47,7 @@ public interface TwsClient {
 
         /** DeepX 音效模式; null = 未知/未确认 */
         void onDeepX(Integer mode);
+        default void onEqualizer(Integer mode) { }
     }
 
     void connect(BluetoothDevice device);
@@ -78,8 +80,15 @@ public interface TwsClient {
 
     void setDeepX(int mode);
 
+    default SoundPreset[] equalizerPresets() { return new SoundPreset[0]; }
+    default void queryEqualizer() { }
+    default void setEqualizer(int preset) { }
+
     /** 能力位组合 */
     int caps();
+
+    /** 可查询的能力范围。只用于保留等待确认的 UI，写命令仍以 caps() 为准。 */
+    default int potentialCaps() { return caps(); }
 
     /** 验证等级(VERIF_*) */
     int verifLevel();

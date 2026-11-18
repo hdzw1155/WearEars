@@ -69,6 +69,7 @@ public class HuaweiSppClient implements TwsClient {
     private volatile OutputStream out;
     private volatile boolean closing = false;
     private volatile boolean noiseConfirmed;
+    private volatile HuaweiSoundProtocol.State equalizer;
     /** 当前连接设备名, 用于按型号如实标注验证等级 */
     private volatile String connectedName = "";
 
@@ -84,7 +85,7 @@ public class HuaweiSppClient implements TwsClient {
 
     @Override
     public int caps() {
-        return CAP_BATTERY | (noiseConfirmed ? CAP_NOISE : 0);
+        return CAP_BATTERY | (noiseConfirmed ? CAP_NOISE : 0) | (equalizer != null ? CAP_EQUALIZER : 0);
     }
 
     @Override
@@ -145,6 +146,7 @@ public class HuaweiSppClient implements TwsClient {
         writer.start();
         closing = false;
         noiseConfirmed = false;
+        equalizer = null;
         connectedName = device != null && device.getName() != null ? device.getName() : "";
         new Thread(new Runnable() {
             @Override public void run() {
@@ -432,6 +434,12 @@ public class HuaweiSppClient implements TwsClient {
             parseBattery(b, paramsOff, paramsLen);
         } else if (group == GROUP_ANC && cmd == CMD_ANC_QUERY) {
             parseAncState(b, paramsOff, paramsLen);
+        } else if (group == GROUP_ANC && cmd == 0x4A && HuaweiSoundProtocol.supportsQuery(connectedName)) {
+            HuaweiSoundProtocol.State report = HuaweiSoundProtocol.decode(b, paramsOff, paramsLen);
+            if (report != null) {
+                equalizer = report;
+                for (Listener listener : listeners) listener.onEqualizer(report.current);
+            }
         } else if (group == GROUP_ANC && cmd == CMD_ANC_REPORT) {
             // 耳机按键改了档位, 重新查询一次
             queryNoise();
@@ -508,4 +516,34 @@ public class HuaweiSppClient implements TwsClient {
         for (byte x : b) sb.append(String.format("%02X", x));
         return sb.toString();
     }
+    @Override public int potentialCaps() {
+        return caps() | CAP_NOISE | (HuaweiSoundProtocol.supportsQuery(connectedName) ? CAP_EQUALIZER : 0);
+    }
+
+    @Override public com.hdz.wearcontrol.SoundPreset[] equalizerPresets() {
+        HuaweiSoundProtocol.State report = equalizer;
+        return report == null ? new com.hdz.wearcontrol.SoundPreset[0] : report.presets.clone();
+    }
+    @Override public void queryEqualizer() {
+        if (HuaweiSoundProtocol.supportsQuery(connectedName))
+            writeFrame(GROUP_ANC, 0x4A, new byte[]{1, 0, 2, 0, 3, 0});
+    }
+    @Override public void setEqualizer(int preset) {
+        for (com.hdz.wearcontrol.SoundPreset option : equalizerPresets()) {
+            if (option.id == preset) {
+                writeFrame(GROUP_ANC, 0x49, new byte[]{1, 1, (byte) preset});
+                return;
+            }
+        }
+    }
+
+    /** 可选模块的唯一注册入口，匹配规则与协议实现一起增删。 */
+    public static final class Module implements com.hdz.wearcontrol.DriverModule {
+        @Override public boolean matches(String name) {
+            String n = name.toLowerCase(java.util.Locale.ROOT);
+            return n.contains("freebuds") || n.contains("huawei") || n.contains("honor") || n.contains("华为") || n.contains("荣耀");
+        }
+        @Override public TwsClient create() { return new HuaweiSppClient(); }
+    }
+
 }

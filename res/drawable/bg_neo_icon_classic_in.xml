@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- New Classic: round refresh button sitting inside the battery card -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <solid android:color="#FF1B2436" />
+    <stroke android:width="1dp" android:color="#2E4C8DFF" />
+</shape>

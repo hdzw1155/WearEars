@@ -29,6 +29,7 @@ public final class OppoProtocol {
         private int size;
         public synchronized List<Frame> feed(byte[] bytes, int length) {
             List<Frame> result = new ArrayList<Frame>();
+            if (bytes == null || length < 0 || length > bytes.length) return result;
             for (int i = 0; i < length; i++) {
                 if (size == buffer.length) drop(1);
                 buffer[size++] = bytes[i];
@@ -53,8 +54,11 @@ public final class OppoProtocol {
                 }
                 int total = p + length;
                 if (length < 7 || total > buffer.length) { drop(1); continue; }
-                if (size < total) return;
+                if (size >= p + 2 && (buffer[p] != 0 || buffer[p + 1] != 0)) { drop(1); continue; }
+                if (size < p + 7) return;
                 int payloadLength = (buffer[p + 5] & 255) | ((buffer[p + 6] & 255) << 8);
+                if (payloadLength != length - 7) { drop(1); continue; }
+                if (size < total) return;
                 if (buffer[p] == 0 && buffer[p + 1] == 0 && payloadLength == length - 7) {
                     int command = (buffer[p + 2] & 255) | ((buffer[p + 3] & 255) << 8);
                     result.add(new Frame(command, buffer[p + 4] & 255, Arrays.copyOfRange(buffer, p + 7, total)));
@@ -69,7 +73,7 @@ public final class OppoProtocol {
     }
 
     public static int[] battery(byte[] payload, boolean event) {
-        if (payload.length < 2 || payload[0] != (event ? 1 : 0)) return null;
+        if (payload == null || payload.length < 2 || payload[0] != (event ? 1 : 0)) return null;
         int count = payload[1] & 255;
         if (count < 1 || count > 3 || payload.length != 2 + count * 2) return null;
         int[] result = {255, 255, 255, 0};
@@ -98,6 +102,7 @@ public final class OppoProtocol {
     }
 
     public static int noiseMask(byte[] payload) {
+        if (payload == null) return -1;
         // 旧固件 01 01 maskLE，新固件前置成功状态 00；不从任意尾部猜档位。
         int offset;
         if (payload.length == 4) offset = 0;

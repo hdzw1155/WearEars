@@ -265,6 +265,7 @@ public final class XiaomiAuth {
      * inp16: 16B 挑战; 输出 16B 应答码 realCode。
      */
     public static byte[] e21(byte[] inp16) {
+        if (inp16 == null || inp16.length != 16) throw new IllegalArgumentException("16-byte challenge required");
         byte[] ctx = PLACEHOLDER_ADDR;
         // OUT 初始化 = CTX[0:6] ++ CTX[0:6] ++ CTX[0:4]
         int[] out = new int[16];
@@ -279,6 +280,7 @@ public final class XiaomiAuth {
     }
 
     public static String toHex(byte[] b) {
+        if (b == null) return "";
         StringBuilder sb = new StringBuilder();
         for (byte x : b) sb.append(String.format("%02x", x));
         return sb.toString();

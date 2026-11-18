@@ -1,12 +1,11 @@
 package com.hdz.wearcontrol;
 
 /**
- * 磁贴数据快照: 只读值对象, 描述"最后一次与耳机成功通讯时"的样子。
+ * 历史快照与本次呈现。历史值可保留，显示前必须调用 forConnection 关联系统查询结果。
  *
  * <p>约定(0.3.3~0.3.5 的教训, 别改):
  * <ul>
- *   <li>电量永远显示最近一次查询到的值, 不按当前连接状态强制归 --。
- *       旧版拿连接状态去改电量显示, 状态判断本身会抖, 结果磁贴显示来回跳。</li>
+ *   <li>连接状态不从电量或时间推断。断开及无法确认时隐藏旧数值，持久化记录继续保留。</li>
  *   <li>没连过时电量是 -1(未知), 界面显示 "--"; 耳机上报 0xFF 也按未知处理。</li>
  *   <li>充电标志同理: 不知道就是 {@link #UNKNOWN}, 绝不当成"没在充电"去覆盖已有值。</li>
  *   <li>多品牌: 驱动能力位 {@link #caps} 决定磁贴显示哪些区(单电量/降噪/空间音频/DeepX)。
@@ -48,6 +47,8 @@ final class TileSnapshot {
     final int caps;
     /** 驱动的验证等级 TwsClient.VERIF_REAL / VERIF_UNTESTED */
     final int verifLevel;
+    final int connection;
+    private final long pendingUntil;
 
     TileSnapshot(String name, long lastOk, int battL, int battR, int battC, int battTotal,
                  int chargeFlags, int mode, int caps, int verifLevel) {
@@ -56,6 +57,19 @@ final class TileSnapshot {
 
     TileSnapshot(String name, long lastOk, int battL, int battR, int battC, int battTotal,
                  int chargeFlags, int confirmed, int caps, int verifLevel, int pending, long until) {
+        this(name, lastOk, battL, battR, battC, battTotal, chargeFlags, confirmed, caps,
+                verifLevel, pending, until, BluetoothLink.UNKNOWN);
+    }
+
+    private TileSnapshot(String name, long lastOk, int battL, int battR, int battC, int battTotal,
+                 int chargeFlags, int confirmed, int caps, int verifLevel, int pending, long until, int connection) {
+        this(name, lastOk, battL, battR, battC, battTotal, chargeFlags, confirmed, caps, verifLevel,
+                pending, until, connection, true);
+    }
+
+    private TileSnapshot(String name, long lastOk, int battL, int battR, int battC, int battTotal,
+                 int chargeFlags, int confirmed, int caps, int verifLevel, int pending, long until, int connection,
+                 boolean checkTime) {
         this.name = name != null ? name : "";
         this.lastOk = lastOk;
         this.battL = saneBattery(battL);
@@ -65,10 +79,42 @@ final class TileSnapshot {
         this.chargeFlags = saneChargeFlags(chargeFlags);
         this.confirmedMode = confirmed >= 0 && confirmed <= 2 ? confirmed : UNKNOWN;
         long remaining = until - System.currentTimeMillis();
-        this.pendingMode = pending >= 0 && pending <= 2 && remaining > 0 && remaining <= 12000L ? pending : UNKNOWN;
+        this.pendingMode = pending >= 0 && pending <= 2 && (!checkTime || remaining > 0 && remaining <= 12000L) ? pending : UNKNOWN;
         this.mode = pendingMode >= 0 ? pendingMode : confirmedMode;
         this.caps = caps & CAPS_MASK;
         this.verifLevel = verifLevel;
+        this.connection = connection;
+        this.pendingUntil = until;
+    }
+
+    /** 恢复已发给宿主的资源快照，不再按请求到达时刻改画面；过期由 Timeline 处理。 */
+    static TileSnapshot forResources(int left, int right, int box, int total, int flags, int confirmed,
+                                    int caps, int pending, long until, int connection) {
+        boolean on = connection == BluetoothLink.CONNECTED;
+        return new TileSnapshot("", 0, on ? left : UNKNOWN, on ? right : UNKNOWN, on ? box : UNKNOWN,
+                on ? total : UNKNOWN, on ? flags : UNKNOWN, on ? confirmed : UNKNOWN,
+                caps, 0, on ? pending : UNKNOWN, until, connection, false);
+    }
+
+    TileSnapshot forConnection(int connection) {
+        boolean connected = connection == BluetoothLink.CONNECTED;
+        return new TileSnapshot(name, lastOk, connected ? battL : UNKNOWN,
+                connected ? battR : UNKNOWN, connected ? battC : UNKNOWN,
+                connected ? battTotal : UNKNOWN, connected ? chargeFlags : UNKNOWN,
+                connected ? confirmedMode : UNKNOWN, caps, verifLevel,
+                connected ? pendingMode : UNKNOWN, pendingUntil, connection);
+    }
+
+    long pendingExpiresAt() { return pendingMode >= 0 ? pendingUntil : 0L; }
+
+    /** 同设备曾确认的降噪栏在重连期间保留位置；写入权限仍由当前驱动 caps 控制。 */
+    static int displayCaps(int previous, int current, int potential) {
+        return current | (previous & potential & TwsClient.CAP_NOISE);
+    }
+
+    TileSnapshot withoutPending() {
+        return new TileSnapshot(name, lastOk, battL, battR, battC, battTotal, chargeFlags,
+                confirmedMode, caps, verifLevel, UNKNOWN, 0L, connection);
     }
 
     /** 电量是否可显示(0..100); 耳机 0xFF / -1 等越界值统一当未知 */

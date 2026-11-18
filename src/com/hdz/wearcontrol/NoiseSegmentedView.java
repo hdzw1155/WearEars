@@ -32,8 +32,10 @@ public class NoiseSegmentedView extends View {
     /** 槽/滑块/未选中文字, 两套界面用 setPalette 切换 */
     private int colorTrough = 0xFF1E1E21;
     private int colorPill = 0xFF2B6CB0;
-    private static final int COLOR_SELECTED = 0xFFFFFFFF;
+    private int colorSelected = 0xFFFFFFFF;
     private int colorIdle = 0x99F2F2F5;
+    private int colorTroughStroke = 0;
+    private float troughStrokeDp = 0f;
     private float cornerRadiusDp = 12f;
 
     private static final float PILL_INSET_DP = 2f;
@@ -148,6 +150,19 @@ public class NoiseSegmentedView extends View {
 
     public void setCornerRadiusDp(float dp) {
         cornerRadiusDp = Math.max(0f, dp);
+        invalidate();
+    }
+
+    /** 新系列: 选中段文字色(白滑块需要黑字) */
+    public void setSelectedTextColor(int color) {
+        colorSelected = color;
+        invalidate();
+    }
+
+    /** 新系列: 槽的描边; width 为 0 时不画 */
+    public void setTroughStroke(int color, float widthDp) {
+        colorTroughStroke = color;
+        troughStrokeDp = Math.max(0f, widthDp);
         invalidate();
     }
 
@@ -275,6 +290,17 @@ public class NoiseSegmentedView extends View {
         paint.setStyle(Paint.Style.FILL);
         paint.setColor(colorTrough);
         canvas.drawRoundRect(troughRect, radius, radius, paint);
+        if (troughStrokeDp > 0f && (colorTroughStroke >>> 24) != 0) {
+            float sw = troughStrokeDp * density;
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(sw);
+            paint.setColor(colorTroughStroke);
+            float r2 = Math.max(0f, radius - sw / 2f);
+            pillRect.set(troughRect.left + sw / 2f, troughRect.top + sw / 2f,
+                    troughRect.right - sw / 2f, troughRect.bottom - sw / 2f);
+            canvas.drawRoundRect(pillRect, r2, r2, paint);
+            paint.setStyle(Paint.Style.FILL);
+        }
 
         int selected = indexOfMode(mode);
         float pillW = segmentWidth() - 2 * pillInsetPx;
@@ -289,7 +315,7 @@ public class NoiseSegmentedView extends View {
         float segW = segmentWidth();
         for (int i = 0; i < MODES.length; i++) {
             boolean sel = i == selected;
-            int color = sel ? COLOR_SELECTED : colorIdle;
+            int color = sel ? colorSelected : colorIdle;
             paint.setTextSize(textSizePx);
             paint.setColor(color);
             float labelW = paint.measureText(labels[i]);
@@ -311,6 +337,7 @@ public class NoiseSegmentedView extends View {
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
+        if (!isEnabled()) return false;
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 stopSpring();

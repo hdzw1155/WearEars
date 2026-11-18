@@ -4,4 +4,67 @@
         <item name="android:windowBackground">#101418</item>
         <item name="android:colorBackground">#101418</item>
     </style>
+
+    <!-- New Minimal: smoked amber-gold glass evolution of Minimal -->
+    <style name="Theme.Neo.Minimal" parent="AppTheme">
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:colorBackground">#000000</item>
+        <item name="neoBg">#FF000000</item>
+        <item name="neoText">#FFFFFFFF</item>
+        <item name="neoTextDim">#FFD8C79A</item>
+        <item name="neoTextFaint">#FF9E906B</item>
+        <item name="neoAccent">#FFF5B841</item>
+        <item name="neoWarn">#FFF5A524</item>
+        <item name="neoCtaText">#FF111317</item>
+        <item name="neoCard">@drawable/bg_neo_card_line</item>
+        <item name="neoHero">@android:color/transparent</item>
+        <item name="neoPill">@drawable/bg_neo_pill_line</item>
+        <item name="neoIconBtn">@drawable/bg_neo_icon_line</item>
+        <item name="neoCta">@drawable/bg_neo_cta_mono</item>
+        <item name="neoChipWarn">@drawable/bg_chip_warn</item>
+        <item name="neoSwitchThumb">@color/neo_thumb_mono</item>
+        <item name="neoSwitchTrack">@color/neo_track_mono</item>
+    </style>
+
+    <!-- New Classic: smoked slate-blue glass evolution of Classic -->
+    <style name="Theme.Neo.Classic" parent="AppTheme">
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:colorBackground">#000000</item>
+        <item name="neoBg">#FF000000</item>
+        <item name="neoText">#FFFFFFFF</item>
+        <item name="neoTextDim">#FFB8CEEE</item>
+        <item name="neoTextFaint">#FF7E96BA</item>
+        <item name="neoAccent">#FF4C8DFF</item>
+        <item name="neoWarn">#FFFF9F0A</item>
+        <item name="neoCtaText">#FFFFFFFF</item>
+        <item name="neoCard">@drawable/bg_neo_card_classic</item>
+        <item name="neoHero">@drawable/bg_neo_card_classic</item>
+        <item name="neoPill">@drawable/bg_neo_pill_classic</item>
+        <item name="neoIconBtn">@drawable/bg_neo_icon_classic</item>
+        <item name="neoCta">@drawable/bg_neo_cta_classic</item>
+        <item name="neoChipWarn">@drawable/bg_chip_warn</item>
+        <item name="neoSwitchThumb">@color/switch_thumb</item>
+        <item name="neoSwitchTrack">@color/neo_track_classic</item>
+    </style>
+
+    <!-- New Liquid: restrained smoked emerald glass + green wave -->
+    <style name="Theme.Neo.Liquid" parent="AppTheme">
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:colorBackground">#000000</item>
+        <item name="neoBg">#FF000000</item>
+        <item name="neoText">#FFFFFFFF</item>
+        <item name="neoTextDim">#FFB8D8CA</item>
+        <item name="neoTextFaint">#FF7EA393</item>
+        <item name="neoAccent">#FF5EDDA6</item>
+        <item name="neoWarn">#FFFFB547</item>
+        <item name="neoCtaText">#FFFFFFFF</item>
+        <item name="neoCard">@drawable/bg_neo_card_liquid</item>
+        <item name="neoHero">@drawable/bg_neo_card_liquid</item>
+        <item name="neoPill">@drawable/bg_neo_pill_liquid</item>
+        <item name="neoIconBtn">@drawable/bg_neo_icon_liquid</item>
+        <item name="neoCta">@drawable/bg_neo_cta_liquid</item>
+        <item name="neoChipWarn">@drawable/bg_chip_warn</item>
+        <item name="neoSwitchThumb">@color/switch_thumb</item>
+        <item name="neoSwitchTrack">@color/neo_track_liquid</item>
+    </style>
 </resources>

@@ -27,12 +27,14 @@ public final class XiaomiProtocol {
     public static int authApp(int profile) { return profile == 2 ? 4 : 1; }
 
     public static byte[] command(int opcode, int app, int serial, byte[] params) {
+        if (params == null || params.length > 1015) throw new IllegalArgumentException("payload");
         byte[] body = new byte[params.length + 1];
         body[0] = (byte) serial;
         System.arraycopy(params, 0, body, 1, params.length);
         return frame(0xC0 | (app & 7), opcode, body);
     }
     public static byte[] response(int opcode, int app, int serial, int status, byte[] data) {
+        if (data == null || data.length > 1014) throw new IllegalArgumentException("payload");
         byte[] body = new byte[data.length + 2];
         body[0] = (byte) status; body[1] = (byte) serial;
         System.arraycopy(data, 0, body, 2, data.length);
@@ -54,6 +56,7 @@ public final class XiaomiProtocol {
         public void reset() { size = 0; }
         public List<byte[]> feed(byte[] bytes, int length) {
             List<byte[]> frames = new ArrayList<byte[]>();
+            if (bytes == null || length < 0 || length > bytes.length) return frames;
             for (int at = 0; at < length; at++) {
                 if (size == pending.length) drop(1);
                 pending[size++] = bytes[at];
@@ -79,6 +82,7 @@ public final class XiaomiProtocol {
 
     /** 返回左右盒电量和三个充电位；没有 type 7 或畸形 TLV 时不发布状态。 */
     public static int[] battery(byte[] data) {
+        if (data == null) return null;
         int[] result = null;
         int pos = 0;
         while (pos < data.length) {
@@ -101,6 +105,7 @@ public final class XiaomiProtocol {
     }
 
     public static byte[] config(byte[] data, int wanted) {
+        if (data == null) return null;
         byte[] result = null;
         int pos = 0;
         while (pos < data.length) {

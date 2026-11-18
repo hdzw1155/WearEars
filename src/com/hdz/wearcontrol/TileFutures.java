@@ -24,7 +24,7 @@ final class TileFutures {
     static <T> ListenableFuture<T> submit(Callable<T> callable) {
         Task<T> task = new Task<T>(callable); BG.execute(task); return task;
     }
-    private static final class Task<T> extends FutureTask<T> implements ListenableFuture<T> {
+    static final class Task<T> extends FutureTask<T> implements ListenableFuture<T> {
         private final List<Runnable> listeners = new ArrayList<Runnable>();
         private boolean dispatched;
         Task(Callable<T> callable) { super(callable); }

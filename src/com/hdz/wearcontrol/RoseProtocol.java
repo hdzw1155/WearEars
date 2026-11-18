@@ -60,7 +60,7 @@ final class RoseProtocol {
     }
 
     static int[] battery(int family, byte[] value) {
-        if (value.length != 3) return null;
+        if (value == null || value.length != 3) return null;
         int[] result = {255, 255, 255, 0};
         for (int i = 0; i < 3; i++) {
             int raw = value[i] & 255;
@@ -95,6 +95,7 @@ final class RoseProtocol {
 
         synchronized List<Item> feed(byte[] bytes, int length) {
             List<Item> result = new ArrayList<Item>();
+            if (bytes == null || length < 0 || length > bytes.length) return result;
             for (int i = 0; i < length; i++) {
                 if (size == buffer.length) drop(1);
                 buffer[size++] = bytes[i];
@@ -118,36 +119,45 @@ final class RoseProtocol {
                     drop(total);
                     continue;
                 }
-                int offset = 2;
-                boolean invalid = false, complete = false;
-                int discard = 1;
-                while (offset + 1 < size) {
-                    if (offset > 2 && (buffer[offset + 1] & 255) == 0xAA) {
-                        int check = buffer[offset] & 255;
-                        if (sum(buffer, 0, offset) != check && sum(buffer, 2, offset) != check) {
-                            invalid = true;
-                            discard = offset + 2;
+                int end = v2End(0);
+                if (end == 0) return;
+                if (end < 0) {
+                    int discard = -end;
+                    // 校验错误的包里可能藏着完整真帧；只在校验成立后重新定界。
+                    // 不能盲目 drop(1)，否则电量 0xFF 又会被误认成帧头，阻塞后续包。
+                    for (int start = 1; start < discard; start++) {
+                        int candidate = buffer[start] & 255;
+                        if ((candidate == 0xDD || candidate == 0xFF) && v2End(start) > 0) {
+                            discard = start;
                             break;
                         }
-                        for (int p = 2; p < offset; p += 1 + (buffer[p] & 255)) {
-                            int end = p + 1 + (buffer[p] & 255);
-                            result.add(new Item(buffer[p + 1] & 255, Arrays.copyOfRange(buffer, p + 2, end)));
-                        }
-                        drop(offset + 2);
-                        complete = true;
-                        break;
                     }
-                    int length = buffer[offset] & 255;
-                    if (length == 0 || offset + 1 + length > buffer.length - 2) {
-                        invalid = true;
-                        break;
-                    }
-                    if (offset + 1 + length > size) return;
-                    offset += 1 + length;
+                    drop(discard);
+                    continue;
                 }
-                if (invalid) { drop(discard); continue; }
-                if (!complete) return;
+                for (int p = 2; p < end - 2; p += 1 + (buffer[p] & 255)) {
+                    int next = p + 1 + (buffer[p] & 255);
+                    result.add(new Item(buffer[p + 1] & 255, Arrays.copyOfRange(buffer, p + 2, next)));
+                }
+                drop(end);
             }
+        }
+
+        /** 正数为帧尾，0 为半包；负数为已确认无效的长度（只用于起点 0）。 */
+        private int v2End(int start) {
+            int offset = start + 2;
+            while (offset + 1 < size) {
+                if (offset > start + 2 && (buffer[offset + 1] & 255) == 0xAA) {
+                    int check = buffer[offset] & 255;
+                    return sum(buffer, start, offset) == check || sum(buffer, start + 2, offset) == check
+                            ? offset + 2 : -(offset + 2);
+                }
+                int length = buffer[offset] & 255;
+                if (length == 0 || offset + 1 + length > buffer.length - 2) return -1;
+                if (offset + 1 + length > size) return 0;
+                offset += 1 + length;
+            }
+            return 0;
         }
 
         private void drop(int count) {

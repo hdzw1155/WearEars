@@ -9,14 +9,17 @@ import java.util.Date;
 import java.util.Locale;
 
 /**
- * 磁贴状态行: 只陈述"上一次连接"的时间事实。
- *
- * <p>旧版(反射/GATT/乐观窗)在磁贴上实时探测连接状态, 反复误报"已连接",
- * 2026-10-25 用户拍板撤掉: 不装了, 只报发生过的事。
+ * 磁贴状态行：系统音频连接与历史同步时间分开描述，不用电量缓存推断连接。
  */
 final class TileState {
 
     private TileState() {
+    }
+
+    static String connectionText(Context ctx, TileSnapshot snapshot) {
+        if (snapshot.connection == BluetoothLink.DISCONNECTED) return ctx.getString(R.string.status_idle);
+        if (snapshot.connection != BluetoothLink.CONNECTED) return ctx.getString(R.string.tile_connection_unknown);
+        return ctx.getString(snapshot.pendingMode >= 0 ? R.string.tile_switching : R.string.status_connected);
     }
 
     /**

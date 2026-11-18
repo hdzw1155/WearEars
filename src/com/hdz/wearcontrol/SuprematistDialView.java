@@ -88,10 +88,19 @@ public class SuprematistDialView extends View {
 
     private int noiseMode = -1;
     private boolean hasNoiseCap = false;
+    private boolean batteryPanel, noisePanel, volumePanel;
+
+    void enablePanel(int capability) {
+        if (capability == TwsClient.CAP_BATTERY) batteryPanel = true;
+        if (capability == TwsClient.CAP_NOISE) noisePanel = true;
+        if (capability == 0) volumePanel = true;
+        invalidate();
+    }
 
     private int volLevel = 5;
     private int volMax = 15;
-    private boolean volUnlocked;
+    private VolumeGuard volumeGuard = new VolumeGuard();
+    private boolean volumeUnlockedOnDown;
     private long lockPulseUntil;
 
     private float density;
@@ -154,7 +163,7 @@ public class SuprematistDialView extends View {
     private final Runnable holdUnlockTask = new Runnable() {
         @Override
         public void run() {
-            if (pressedTarget == HIT_VOL_ZONE && pendingHoldUnlock && !volUnlocked) {
+            if (pressedTarget == HIT_VOL_ZONE && pendingHoldUnlock && !volumeGuard.isUnlocked()) {
                 pendingHoldUnlock = false;
                 setVolumeUnlocked(true, true);
                 draggingVolBar = true;
@@ -169,7 +178,7 @@ public class SuprematistDialView extends View {
     private final Runnable autoLockTask = new Runnable() {
         @Override
         public void run() {
-            if (volUnlocked) {
+            if (volumeGuard.isUnlocked()) {
                 setVolumeUnlocked(false, false);
             }
         }
@@ -285,6 +294,18 @@ public class SuprematistDialView extends View {
         this.battL = total;
         this.chgL = charging;
         this.singleBattery = true;
+        invalidate();
+    }
+
+    void setVolumeGuard(VolumeGuard guard) { volumeGuard = guard; }
+
+    void cancelVolumeInteraction() {
+        cancelHoldUnlock();
+        ui.removeCallbacks(autoLockTask);
+        draggingVolBar = false;
+        pressedTarget = HIT_NONE;
+        volumeGuard.lock();
+        if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
         invalidate();
     }
 
@@ -478,6 +499,7 @@ public class SuprematistDialView extends View {
     }
 
     private void drawAncParallelograms(Canvas canvas, float d) {
+        if (!noisePanel) return;
         float gap = 0.010f * d;
         float totalW = ancRight - ancLeft;
         float slabW = (totalW - gap * 2f) / 3f;
@@ -532,6 +554,7 @@ public class SuprematistDialView extends View {
     }
 
     private void drawBatteryRows(Canvas canvas, float ox, float oy, float d) {
+        if (!batteryPanel) return;
         if (singleBattery) {
             drawBatteryRow(canvas, ox, oy + 0.520f * d, 0.130f * d, 0.480f * d, d,
                     useEnglish ? "A" : "\u603b", battL, chgL, COL_RED, false);
@@ -621,16 +644,17 @@ public class SuprematistDialView extends View {
     }
 
     private void drawVolumeRow(Canvas canvas, float ox, float oy, float d) {
+        if (!volumePanel) return;
         float vSkew = 0.020f * d;
         boolean pulsing = System.currentTimeMillis() < lockPulseUntil;
 
         // 1) Black skewed [♪] badge + safety padlock shield
-        fillPaint.setColor(volUnlocked ? COL_RED : COL_INK);
+        fillPaint.setColor(volumeGuard.isUnlocked() ? COL_RED : COL_INK);
         setSkewRect(vBadgeLeft, vTop, vBadgeRight, vBot, vSkew);
         canvas.drawPath(workPath, fillPaint);
 
-        if (volUnlocked || pulsing) {
-            strokePaint.setColor(volUnlocked ? COL_YELLOW : COL_RED);
+        if (volumeGuard.isUnlocked() || pulsing) {
+            strokePaint.setColor(volumeGuard.isUnlocked() ? COL_YELLOW : COL_RED);
             strokePaint.setStrokeWidth(1.6f * density);
             canvas.drawPath(workPath, strokePaint);
         }
@@ -640,7 +664,7 @@ public class SuprematistDialView extends View {
                 0.025f * d, COL_WHITE);
 
         // Padlock shield badge on shoulder of ♪ when locked ("防误触")
-        if (!volUnlocked) {
+        if (!volumeGuard.isUnlocked()) {
             drawPadlockBadge(canvas, vBadgeRight - 0.004f * d, vBot - 0.004f * d, pulsing, d);
         }
 
@@ -653,7 +677,7 @@ public class SuprematistDialView extends View {
         if (ratio > 0.01f) {
             float barUsable = (vBarRight - vBarLeft) - vSkew;
             float fillEnd = vBarLeft + barUsable * ratio + vSkew;
-            fillPaint.setColor(volUnlocked ? COL_RED : COL_BLUE);
+            fillPaint.setColor(volumeGuard.isUnlocked() ? COL_RED : COL_BLUE);
             setSkewRect(vBarLeft, vTop, fillEnd, vBot, vSkew);
             canvas.drawPath(workPath, fillPaint);
 
@@ -664,13 +688,13 @@ public class SuprematistDialView extends View {
                     fillEnd - 1.5f * density, vTop + 2.2f * density, strokePaint);
         }
 
-        strokePaint.setColor(volUnlocked ? COL_YELLOW : (pulsing ? COL_RED : COL_INK));
-        strokePaint.setStrokeWidth(Math.max(1.5f, (volUnlocked || pulsing ? 2.0f : 1.7f) * density));
+        strokePaint.setColor(volumeGuard.isUnlocked() ? COL_YELLOW : (pulsing ? COL_RED : COL_INK));
+        strokePaint.setStrokeWidth(Math.max(1.5f, (volumeGuard.isUnlocked() || pulsing ? 2.0f : 1.7f) * density));
         setSkewRect(vBarLeft, vTop, vBarRight, vBot, vSkew);
         canvas.drawPath(workPath, strokePaint);
 
         // Subtle diagonal safety ticks while locked
-        if (!volUnlocked) {
+        if (!volumeGuard.isUnlocked()) {
             strokePaint.setColor(pulsing ? COL_RED : 0x45111317);
             strokePaint.setStrokeWidth(1.1f * density);
             for (int k = 1; k <= 3; k++) {
@@ -781,13 +805,13 @@ public class SuprematistDialView extends View {
                 && y >= reconnectRect.top - pad && y <= reconnectRect.bottom + pad) {
             return HIT_RECONNECT;
         }
-        if (x >= ancLeft - 4f * density && x <= ancRight + 4f * density
+        if (noisePanel && x >= ancLeft - 4f * density && x <= ancRight + 4f * density
                 && y >= ancTop - pad && y <= ancBot + pad) {
             float slabW = (ancRight - ancLeft) / 3f;
             int idx = Math.max(0, Math.min(2, (int) ((x - ancLeft) / slabW)));
             return HIT_ANC_0 + idx;
         }
-        if (volUnlocked) {
+        if (volumePanel && volumeGuard.isUnlocked()) {
             if (Math.hypot(x - vMinusCx, y - vBtnCy) <= vBtnR + 8f * density) {
                 return HIT_VOL_MINUS;
             }
@@ -795,7 +819,7 @@ public class SuprematistDialView extends View {
                 return HIT_VOL_PLUS;
             }
         }
-        if (x >= vBadgeLeft - pad && x <= vBarRight + pad
+        if (volumePanel && x >= vBadgeLeft - pad && x <= vBarRight + pad
                 && y >= vTop - pad && y <= vBot + pad) {
             return HIT_VOL_ZONE;
         }
@@ -810,6 +834,7 @@ public class SuprematistDialView extends View {
 
         switch (action) {
             case MotionEvent.ACTION_DOWN:
+                volumeUnlockedOnDown = volumeGuard.isUnlocked();
                 downX = x;
                 downY = y;
                 pressedTarget = hitTest(x, y);
@@ -819,7 +844,7 @@ public class SuprematistDialView extends View {
                     return false;
                 }
                 if (pressedTarget == HIT_VOL_ZONE) {
-                    if (volUnlocked) {
+                    if (volumeGuard.isUnlocked()) {
                         scheduleAutoLock();
                         if (x >= vBarLeft) {
                             ViewParent p = getParent();
@@ -844,16 +869,32 @@ public class SuprematistDialView extends View {
                 }
                 float dist = (float) Math.hypot(x - downX, y - downY);
                 if (pressedTarget == HIT_VOL_ZONE) {
-                    if (!volUnlocked) {
-                        // Swipe away cleanly releases touch so arc page-swipe wins without lock misfire
+                    if (!volumeGuard.isUnlocked()) {
+                        // 锁定时水平向左可降音量；竖向滑动继续交给页面。
                         if (dist > touchSlop) {
                             cancelHoldUnlock();
+                            if (downX >= vBarLeft && Math.abs(x - downX) > Math.abs(y - downY)
+                                    && (x < downX || draggingVolBar)) {
+                                draggingVolBar = true;
+                                if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
+                                updateVolumeFromX(x);
+                                return true;
+                            }
+                            if (downX >= vBarLeft && x - downX > Math.abs(y - downY) && heroListener != null
+                                    && !volumeGuard.needsHighConfirmation()) heroListener.onVolumeGuardHint(false);
                             pressedTarget = HIT_NONE;
                             return false;
                         }
                         return true;
                     }
+                    // 解锁这次手势只负责确认，松手后下一次拖动才改变音量。
+                    if (!volumeUnlockedOnDown) return true;
                     if (!draggingVolBar && dist > touchSlop * 0.5f) {
+                        if (downX < vBarLeft || Math.abs(x - downX) <= Math.abs(y - downY)) {
+                            pressedTarget = HIT_NONE;
+                            if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
+                            return false;
+                        }
                         draggingVolBar = true;
                         ViewParent p = getParent();
                         if (p != null) {
@@ -873,6 +914,7 @@ public class SuprematistDialView extends View {
                 }
                 return true;
 
+            case MotionEvent.ACTION_POINTER_DOWN:
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
                 cancelHoldUnlock();
@@ -880,9 +922,22 @@ public class SuprematistDialView extends View {
                 boolean wasDragging = draggingVolBar;
                 pressedTarget = HIT_NONE;
                 draggingVolBar = false;
+                if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
                 invalidate();
                 if (action != MotionEvent.ACTION_UP || hit == HIT_NONE) {
                     return false;
+                }
+                if (hit == HIT_VOL_ZONE) {
+                    if (volumeUnlockedOnDown && volumeGuard.needsHighConfirmation()) return true;
+                    if (!volumeUnlockedOnDown && volumeGuard.isUnlocked()) return true;
+                    float dx = x - downX, dy = y - downY;
+                    if (wasDragging || Math.hypot(dx, dy) > touchSlop) {
+                        if (downX >= vBarLeft && (wasDragging || Math.abs(dx) > Math.abs(dy))) {
+                            if (volumeGuard.isUnlocked() || dx < 0f || wasDragging) updateVolumeFromX(x);
+                            else if (heroListener != null) heroListener.onVolumeGuardHint(false);
+                        }
+                        return true;
+                    }
                 }
                 int upHit = hitTest(x, y);
                 if (hit == HIT_REFRESH && upHit == HIT_REFRESH) {
@@ -916,14 +971,14 @@ public class SuprematistDialView extends View {
                     stepVolume(1);
                 } else if (hit == HIT_VOL_ZONE && !wasDragging) {
                     long now = System.currentTimeMillis();
-                    if (volUnlocked) {
+                    if (volumeGuard.isUnlocked()) {
                         if (x <= vBadgeRight + 4f * density) {
                             setVolumeUnlocked(false, true);
                         } else {
                             scheduleAutoLock();
                             updateVolumeFromX(x);
                         }
-                    } else if (now - lastTapVolAt <= DOUBLE_TAP_MS) {
+                    } else if (x <= vBadgeRight + 4f * density || now - lastTapVolAt <= DOUBLE_TAP_MS) {
                         lastTapVolAt = 0L;
                         setVolumeUnlocked(true, true);
                     } else {
@@ -952,7 +1007,8 @@ public class SuprematistDialView extends View {
     }
 
     private void setVolumeUnlocked(boolean unlock, boolean notifyUser) {
-        volUnlocked = unlock;
+        if (unlock) volumeGuard.unlock();
+        else volumeGuard.lock();
         if (unlock) {
             scheduleAutoLock();
             lastSentVol = volLevel;
@@ -984,6 +1040,7 @@ public class SuprematistDialView extends View {
     private void updateVolumeFromX(float x) {
         float ratio = Math.max(0f, Math.min(1f, (x - vBarLeft) / Math.max(1f, vBarRight - vBarLeft)));
         int next = Math.round(ratio * volMax);
+        if (!volumeGuard.isUnlocked()) next = Math.min(volLevel, next);
         if (next != volLevel || next != lastSentVol) {
             volLevel = next;
             lastSentVol = next;
@@ -996,6 +1053,7 @@ public class SuprematistDialView extends View {
 
     @Override
     protected void onDetachedFromWindow() {
+        cancelVolumeInteraction();
         ui.removeCallbacksAndMessages(null);
         super.onDetachedFromWindow();
     }

@@ -13,6 +13,7 @@ final class TechnicsProtocol {
     }
 
     static byte[] command(int id, byte... data) {
+        if (data == null || data.length > 510) throw new IllegalArgumentException("RACE payload");
         int length = data.length + 2;
         byte[] frame = new byte[length + 4];
         frame[0] = 5; frame[1] = 0x5A;
@@ -23,7 +24,7 @@ final class TechnicsProtocol {
     }
 
     static int[] battery(byte[] frame) {
-        if (frame.length < 6) return null;
+        if (frame == null || frame.length < 6) return null;
         int type = frame[1] & 255, id = (frame[4] & 255) | ((frame[5] & 255) << 8);
         if (id == 0x0CD6 && type == 0x5D && frame.length == 9 && frame[6] == 0
                 && (frame[7] == 0 || frame[7] == 1) && (frame[8] & 255) <= 100) {
@@ -35,7 +36,7 @@ final class TechnicsProtocol {
     }
 
     static int mode(byte[] frame) {
-        if (frame.length != 10 || frame[1] != 0x5B || frame[4] != 10 || frame[5] != 0
+        if (frame == null || frame.length != 10 || frame[1] != 0x5B || frame[4] != 10 || frame[5] != 0
                 || frame[6] != 0 || (frame[8] & 255) > 100 || (frame[9] & 255) > 100) return -1;
         if (frame[7] == 0) return TwsClient.MODE_OFF;
         if (frame[7] == 1) return TwsClient.MODE_ANC;
@@ -61,6 +62,7 @@ final class TechnicsProtocol {
         private int size;
         List<byte[]> feed(byte[] data) {
             List<byte[]> result = new ArrayList<byte[]>();
+            if (data == null) return result;
             for (byte value : data) {
                 if (size == buffer.length) drop(1);
                 buffer[size++] = value;

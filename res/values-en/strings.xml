@@ -4,6 +4,12 @@
     <string name="status_idle">Not connected</string>
     <string name="status_connecting">Connecting…</string>
     <string name="noise_title">Noise control</string>
+    <string name="noise_waiting">Checking noise control support</string>
+    <string name="volume_locked">Lowering is allowed. Tap the lock or hold the bar, release, then drag to increase.</string>
+    <string name="volume_high_guard">70% volume guard. Release, then tap the lock or hold again to unlock higher volume.</string>
+    <string name="tile_connection_unknown">Link unknown</string>
+    <string name="tile_cached_at">Saved %1$s</string>
+    <string name="tile_switching">Switching</string>
     <string name="btn_anc">ANC on</string>
     <string name="btn_off">ANC off</string>
     <string name="btn_trans">Transparency</string>
@@ -15,8 +21,9 @@
     <string name="spatial_caption">Experimental; the author could not hear a difference. Some vivo models (TWS Air 3 Pro) only. ⚠️ Take the earbuds out and set volume to minimum before toggling: sudden loud noise can damage hearing.</string>
     <string name="spatial_toast">Experimental: take the earbuds out first</string>
     <string name="spatial_dialog_title">Experimental feature</string>
-    <string name="spatial_dialog_msg">Spatial audio is experimental and the author could not hear a difference. Some vivo models (TWS Air 3 Pro) only; commands come from community reverse engineering and may break after firmware updates.\n\n⚠️ Toggling may cause sudden volume changes or loud noise. Take the earbuds out, set volume to minimum, confirm it is safe, then wear them.\n\nContinue?</string>
+    <string name="spatial_dialog_msg">This switch is experimental. The vivo TWS Air3 Pro reports its switch state. The audible effect still needs testing.\n\n⚠️ Toggling may cause sudden volume changes or loud noise. Take the earbuds out and set the volume to minimum. Put them back on when it is safe.\n\nContinue?</string>
     <string name="deepx_label">DeepX audio</string>
+    <string name="equalizer_label">Built-in EQ (experimental)</string>
     <string name="deepx_caption">May take a few seconds to apply. Some vivo models (TWS Air 3 Pro) only. Take the earbuds out and lower the volume while testing; do not switch repeatedly.</string>
     <string name="dialog_ok">I understand, continue</string>
     <string name="dialog_cancel">Cancel</string>
@@ -64,7 +71,10 @@
     <string name="label_case">Case</string>
     <string name="label_total">Total</string>
     <string name="battery_title">Battery</string>
-    <string name="spatial_hint_inline">Experimental · earbuds off first</string>
+    <string name="spatial_state_unknown">Earbud state unknown</string>
+    <string name="spatial_waiting">Waiting for earbuds…</string>
+    <string name="spatial_unconfirmed">Earbuds did not confirm the change</string>
+    <string name="spatial_scenes_on_phone">Set scenes on a compatible phone</string>
     <string name="spatial_caption_short">Experimental · Air 3 Pro only · take earbuds out first</string>
     <string name="deepx_std">Standard</string>
     <string name="deepx_vocal">Vocal</string>
@@ -90,7 +100,7 @@
     <string name="tile_mode_trans_selected">Transparency, selected</string>
     <string name="tile_mode_anc_selected">ANC, selected</string>
 
-    <string name="spatial_caption_lines">Experimental · Air 3 Pro only\nTake the earbuds out first</string>
+    <string name="spatial_caption_lines">Experimental · Take earbuds out first</string>
     <string name="disclaimer_heading_official">Unofficial tool</string>
     <string name="disclaimer_body_official">An unofficial, unauthorized third-party research tool that controls the earbuds through a reverse-engineered private protocol. It collects and uploads no data.\nGitHub: https://github.com/hdzw1155/WearEars</string>
     <string name="disclaimer_heading_safety">Safety</string>
@@ -133,6 +143,9 @@
     <string name="settings_volume_hide">Hide volume bar</string>
     <string name="tile_refresh_hint">, tap to refresh battery</string>
     <string name="settings_style_supreme">Supreme</string>
+    <string name="settings_style_neo_new">Neo Minimal</string>
+    <string name="settings_style_neo_classic">Neo Classic</string>
+    <string name="settings_style_neo_liquid">Neo Liquid</string>
     <string name="sup_sec_power">01 / POWER</string>
     <string name="sup_sec_acoustic">02 / NOISE</string>
     <string name="sup_sec_control">02 / CONTROL</string>
@@ -140,7 +153,7 @@
     <string name="sup_sec_notice">NOTICE</string>
     <string name="sup_open_settings">Settings · Style / Device →</string>
     <string name="sup_swipe_hint">Arc Slide</string>
-    <string name="sup_vol_guard_hint">Hold ♪ to unlock</string>
+    <string name="sup_vol_guard_hint">Tap ♪ or hold the bar, release, then drag right.</string>
     <string name="sup_vol_unlocked_hint">Unlocked · -/+</string>
     <string name="sup_noise_disconnected">DISCONNECTED · TAP SLAB TO CONNECT</string>
     <string name="sup_noise_unsupported">ANC NOT SUPPORTED BY DEVICE</string>

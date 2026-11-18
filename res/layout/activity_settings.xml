@@ -17,15 +17,16 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:paddingStart="16dp"
-        android:paddingTop="18dp"
+        android:paddingTop="24dp"
         android:paddingEnd="16dp"
-        android:paddingBottom="16dp">
+        android:paddingBottom="28dp">
 
         <TextView
             android:id="@+id/settings_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center"
+            android:letterSpacing="0.06"
             android:text="@string/settings_title"
             android:textColor="@color/text"
             android:textSize="15sp"
@@ -35,13 +36,14 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
-            android:background="@drawable/bg_card"
+            android:background="@drawable/bg_set_card"
             android:orientation="vertical"
-            android:padding="12dp">
+            android:padding="14dp">
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:letterSpacing="0.08"
                 android:text="@string/settings_theme"
                 android:textColor="@color/text_faint"
                 android:textSize="10sp" />
@@ -49,7 +51,7 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="10dp"
                 android:orientation="horizontal">
 
                 <TextView
@@ -58,8 +60,10 @@
                     android:layout_height="34dp"
                     android:layout_marginEnd="8dp"
                     android:layout_weight="1"
-                    android:background="@drawable/bg_choice"
+                    android:background="@drawable/bg_set_choice"
+                    android:ellipsize="end"
                     android:gravity="center"
+                    android:maxLines="1"
                     android:text="@string/settings_theme_night"
                     android:textColor="@color/text_dim"
                     android:textSize="12sp" />
@@ -69,8 +73,10 @@
                     android:layout_width="0dp"
                     android:layout_height="34dp"
                     android:layout_weight="1"
-                    android:background="@drawable/bg_choice"
+                    android:background="@drawable/bg_set_choice"
+                    android:ellipsize="end"
                     android:gravity="center"
+                    android:maxLines="1"
                     android:text="@string/settings_theme_day"
                     android:textColor="@color/text_dim"
                     android:textSize="12sp" />
@@ -80,14 +86,15 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:background="@drawable/bg_card"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_set_card"
             android:orientation="vertical"
-            android:padding="12dp">
+            android:padding="14dp">
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:letterSpacing="0.08"
                 android:text="@string/settings_ui_style"
                 android:textColor="@color/text_faint"
                 android:textSize="10sp" />
@@ -95,7 +102,7 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="10dp"
                 android:orientation="vertical">
 
                 <LinearLayout
@@ -109,22 +116,30 @@
                         android:layout_height="34dp"
                         android:layout_marginEnd="8dp"
                         android:layout_weight="1"
-                        android:background="@drawable/bg_choice"
+                        android:background="@drawable/bg_set_choice"
+                        android:ellipsize="end"
                         android:gravity="center"
+                        android:maxLines="1"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="4dp"
                         android:text="@string/settings_style_new"
                         android:textColor="@color/text_dim"
-                        android:textSize="12sp" />
+                        android:textSize="11sp" />
 
                     <TextView
                         android:id="@+id/style_classic"
                         android:layout_width="0dp"
                         android:layout_height="34dp"
                         android:layout_weight="1"
-                        android:background="@drawable/bg_choice"
+                        android:background="@drawable/bg_set_choice"
+                        android:ellipsize="end"
                         android:gravity="center"
+                        android:maxLines="1"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="4dp"
                         android:text="@string/settings_style_classic"
                         android:textColor="@color/text_dim"
-                        android:textSize="12sp" />
+                        android:textSize="11sp" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -139,22 +154,90 @@
                         android:layout_height="34dp"
                         android:layout_marginEnd="8dp"
                         android:layout_weight="1"
-                        android:background="@drawable/bg_choice"
+                        android:background="@drawable/bg_set_choice"
+                        android:ellipsize="end"
                         android:gravity="center"
+                        android:maxLines="1"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="4dp"
                         android:text="@string/settings_style_liquid"
                         android:textColor="@color/text_dim"
-                        android:textSize="12sp" />
+                        android:textSize="11sp" />
 
                     <TextView
                         android:id="@+id/style_supreme"
                         android:layout_width="0dp"
                         android:layout_height="34dp"
                         android:layout_weight="1"
-                        android:background="@drawable/bg_choice"
+                        android:background="@drawable/bg_set_choice"
+                        android:ellipsize="end"
                         android:gravity="center"
+                        android:maxLines="1"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="4dp"
                         android:text="@string/settings_style_supreme"
                         android:textColor="@color/text_dim"
-                        android:textSize="12sp" />
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/style_neo_new"
+                        android:layout_width="0dp"
+                        android:layout_height="34dp"
+                        android:layout_marginEnd="8dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_set_choice"
+                        android:ellipsize="end"
+                        android:gravity="center"
+                        android:maxLines="1"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="4dp"
+                        android:text="@string/settings_style_neo_new"
+                        android:textColor="@color/text_dim"
+                        android:textSize="11sp" />
+
+                    <TextView
+                        android:id="@+id/style_neo_classic"
+                        android:layout_width="0dp"
+                        android:layout_height="34dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_set_choice"
+                        android:ellipsize="end"
+                        android:gravity="center"
+                        android:maxLines="1"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="4dp"
+                        android:text="@string/settings_style_neo_classic"
+                        android:textColor="@color/text_dim"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/style_neo_liquid"
+                        android:layout_width="0dp"
+                        android:layout_height="34dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_set_choice"
+                        android:ellipsize="end"
+                        android:gravity="center"
+                        android:maxLines="1"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="4dp"
+                        android:text="@string/settings_style_neo_liquid"
+                        android:textColor="@color/text_dim"
+                        android:textSize="11sp" />
                 </LinearLayout>
             </LinearLayout>
         </LinearLayout>
@@ -162,14 +245,15 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:background="@drawable/bg_card"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_set_card"
             android:orientation="vertical"
-            android:padding="12dp">
+            android:padding="14dp">
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:letterSpacing="0.08"
                 android:text="@string/settings_tile_style"
                 android:textColor="@color/text_faint"
                 android:textSize="10sp" />
@@ -177,7 +261,7 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="10dp"
                 android:orientation="vertical">
 
                 <LinearLayout
@@ -191,22 +275,30 @@
                         android:layout_height="34dp"
                         android:layout_marginEnd="8dp"
                         android:layout_weight="1"
-                        android:background="@drawable/bg_choice"
+                        android:background="@drawable/bg_set_choice"
+                        android:ellipsize="end"
                         android:gravity="center"
+                        android:maxLines="1"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="4dp"
                         android:text="@string/settings_style_new"
                         android:textColor="@color/text_dim"
-                        android:textSize="12sp" />
+                        android:textSize="11sp" />
 
                     <TextView
                         android:id="@+id/tile_classic"
                         android:layout_width="0dp"
                         android:layout_height="34dp"
                         android:layout_weight="1"
-                        android:background="@drawable/bg_choice"
+                        android:background="@drawable/bg_set_choice"
+                        android:ellipsize="end"
                         android:gravity="center"
+                        android:maxLines="1"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="4dp"
                         android:text="@string/settings_style_classic"
                         android:textColor="@color/text_dim"
-                        android:textSize="12sp" />
+                        android:textSize="11sp" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -221,22 +313,90 @@
                         android:layout_height="34dp"
                         android:layout_marginEnd="8dp"
                         android:layout_weight="1"
-                        android:background="@drawable/bg_choice"
+                        android:background="@drawable/bg_set_choice"
+                        android:ellipsize="end"
                         android:gravity="center"
+                        android:maxLines="1"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="4dp"
                         android:text="@string/settings_style_liquid"
                         android:textColor="@color/text_dim"
-                        android:textSize="12sp" />
+                        android:textSize="11sp" />
 
                     <TextView
                         android:id="@+id/tile_supreme"
                         android:layout_width="0dp"
                         android:layout_height="34dp"
                         android:layout_weight="1"
-                        android:background="@drawable/bg_choice"
+                        android:background="@drawable/bg_set_choice"
+                        android:ellipsize="end"
                         android:gravity="center"
+                        android:maxLines="1"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="4dp"
                         android:text="@string/settings_style_supreme"
                         android:textColor="@color/text_dim"
-                        android:textSize="12sp" />
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/tile_neo_new"
+                        android:layout_width="0dp"
+                        android:layout_height="34dp"
+                        android:layout_marginEnd="8dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_set_choice"
+                        android:ellipsize="end"
+                        android:gravity="center"
+                        android:maxLines="1"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="4dp"
+                        android:text="@string/settings_style_neo_new"
+                        android:textColor="@color/text_dim"
+                        android:textSize="11sp" />
+
+                    <TextView
+                        android:id="@+id/tile_neo_classic"
+                        android:layout_width="0dp"
+                        android:layout_height="34dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_set_choice"
+                        android:ellipsize="end"
+                        android:gravity="center"
+                        android:maxLines="1"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="4dp"
+                        android:text="@string/settings_style_neo_classic"
+                        android:textColor="@color/text_dim"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/tile_neo_liquid"
+                        android:layout_width="0dp"
+                        android:layout_height="34dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_set_choice"
+                        android:ellipsize="end"
+                        android:gravity="center"
+                        android:maxLines="1"
+                        android:paddingStart="4dp"
+                        android:paddingEnd="4dp"
+                        android:text="@string/settings_style_neo_liquid"
+                        android:textColor="@color/text_dim"
+                        android:textSize="11sp" />
                 </LinearLayout>
             </LinearLayout>
             <TextView
@@ -246,7 +406,7 @@
                 android:minHeight="34dp"
                 android:layout_marginTop="8dp"
                 android:padding="6dp"
-                android:background="@drawable/bg_choice"
+                android:background="@drawable/bg_set_choice"
                 android:gravity="center"
                 android:text="@string/settings_style_follow"
                 android:textColor="@color/text_dim"
@@ -256,14 +416,15 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:background="@drawable/bg_card"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_set_card"
             android:orientation="vertical"
-            android:padding="12dp">
+            android:padding="14dp">
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:letterSpacing="0.08"
                 android:text="@string/settings_scroll_color"
                 android:textColor="@color/text_faint"
                 android:textSize="10sp" />
@@ -271,7 +432,7 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="10dp"
                 android:orientation="horizontal">
 
                 <TextView
@@ -280,36 +441,45 @@
                     android:layout_height="34dp"
                     android:layout_marginEnd="8dp"
                     android:layout_weight="1"
-                    android:background="@drawable/bg_choice"
+                    android:background="@drawable/bg_set_choice"
+                    android:ellipsize="end"
                     android:gravity="center"
+                    android:maxLines="1"
+                    android:paddingStart="4dp"
+                    android:paddingEnd="4dp"
                     android:text="@string/settings_scroll_color_dynamic"
                     android:textColor="@color/text_dim"
-                    android:textSize="12sp" />
+                    android:textSize="11sp" />
 
                 <TextView
                     android:id="@+id/scroll_color_classic"
                     android:layout_width="0dp"
                     android:layout_height="34dp"
                     android:layout_weight="1"
-                    android:background="@drawable/bg_choice"
+                    android:background="@drawable/bg_set_choice"
+                    android:ellipsize="end"
                     android:gravity="center"
+                    android:maxLines="1"
+                    android:paddingStart="4dp"
+                    android:paddingEnd="4dp"
                     android:text="@string/settings_scroll_color_classic"
                     android:textColor="@color/text_dim"
-                    android:textSize="12sp" />
+                    android:textSize="11sp" />
             </LinearLayout>
         </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:background="@drawable/bg_card"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_set_card"
             android:orientation="vertical"
-            android:padding="12dp">
+            android:padding="14dp">
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:letterSpacing="0.08"
                 android:text="@string/settings_language"
                 android:textColor="@color/text_faint"
                 android:textSize="10sp" />
@@ -317,7 +487,7 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="10dp"
                 android:orientation="horizontal">
 
                 <TextView
@@ -326,7 +496,7 @@
                     android:layout_height="34dp"
                     android:layout_marginEnd="8dp"
                     android:layout_weight="1"
-                    android:background="@drawable/bg_choice"
+                    android:background="@drawable/bg_set_choice"
                     android:gravity="center"
                     android:text="@string/settings_lang_zh"
                     android:textColor="@color/text_dim"
@@ -337,7 +507,7 @@
                     android:layout_width="0dp"
                     android:layout_height="34dp"
                     android:layout_weight="1"
-                    android:background="@drawable/bg_choice"
+                    android:background="@drawable/bg_set_choice"
                     android:gravity="center"
                     android:text="@string/settings_lang_en"
                     android:textColor="@color/text_dim"
@@ -350,7 +520,7 @@
                 android:minHeight="34dp"
                 android:layout_marginTop="8dp"
                 android:padding="6dp"
-                android:background="@drawable/bg_choice"
+                android:background="@drawable/bg_set_choice"
                 android:gravity="center"
                 android:text="@string/settings_lang_system"
                 android:textColor="@color/text_dim"
@@ -360,13 +530,14 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:background="@drawable/bg_card"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_set_card"
             android:orientation="vertical"
-            android:padding="12dp">
+            android:padding="14dp">
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:letterSpacing="0.08"
                 android:text="@string/settings_device"
                 android:textColor="@color/text_faint"
                 android:textSize="10sp" />
@@ -376,9 +547,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:minHeight="34dp"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="10dp"
                 android:padding="6dp"
-                android:background="@drawable/bg_choice"
+                android:background="@drawable/bg_set_choice"
                 android:gravity="center"
                 android:text="@string/settings_device_auto"
                 android:textColor="@color/text_dim"
@@ -388,13 +559,14 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:background="@drawable/bg_card"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_set_card"
             android:orientation="vertical"
-            android:padding="12dp">
+            android:padding="14dp">
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:letterSpacing="0.08"
                 android:text="@string/volume_title"
                 android:textColor="@color/text_faint"
                 android:textSize="10sp" />
@@ -404,9 +576,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:minHeight="34dp"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="10dp"
                 android:padding="6dp"
-                android:background="@drawable/bg_choice"
+                android:background="@drawable/bg_set_choice"
                 android:gravity="center"
                 android:text="@string/settings_volume_show"
                 android:textColor="@color/text_dim"
@@ -417,11 +589,15 @@
             android:id="@+id/settings_hint"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="12dp"
             android:gravity="center"
             android:text="@string/settings_hint"
             android:textColor="@color/text_faint"
             android:textSize="10sp" />
+
+        <Space
+            android:layout_width="match_parent"
+            android:layout_height="20dp" />
     </LinearLayout>
 </com.hdz.wearcontrol.AppScrollView>
 

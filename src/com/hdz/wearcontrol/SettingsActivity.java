@@ -24,10 +24,20 @@ import java.util.List;
 /** 所有常用选项共用旧版设置页；布局、卡片和选择态沿用 0.3.5。 */
 public class SettingsActivity extends Activity {
     private static final int REQUEST_BLUETOOTH = 1;
-    private static final int[] UI_IDS = {R.id.style_new, R.id.style_classic, R.id.style_liquid, R.id.style_supreme};
-    private static final int[] TILE_IDS = {R.id.tile_new, R.id.tile_classic, R.id.tile_liquid, R.id.tile_supreme};
+    private static final int[] UI_IDS = {
+            R.id.style_new, R.id.style_classic, R.id.style_liquid, R.id.style_supreme,
+            R.id.style_neo_new, R.id.style_neo_classic, R.id.style_neo_liquid};
+    private static final int[] TILE_IDS = {
+            R.id.tile_new, R.id.tile_classic, R.id.tile_liquid, R.id.tile_supreme,
+            R.id.tile_neo_new, R.id.tile_neo_classic, R.id.tile_neo_liquid};
     private AppScrollView scroll;
     private ArcIndicatorView indicator;
+    private AlertDialog deviceDialog;
+
+    @Override protected void onDestroy() {
+        if (deviceDialog != null) deviceDialog.dismiss();
+        super.onDestroy();
+    }
 
     @Override protected void attachBaseContext(Context newBase) {
         super.attachBaseContext(AppLocale.wrap(newBase));
@@ -200,7 +210,7 @@ public class SettingsActivity extends Activity {
         }
         try {
             final BluetoothAdapter adapter = adapter();
-            final List<BluetoothDevice> devices = DriverRegistry.audioDevices(adapter);
+            final List<BluetoothDevice> devices = DeviceSelector.audioDevices(adapter);
             String[] labels = new String[devices.size() + 1];
             labels[0] = getString(R.string.settings_device_auto);
             String selected = AppPrefs.deviceAddress(this);
@@ -211,7 +221,8 @@ public class SettingsActivity extends Activity {
                 labels[i + 1] = name == null ? device.getAddress() : name;
                 if (selected.equals(device.getAddress())) checked = i + 1;
             }
-            new AlertDialog.Builder(this).setTitle(R.string.settings_device)
+            if (deviceDialog != null && deviceDialog.isShowing()) return;
+            deviceDialog = new AlertDialog.Builder(this).setTitle(R.string.settings_device)
                     .setSingleChoiceItems(labels, checked, new DialogInterface.OnClickListener() {
                         @Override public void onClick(DialogInterface dialog, int which) {
                             BluetoothDevice device = which == 0 ? null : devices.get(which - 1);
@@ -221,7 +232,7 @@ public class SettingsActivity extends Activity {
                                 HeadsetController.get(SettingsActivity.this).deviceChanged();
                                 // 选择不同耳机时立即清除旧快照，避免磁贴沿用另一台设备的电量。
                                 try {
-                                    if (device == null && adapter != null) device = DriverRegistry.findTarget(adapter);
+                                    if (device == null && adapter != null) device = DeviceSelector.findTarget(adapter);
                                     String target = device == null ? "" : device.getAddress();
                                     String old = getSharedPreferences(TileStore.PREFS, MODE_PRIVATE)
                                             .getString("tile_address", "");
@@ -279,7 +290,7 @@ public class SettingsActivity extends Activity {
             for (int i = 0; i < vg.getChildCount(); i++) {
                 View child = vg.getChildAt(i);
                 if (child instanceof LinearLayout) {
-                    child.setBackgroundResource(day ? R.drawable.bg_card_day : R.drawable.bg_card);
+                    child.setBackgroundResource(day ? R.drawable.bg_set_card_day : R.drawable.bg_set_card);
                     View caption = ((LinearLayout) child).getChildAt(0);
                     if (caption instanceof TextView) {
                         ((TextView) caption).setTextColor(day ? 0xFF5A606B : 0x85FFFFFF);
@@ -292,10 +303,10 @@ public class SettingsActivity extends Activity {
     private void setChoice(int id, boolean selected, boolean day) {
         TextView chip = (TextView) findViewById(id);
         if (day) {
-            chip.setBackgroundResource(selected ? R.drawable.bg_choice_on_day : R.drawable.bg_choice_day);
+            chip.setBackgroundResource(selected ? R.drawable.bg_set_choice_on_day : R.drawable.bg_set_choice_day);
             chip.setTextColor(selected ? 0xFFFFFFFF : 0xFF111317);
         } else {
-            chip.setBackgroundResource(selected ? R.drawable.bg_choice_on : R.drawable.bg_choice);
+            chip.setBackgroundResource(selected ? R.drawable.bg_set_choice_on : R.drawable.bg_set_choice);
             chip.setTextColor(getResources().getColor(selected ? R.color.text : R.color.text_dim));
         }
         chip.setSelected(selected);
