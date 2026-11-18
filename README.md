@@ -134,7 +134,7 @@
 3. 会话隔离与线程安全：驱动只负责单次会话的握手、收发和断开，不复用已断开的旧实例，不自建重连/后台扫描或周期定时器（交给 `HeadsetController` 统一管理）；跨线程状态加 `volatile`，可优先复用 `RfcommClient` / `ProtocolWriter` 串行发送，读线程检查取消标志并在断开后停止收发，`disconnect()` 幂等释放资源，`connect()` 失败等待 1~2 秒再回调 `onError`。
 4. 解码边界与 ACK 规则：解析入口先校验空值、载荷长度和数组边界；带长度与校验码的协议在做断包/错位重同步时只接纳通过校验的帧，避免把载荷字节误认成新帧头；纯成功 ACK 若不含状态字节，不直接伪造档位或开关状态（需要时发只读查询补确认），不使用固定几秒的回包屏蔽窗口。
 5. Java 8 免 Gradle 约束与离线验证：所有新增源码用 UTF-8 编码、纯 Java 8 显式匿名内部类，严禁 lambda、`::` 方法引用、`var` 及 `java.util.function`；顺手在 `scripts/ProtocolChecks.java` 补充新协议的编解码与坏包恢复测试用例，并告知我依次执行 `scripts\build.bat`、`scripts\test-protocols.ps1`、`scripts\test-modules.ps1` 和 `scripts\test-compact.ps1`（确认 R8 压缩仍保留 `$Module` 入口）。
-6. 如需改动 UI 或磁贴（纯加驱动通常无需修改）：状态只读 `DeviceState`，动作走 `MainPanel.Actions`，音量唯一写入口必须经过 `VolumeGuard`，磁贴切档与刷新使用 `LoadAction`（不新开跳板 Activity），实时数值与点击交互不得烘死在静态位图里。
+6. 模块边界与 UI/磁贴红线：本工程已按「品牌驱动 / 四大功能面板 / 磁贴服务」做源码级可裁剪模块化（参考 README「可选模块化边界」，需通过 `scripts\test-modules.ps1` 的 8 种裁剪编译）；禁止把新逻辑直接堆回 `MainActivity` 或在核心类硬引用具体品牌/可选模块。如需改动 UI 或磁贴，状态只读 `DeviceState`，动作走 `MainPanel.Actions`，音量唯一写入口必须经过 `VolumeGuard`，磁贴切档与刷新使用 `LoadAction`（不新开跳板 Activity），实时数值与点击交互不得烘死在静态位图里。
 ```
 
 ### 第三步：几条命令一键打包出 APK
@@ -173,11 +173,22 @@ TwsClient                    统一接口(驱动标准: 连接/电量/降噪三�
 界面与磁贴(共用同一套数据契约):
 MainActivity(现有各界面风格) ── SettingsActivity(风格/语言/磁贴样式)
              └─ MainPanels ── BatteryPanel / NoisePanel / VolumePanel / EffectsPanel
-TwsTileService ── TileLayouts(新式布局树) / ClassicTileLayouts(经典样式) / TileResources(仪表盘位图)
-              └─ TileStore(prefs 数据契约) ── TileSnapshot(快照值对象) / TileState(上一次连接文案)
+TwsTileService ── TileLayouts / ClassicTileLayouts / TileResources(含 NeoTilePainter 与 SuprematistTilePainter)
+              └─ TileStore(prefs 数据契约) ── TileSnapshot(快照值对象) / TileState(连接状态与缓存时间文案)
 磁贴按键 ── LoadAction ── TwsTileService ── HeadsetController(共享会话与指令)
 旧缓存磁贴 ── ModeCyclerActivity(只更新磁贴并打开现有控制页)
 ```
+
+#### 可选模块化边界与裁剪（源码级按模块隔离）
+
+本工程在免 Gradle 构建链下实现了「核心底座 + 可插拔模块」分层，支持按需裁剪且由 `scripts/test-modules.ps1` 对 8 种组合（`no-drivers`、`no-battery`、`no-noise`、`no-volume`、`no-effects`、`no-panels`、`no-tiles`、`minimal`）做无旧产物污染的独立编译验证；可选 R8 精简构建（`scripts/build-compact.ps1` + `scripts/shrink-rules.pro`）也会保留反射入口与 protobuf 字段：
+
+| 可选模块 | 入口与装配方式 | 缺席/裁剪时的退化行为与注意事项 |
+| --- | --- | --- |
+| **品牌驱动** | 各品牌类内 `Module implements DriverModule`，在 `DriverRegistry.MODULES` 按字符串注册 | 缺席品牌自动跳过，未命中设备回退至 `StandardClient` 只读总电量；整包删 `vivo/` 时需同步去掉 `AndroidManifest.xml` 中的 `VivoProbe` receiver |
+| **四大页面面板** | `MainPanels` 通过 `Class.forName` 装载 `BatteryPanel` / `NoisePanel` / `VolumePanel` / `EffectsPanel` | 缺席面板自动隐藏其布局卡片，仅读 `DeviceState`、动作走 `MainPanel.Actions`；XML 引用的公共自定义 View 属共享 UI 底层不单独删除 |
+| **磁贴服务** | `TileStore.pushNow` 反射调用 `TwsTileService.requestUpdate`；磁贴内点击走 `LoadAction` | 移去磁贴类及 `AndroidManifest.xml` 相关组件后，可不打包 Tiles JAR，`TileStore/TileSnapshot/TileState` 仍正常服务主页 |
+| **核心公共底座** | `HeadsetController`、`DeviceSelector`、`AudioConnections`、`VolumeGuard`、`DeviceState`、`ProtocolWriter` | 统一管会话代数隔离、重试/轮询、系统音频连接探测与 70% 音量保护，所有模块共用同一套实例与安全规则 |
 
 ### 驱动标准契约
 
@@ -196,7 +207,7 @@ TwsClient（驱动标准接口）
 
 新品牌适配 = **一个驱动类 + DriverRegistry 里一行注册**，UI、布局、表冠、省电策略全部复用。
 
-品牌实现提供一个 `public static final class Module implements DriverModule`，实现 `matches(String)` 与 `create()`；在 `DriverRegistry.MODULES` 注册该类的完整名字（内部类使用 `$Module`）。匹配规则随品牌模块一起增删，缺少模块时跳过。UI 功能分别注册在 `MainPanels`，裁剪时的 manifest/XML 依赖和验证方法见交接记录。
+品牌实现提供一个 `public static final class Module implements DriverModule`，实现 `matches(String)` 与 `create()`；在 `DriverRegistry.MODULES` 注册该类的完整名字（内部类使用 `$Module`）。匹配规则随品牌模块一起增删，缺少模块时跳过。UI 功能分别注册在 `MainPanels`，具体的模块化边界与裁剪验证见上方「可选模块化边界与裁剪」。
 
 #### 2. 生命周期
 
