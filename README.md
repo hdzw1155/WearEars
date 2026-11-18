@@ -110,21 +110,31 @@
 
 ### 第二步：把下面这段提示词连同本页 README 丢给 AI
 
-打开任意 AI 编程助手（如 Cursor、Trae、Windsurf、Claude、ChatGPT、DeepSeek 等）。如果 AI 读不到 GitHub 仓库，只需把**本页 README 全文** + 仓库里的 **`src/com/hdz/wearcontrol/skeleton/SkeletonClient.java`** + **你找到的耳机协议资料**一起粘贴给它，并发送以下指令：
+打开任意 AI 编程助手（如 Cursor、Trae、Windsurf、Claude、ChatGPT、DeepSeek 等）。如果 AI 读不到 GitHub 仓库，只需把**本页 README 全文** + 仓库里的 **`src/com/hdz/wearcontrol/skeleton/SkeletonClient.java`**（可一并附上 **`TwsClient.java`**、**`DriverRegistry.java`**、**`RfcommClient.java`**、**`ProtocolWriter.java`**）+ **你找到的耳机协议资料**一起粘贴给它，并发送以下指令：
 
 ```text
 我要给 Wear OS 开源项目 WearEars 适配一个新品牌耳机驱动：【在这里填你的耳机品牌与型号】。
 项目仓库地址：https://github.com/hdzw1155/WearEars
-（能联网读仓库的话，请自行读取仓库里的 README 与 src/com/hdz/wearcontrol/skeleton/SkeletonClient.java）
+（能联网读仓库的话，请先读取 README、src/com/hdz/wearcontrol/TwsClient.java、DriverRegistry.java、RfcommClient.java、ProtocolWriter.java 和 skeleton/SkeletonClient.java）
 
 我给你提供三份材料：
-1. 本消息附带的 README 全文（内含「驱动标准契约」与「协议表模板」两节）；
+1. 本消息附带的 README 全文（内含「驱动标准契约」与「协议表模板」）；
 2. 仓库里的填空骨架代码 src/com/hdz/wearcontrol/skeleton/SkeletonClient.java（读不到仓库的话我随后贴给你）；
 3. 我找到的该耳机蓝牙协议资料 / 开源逆向参考：【在这里粘贴协议文档、代码或抓包记录】。
 
 请你严格按以下两步帮我完成开发：
-第一步：先帮我把协议资料整理并填入 README 的「协议表模板」中，缺失或没把握的命令留空，绝不允许臆造帧格式或指令字节；
-第二步：严格遵守「驱动标准契约」与实现守则（纯 Java 8 匿名内部类、严禁使用 lambda、未真机验证一律返回 VERIF_UNTESTED、没有的能力做空实现），基于 SkeletonClient.java 写出完整的驱动类代码，并明确告诉我需要在 DriverRegistry.MODULES 里注册哪一行代码。
+
+第一步：整理协议并填表
+- 先把协议资料填入 README 的「协议表模板」中，缺失或没把握的命令留空，绝不允许臆造帧格式、指令字节或能力支持；
+- 区分同一品牌下的不同子型号：没有实证依据时不要套用相近型号的协议（如高配/低配协议分叉或无 ANC 型号必须写明排除条件），无法确认的电量用 0xFF 未知，不拿左右耳电量估算或伪造充电盒电量。
+
+第二步：基于 SkeletonClient.java 编写完整驱动并给出验证项
+1. 模块入口与注册：按 README 契约在驱动类内提供 `public static final class Module implements DriverModule`（包含无参构造、`matches(String)`、`create()`），并告诉我需要在 `DriverRegistry.MODULES` 的哪一位置注册完整类名（精确品牌词放前，泛词禁止抢先命中；不可硬编码到旧架构数组）。
+2. 能力分层与诚实标注：正确区分 `potentialCaps()`（候选可查能力，明确无降噪型号不得包含 `CAP_NOISE`）与 `caps()`（当前会话收到真包确认后的可写能力）；未知值按契约返回 `0xFF` / `-1` / `null`；如支持内置 EQ，沿用 `CAP_EQUALIZER`、`SoundPreset` 与 `equalizerPresets()`，不在 UI 写品牌分支；新驱动 `verifLevel()` 一律返回 `VERIF_UNTESTED`。
+3. 会话隔离与线程安全：驱动只负责单次会话的握手、收发和断开，不复用已断开的旧实例，不自建重连/后台扫描或周期定时器（交给 `HeadsetController` 统一管理）；跨线程状态加 `volatile`，可优先复用 `RfcommClient` / `ProtocolWriter` 串行发送，读线程检查取消标志并在断开后停止收发，`disconnect()` 幂等释放资源，`connect()` 失败等待 1~2 秒再回调 `onError`。
+4. 解码边界与 ACK 规则：解析入口先校验空值、载荷长度和数组边界；带长度与校验码的协议在做断包/错位重同步时只接纳通过校验的帧，避免把载荷字节误认成新帧头；纯成功 ACK 若不含状态字节，不直接伪造档位或开关状态（需要时发只读查询补确认），不使用固定几秒的回包屏蔽窗口。
+5. Java 8 免 Gradle 约束与离线验证：所有新增源码用 UTF-8 编码、纯 Java 8 显式匿名内部类，严禁 lambda、`::` 方法引用、`var` 及 `java.util.function`；顺手在 `scripts/ProtocolChecks.java` 补充新协议的编解码与坏包恢复测试用例，并告知我依次执行 `scripts\build.bat`、`scripts\test-protocols.ps1`、`scripts\test-modules.ps1` 和 `scripts\test-compact.ps1`（确认 R8 压缩仍保留 `$Module` 入口）。
+6. 如需改动 UI 或磁贴（纯加驱动通常无需修改）：状态只读 `DeviceState`，动作走 `MainPanel.Actions`，音量唯一写入口必须经过 `VolumeGuard`，磁贴切档与刷新使用 `LoadAction`（不新开跳板 Activity），实时数值与点击交互不得烘死在静态位图里。
 ```
 
 ### 第三步：几条命令一键打包出 APK
@@ -134,6 +144,7 @@
 1. 首次配置环境：运行 `scripts\setup-env.bat`
 2. 抓磁贴依赖：运行 `scripts\fetch-libs.bat`（从 Google Maven 下载 5 个 androidx 磁贴 jar，约 1.4MB，只需跑一次，`libs/` 不入库）
 3. 编译生成安装包：运行 `scripts\build.bat`（纯 Java，秒出 APK）
+4. 离线回归自检（推荐）：依次运行 `scripts\test-protocols.ps1`、`scripts\test-modules.ps1`、`scripts\test-compact.ps1` 和 `py scripts\test-interactions.py`，确认新协议解析、模块裁剪和 R8 入口都未破坏后再装表实测（离线检查不能替代真机蓝牙与固件兼容验证）。
 
 > ⚠️ **AI 折腾风险提示**：AI 生成的代码与蓝牙私有指令存在翻车可能，实验性功能切换瞬间可能出现突发爆音或音量突变。测试前请务必**摘下耳机并调低音量**，注意用机与听力安全！如果跑不通，用 `adb logcat` 抓一段原始十六进制日志丢回给 AI 对照修正即可。
 
@@ -204,6 +215,7 @@ TwsClient（驱动标准接口）
 | `CAP_BATTERY_SINGLE` | 只有整机总电量 | 电量区切成单格「总电量」，磁贴也换成单电量版 |
 | `CAP_SPATIAL` | 空间音频开关 | 显示开发者区空间音频开关（实验） |
 | `CAP_DEEPX` | 音效档位 | 显示开发者区音效按钮（实验） |
+| `CAP_EQUALIZER` | 内置 EQ 预设 | 显示开发者区内置 EQ 选项（需配合 `equalizerPresets()` 与 `onEqualizer(id)`） |
 
 没有的能力：相关 query/set 方法做**空实现**即可，不在候选能力中声明；界面不会提供可操作入口。
 
@@ -233,16 +245,16 @@ HeadsetController 将驱动回调切到主线程并检查会话代数；UI 面�
 
 #### 6. 实现守则（都是踩过坑换来的）
 
-1. `socket`/`out` 等跨线程字段必须 `volatile`（连接线程写、UI 线程读）。
-2. 读流错位时**单字节滑动重同步**找帧头，整块丢弃会漏真帧。
+1. `socket`/`out` 等跨线程字段必须 `volatile`（连接线程写、UI 线程读）；每次连接使用全新驱动实例，不在断开后复用旧对象或跨会话共享残留线程。
+2. 读流错位时先校验长度和边界，带校验码的帧只接纳通过校验的候选帧（不可盲目 `drop(1)` 把载荷里的偶发字节误判成新帧头）。
 3. 未知帧全量打日志（hex），这是协议分析的 ground truth。
-4. 不支持的操作（如华为通透）用 `onError` 明说，不要静默。
+4. 不支持的操作（如华为通透）用 `onError` 明说，不要静默；纯成功 ACK 若不含状态字节，不直接伪造档位/开关状态，也不使用固定几秒的回包屏蔽窗口。
 5. connect 失败先小睡 1~2 秒再回调：上一个连接刚死时耳机侧槽位要几秒才释放，立刻重试会陷入连-断循环。
-6. 纯 Java 8、匿名内部类，禁 lambda（免 Gradle 构建链没有 core-lambda-stubs）。
+6. 纯 Java 8、显式匿名内部类，严禁 lambda、`::` 方法引用、`var` 与 `java.util.function`（免 Gradle 构建链没有 `core-lambda-stubs`）。
 
 #### 7. 注册
 
-在 `DriverRegistry` 里加一个 `DriverInfo`（`brandName` / `matchWords` / `isFallback` / `create`）并放进 `DRIVERS` 数组。精确品牌词排前面，泛词（`tws`/`air`/`buds` 之类）只能做兜底殿后。
+在驱动类内提供 `public static final class Module implements DriverModule`（实现 `matches(String)` 和 `create()`，无参构造会被反射调用且已在 `scripts/shrink-rules.pro` 保留），再将完整类名（`...$Module`）按顺序放进 `DriverRegistry.MODULES`。精确品牌词排前面，泛词（`tws`/`air`/`buds` 之类）只能做兜底殿后。
 
 ## 📋 协议表模板（适配新耳机的必填表，可让 AI 代填）
 
@@ -276,10 +288,10 @@ FF | VERB | 00 | LEN | VENDOR(2B 大端) | CMD(2B 大端) | PAYLOAD(LEN 字节)
 | 降噪 | 0x… | 0x… | 0x… | 0x… | 00=降噪 01=关 02=通透 | 📄 |
 | （更多…） | | | | | | |
 
-### 3. 能力自评（caps）
+### 3. 能力自评（caps / potentialCaps）
 
-勾选本协议当前有把握的：`☐NOISE` `☐BATTERY` `☐SPATIAL` `☐DEEPX`
-（没把握的一律不勾，对应方法留空实现）
+勾选本协议当前有把握的：`☐CAP_NOISE` `☐CAP_BATTERY` `☐CAP_BATTERY_SINGLE` `☐CAP_SPATIAL` `☐CAP_DEEPX` `☐CAP_EQUALIZER`
+（`potentialCaps()` 仅列可查候选能力，明确无降噪的型号必须排除 `CAP_NOISE`；写入仍以收到回包确认后的 `caps()` 为准，没把握的一律留空实现）
 
 ### 4. 坑位记录（适配过程中逐条追加，给后人）
 
