@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <!-- 状态栏小图标: 耳机点 + 声波 -->
+    <path android:pathData="M12,10.4 a1.6,1.6 0 1,0 0.01,0" android:fillColor="#FFFFFF" />
+    <path android:pathData="M15.4,8.8 a5,5 0 0,1 0,6.4"
+        android:strokeColor="#FFFFFF" android:strokeWidth="2" android:fillColor="#00000000" />
+    <path android:pathData="M18.2,6.6 a8.6,8.6 0 0,1 0,10.8"
+        android:strokeColor="#FFFFFF" android:strokeWidth="2" android:fillColor="#00000000" />
+</vector>

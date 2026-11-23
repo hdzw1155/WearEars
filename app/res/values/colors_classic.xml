@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 经典界面专用配色: 与「视觉统一」前一致, 只给 activity_main_classic 使用 -->
+<resources>
+    <color name="c_bg">#FF0A0A0A</color>
+    <color name="c_card">#FF1C1C1E</color>
+    <color name="c_text">#FFFFFFFF</color>
+    <color name="c_text_dim">#FF8E8E93</color>
+    <color name="c_text_faint">#FF6E6E73</color>
+    <color name="c_text_icon">#FF9A9A9E</color>
+    <color name="c_accent">#FF3478F6</color>
+    <color name="c_ok">#FF34C759</color>
+    <color name="c_warn">#FFFF9F0A</color>
+    <color name="c_danger">#FFFA5151</color>
+    <color name="c_track">#FF3A3A3C</color>
+    <color name="c_stroke">#14FFFFFF</color>
+</resources>

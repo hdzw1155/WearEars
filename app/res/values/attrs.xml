@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- New-series theme tokens, consumed by activity_main_neo.xml -->
+    <attr name="neoBg" format="color" />
+    <attr name="neoText" format="color" />
+    <attr name="neoTextDim" format="color" />
+    <attr name="neoTextFaint" format="color" />
+    <attr name="neoAccent" format="color" />
+    <attr name="neoWarn" format="color" />
+    <attr name="neoCtaText" format="color" />
+    <attr name="neoCard" format="reference" />
+    <attr name="neoHero" format="reference" />
+    <attr name="neoPill" format="reference" />
+    <attr name="neoIconBtn" format="reference" />
+    <attr name="neoCta" format="reference" />
+    <attr name="neoChipWarn" format="reference" />
+    <attr name="neoSwitchThumb" format="reference" />
+    <attr name="neoSwitchTrack" format="reference" />
+</resources>

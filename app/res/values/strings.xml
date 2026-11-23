@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">WearEars</string>
+    <string name="status_idle">未连接</string>
+    <string name="status_connecting">连接中…</string>
+    <string name="noise_title">噪声控制</string>
+    <string name="noise_waiting">正在确认降噪能力</string>
+    <string name="volume_locked">锁定时可调小。点锁按钮或长按音量条，松手后可拖动增大。</string>
+    <string name="volume_high_guard">已触发 70% 音量保护。请松手，再次点锁或长按解锁后才能继续增大。</string>
+    <string name="tile_connection_unknown">连接待确认</string>
+    <string name="tile_cached_at">缓存 %1$s</string>
+    <string name="tile_switching">切换中</string>
+    <string name="btn_anc">降噪开</string>
+    <string name="btn_off">降噪关</string>
+    <string name="btn_trans">通透</string>
+    <string name="btn_refresh">刷新电量</string>
+    <string name="dev_section">开发者设置</string>
+    <string name="tile_desc">耳机电量与降噪控制</string>
+    <string name="dev_unlocked_toast">开发者设置已开启</string>
+    <string name="spatial_switch">空间音频</string>
+    <string name="spatial_caption">实验功能，作者感觉无效；目前仅部分 vivo 机型（TWS Air 3 Pro）验证过；⚠️ 切换前必须摘下耳机、音量调至最低，谨防突发爆音损伤听力</string>
+    <string name="spatial_toast">实验功能：请摘下耳机调试，音效可能突变</string>
+    <string name="spatial_dialog_title">实验性功能</string>
+    <string name="spatial_dialog_msg">此开关为实验功能。vivo TWS Air3 Pro 可以读回开关状态，实际听感仍待验证。\n\n⚠️ 切换可能引起音量突变、爆音或啸叫。请先摘下耳机并把音量调至最低，确认安全后再佩戴。\n\n是否已了解风险并继续？</string>
+    <string name="deepx_label">DeepX 音效</string>
+    <string name="equalizer_label">内置 EQ（实验）</string>
+    <string name="deepx_caption">因不明原因，点击后请等待几秒生效；目前仅部分 vivo 机型（TWS Air 3 Pro）验证过；调试时请先摘下耳机、调低音量，请不要连续切换，功能可能会失效</string>
+    <string name="dialog_ok">已了解风险，继续</string>
+    <string name="dialog_cancel">取消</string>
+    <string name="global_disclaimer_title">免责声明</string>
+    <string name="global_disclaimer_msg">本应用为非官方、未获授权的第三方学习研究工具，通过逆向私有协议控制耳机，不收集、不上传任何数据。\n开源地址：https://github.com/hdzw1155/WearEars\n\n⚠️ 安全提示：私有指令未经官方认证，可能引发突发爆音、啸叫或音量突变，有损伤听力的风险。首次连接新机型、固件升级后首次使用、以及每次开启「开发者设置」内的实验性功能前，务必先摘下耳机（勿佩戴入耳）并将音量调至最低，确认无异常后再佩戴；请勿在驾驶、骑行或操作机械等需要集中注意力的场景下使用。\n\n听力健康无法挽回，请谨慎操作。使用本应用的一切风险由您自行承担。\n\n是否同意并继续？</string>
+    <string name="disclaimer_page_msg">本应用为非官方、未获授权的第三方学习研究工具，通过逆向私有协议控制耳机，不收集、不上传任何数据。\n开源地址：https://github.com/hdzw1155/WearEars\n\n⚠️ 安全提示：私有指令未经官方认证，可能引发突发爆音、啸叫或音量突变，有损伤听力的风险。首次连接新机型、固件升级后首次使用、以及每次开启「开发者设置」内的实验性功能前，务必先摘下耳机（勿佩戴入耳）并将音量调至最低，确认无异常后再佩戴；请勿在驾驶、骑行或操作机械等需要集中注意力的场景下使用。\n\n听力健康无法挽回，请谨慎操作。使用本应用的一切风险由您自行承担。</string>
+    <string name="dialog_agree">我已知晓并同意</string>
+    <string name="dialog_refuse">不同意并退出</string>
+    <string name="disclaimer">免责声明：本应用为个人学习研究作品，与 vivo / 华为 / 小米 / 漫步者 / 三星 / 高通等厂商均无关联。「开发者设置」内为实验性功能，指令来自社区反编译推断并经真机探测校准，目前仅部分机型（如 vivo TWS Air 3 Pro）验证过，其他耳机不一定适配。\n开源地址：https://github.com/hdzw1155/WearEars\n⚠️ 听力安全警告：实验功能切换瞬间可能出现突发爆音、啸叫或音量突变，每次操作前务必摘下耳机（勿佩戴入耳）并将音量调至最低，确认无异常后再佩戴；听力损伤不可逆，请务必谨慎。请勿在驾驶、骑行等需要集中注意力的场景下使用。\n使用本应用的一切风险——包括但不限于听力不适、财产损失、耳机固件异常、数据丢失及软件安全风险——由使用者自行承担，作者不对任何直接或间接损失负责。</string>
+
+    <!-- 状态行 / 副行 / 芯片 (2026-10 UI 重构) -->
+    <string name="status_connected">已连接</string>
+    <string name="status_bt_off">蓝牙未打开</string>
+    <string name="status_no_perm">需要蓝牙权限</string>
+    <string name="status_no_device">没找到耳机</string>
+    <string name="status_reconnecting">正在重连…</string>
+    <string name="status_conn_failed">连接失败</string>
+    <string name="status_mode_failed">切换失败，点按重试</string>
+    <string name="status_refresh_unconfirmed">未能确认刷新结果，请重试</string>
+    <string name="sub_bt_off_action">从屏幕顶部下划打开</string>
+    <string name="sub_no_perm_action">点一下授权</string>
+    <string name="sub_no_device_action">在手表设置里配对</string>
+    <string name="status_multiple_devices">连接了多台音频设备</string>
+    <string name="sub_select_device_action">请在应用设置中指定耳机</string>
+    <string name="tile_disclaimer_required">请打开应用确认免责</string>
+    <string name="sub_reconnecting_hint">保持耳机在附近</string>
+    <string name="sub_reconnect_paused">自动重连已暂停</string>
+    <string name="sub_model_unverified">未验证机型 · 部分功能可能无效</string>
+    <string name="sub_batt_pending">电量待刷新</string>
+    <string name="sub_low_battery">%1$s %2$d%%，请充电</string>
+    <string name="sub_charging_case">盒在充电</string>
+    <string name="sub_charging_ear">%1$s耳充电中</string>
+    <string name="sub_no_ack">耳机未响应</string>
+    <string name="sub_not_connected">还没连上耳机</string>
+    <string name="sub_err_out_of_range">耳机不在附近</string>
+    <string name="sub_err_occupied">耳机已被两台设备占用</string>
+    <string name="sub_err_pairing">配对失效，请重配</string>
+    <string name="sub_err_timeout">12 秒没有响应</string>
+    <string name="sub_refreshing">刷新中…</string>
+    <string name="sub_switched">已切到%1$s</string>
+    <string name="sub_deepx_pending">生效中…</string>
+    <string name="sub_unconfirmed">未确认</string>
+    <string name="chip_low_battery">低电量</string>
+    <string name="chip_unverified">未验证</string>
+    <string name="cta_reconnect">重新连接</string>
+    <string name="cta_rescan">重新检测</string>
+    <string name="label_left">左耳</string>
+    <string name="label_right">右耳</string>
+    <string name="label_case">充电盒</string>
+    <string name="label_total">总电量</string>
+    <string name="battery_title">电量</string>
+    <string name="spatial_state_unknown">耳机状态未知</string>
+    <string name="spatial_waiting">等待耳机确认…</string>
+    <string name="spatial_unconfirmed">耳机未确认空间音频切换</string>
+    <string name="spatial_scenes_on_phone">声场请在兼容手机上切换</string>
+    <string name="spatial_caption_short">实验性功能 · 仅 Air 3 Pro 可尝试 · 切换前摘耳机</string>
+    <string name="deepx_std">标准</string>
+    <string name="deepx_vocal">人声</string>
+    <string name="deepx_bass">低音</string>
+    <string name="deepx_treble">高音</string>
+    <string name="deepx_book">听书</string>
+    <string name="deepx_warn_line">切换可能失效，勿连续点</string>
+    <string name="disclaimer_short">本应用为非官方第三方工具，私有指令可能致突发爆音，使用风险自负。</string>
+    <string name="disclaimer_view_full">查看完整声明</string>
+    <string name="disclaimer_expand">详细说明</string>
+
+    <!-- 磁贴 -->
+    <string name="tile_title">耳机控制</string>
+    <string name="tile_default_name">TWS 耳机</string>
+    <string name="tile_last_seen">上一次连接 %1$s</string>
+    <string name="tile_ring_left">左</string>
+    <string name="tile_ring_right">右</string>
+    <string name="tile_ring_case">盒</string>
+    <string name="tile_mode_off">关闭</string>
+    <string name="tile_mode_trans">通透</string>
+    <string name="tile_mode_anc">降噪</string>
+    <string name="tile_open">打开控制</string>
+    <string name="tile_mode_off_selected">关闭，当前已选中</string>
+    <string name="tile_mode_trans_selected">通透，当前已选中</string>
+    <string name="tile_mode_anc_selected">降噪，当前已选中</string>
+
+    <!-- 2026-10 视觉统一: 空间音频副标题拆两行 + 免责声明分段 -->
+    <string name="spatial_caption_lines">实验功能 · 切换前请摘下耳机</string>
+    <string name="disclaimer_heading_official">非官方工具</string>
+    <string name="disclaimer_body_official">本应用为非官方、未获授权的第三方学习研究工具，通过逆向私有协议控制耳机，不收集、不上传任何数据。\nGitHub 开源：https://github.com/hdzw1155/WearEars</string>
+    <string name="disclaimer_heading_safety">安全提示</string>
+    <string name="disclaimer_body_safety">私有指令未经官方认证，可能引发突发爆音、啸叫或音量突变，有损伤听力的风险。首次连接新机型、固件升级后首次使用、以及开启「开发者设置」内的实验性功能前，务必先摘下耳机（勿佩戴入耳），并将音量调至最低。</string>
+    <string name="disclaimer_heading_risk">风险自担</string>
+    <string name="disclaimer_body_risk">听力健康无法挽回，请谨慎操作。使用本应用的一切风险由您自行承担。</string>
+
+    <!-- 音量(三种界面风格共用的一张卡) -->
+    <string name="volume_title">音量</string>
+
+    <!-- 空间音频开关标题 -->
+    <string name="spatial_title_short">空间音频</string>
+    <string name="volume_switch_hint">在主界面显示音量条，开启后永久保留</string>
+
+
+    <string name="label_left_short">左</string>
+    <string name="label_right_short">右</string>
+    <string name="label_case_short">盒</string>
+
+    <!-- 设置页 -->
+    <string name="settings_title">设置</string>
+    <string name="settings_ui_style">界面风格</string>
+    <string name="settings_language">语言</string>
+    <string name="settings_lang_zh">中文</string>
+    <string name="settings_lang_en">English</string>
+    <string name="settings_tile_style">磁贴样式</string>
+    <string name="settings_style_follow">跟随界面</string>
+    <string name="settings_scroll_color">滚动条配色</string>
+    <string name="settings_scroll_color_dynamic">科技炫彩</string>
+    <string name="settings_scroll_color_classic">经典青蓝</string>
+    <string name="settings_hint">改完立即生效</string>
+    <string name="cta_settings">设置</string>
+    <string name="settings_lang_system">跟随系统</string>
+    <string name="settings_device">控制的耳机</string>
+    <string name="settings_device_auto">自动选择</string>
+    <string name="settings_volume_show">显示音量条</string>
+    <string name="settings_volume_hide">隐藏音量条</string>
+    <string name="tile_refresh_hint">，点按刷新电量</string>
+    <string name="settings_style_supreme">至上</string>
+    <string name="settings_style_neo_new">新极简</string>
+    <string name="settings_style_neo_classic">新经典</string>
+    <string name="settings_style_neo_liquid">新液位</string>
+    <string name="sup_sec_power">01 / 电量</string>
+    <string name="sup_sec_acoustic">02 / 降噪控制</string>
+    <string name="sup_sec_control">02 / 控制</string>
+    <string name="sup_sec_dev">DEV / 实验功能</string>
+    <string name="sup_sec_notice">使用须知 / NOTICE</string>
+    <string name="sup_open_settings">打开设置 · 风格 / 设备 →</string>
+    <string name="sup_swipe_hint">弧滑翻页</string>
+    <string name="sup_vol_guard_hint">点音符或长按音量条，松手后向右拖动</string>
+    <string name="sup_vol_unlocked_hint">已解锁 · 拖/-+</string>
+    <string name="sup_noise_disconnected">未连接耳机 · 点按任一档位重连</string>
+    <string name="sup_noise_unsupported">当前机型协议不支持主动降噪</string>
+    <string name="sup_dev_unlocked_jump">实验页已解锁 · 点此跳转 →</string>
+    <string name="sup_notice_summary">• 非官方逆向协议研究工具，不收集也不上传数据。\n• 首次连接或开实验功能前务必先摘耳机、调低音量。\n• 听力健康不可逆，使用本应用风险由您自行承担。\n• GitHub：https://github.com/hdzw1155/WearEars</string>
+    <string name="sup_full_notice">查看完整条款 →</string>
+    <string name="settings_theme">设置外观</string>
+    <string name="settings_theme_night">夜晚</string>
+    <string name="settings_theme_day">白天</string>
+    <string name="status_profiles_pending">音频连接状态待确认</string>
+    <string name="sub_profiles_retry">点按重试，或在应用设置中指定耳机</string>
+    <string name="status_pin_unavailable">指定的耳机不可用</string>
+    <string name="sub_connect_audio">请连接已配对耳机，然后重试</string>
+</resources>
