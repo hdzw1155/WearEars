@@ -1,0 +1,11 @@
+{
+  "vivo": "vivo.VivoGaiaClient",
+  "huawei": "huawei.HuaweiSppClient",
+  "xiaomi": "xiaomi.XiaomiMmaClient",
+  "oppo": "oppo.OppoOpoClient",
+  "edifier": "EdifierClient",
+  "rose": "RoseLinkClient",
+  "nicehck": "NiceHckClient",
+  "sony": "SonyClient",
+  "technics": "TechnicsClient"
+}

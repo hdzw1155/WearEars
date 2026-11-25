@@ -1,49 +1,49 @@
 # WearEars 🎧⌚
 
-> 项目原名 `tws-control-for-wear`，2026-10 起更名为 **WearEars**；旧的仓库链接会自动跳转到新地址。
+> 原项目名 `tws-control-for-wear`，现已重构并更名为 **WearEars**。
 
 [![Release](https://img.shields.io/github/v/release/hdzw1155/WearEars)](https://github.com/hdzw1155/WearEars/releases)
 [![License](https://img.shields.io/github/license/hdzw1155/WearEars)](https://github.com/hdzw1155/WearEars/blob/main/LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Wear%20OS%203%2B%20%7C%20Android%2011%2B-3DDC84?logo=android&logoColor=white)
-![Dependencies](https://img.shields.io/badge/dependencies-5%20androidx%20jars-orange)
+![Version](https://img.shields.io/badge/version-0.5.0--exp-blue)
 ![Data collection](https://img.shields.io/badge/data_collection-none-success)
-![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen)
 
-**支持系统 / Supported Platforms**：
-* **中文**：支持 **Wear OS 3+** 手表，并从 v0.4.1 起初步适配 **Android 11+** 手机（基于 API 30–34 构建；手机端目前已能直接安装，对竖屏进度条和排版做了初步调整，部分屏幕比例还在继续适配）。
-* **English**: Supports **Wear OS 3+** smartwatches and **Android 11+** phones (initial phone adaptation added in v0.4.1, built for API 30–34).
+在 **Wear OS 3+ 手表**和 **Android 11+ 手机**上跨品牌查看 TWS 蓝牙耳机电量、切换降噪与音效的开源工具（应用 ID：`com.hdz.wearcontrol`，当前版本：`0.5.0-exp` / `versionCode 16`，最低 API 30，目标 API 34）。纯本地蓝牙通信，不联网、不收集也不上传任何数据。
 
-> ⚠️ **AI 风险警告**：本项目深度依赖 AI 生成代码与逆向的私有蓝牙协议，AI 可能给出错误指令——**存在不可挽回地损坏你的耳机、手表或其他设备，以及造成听力损伤、数据丢失的风险**。实验性操作前请务必摘下耳机并调低音量，详见下方免责声明。
+> ⚠️ **风险提示**：本项目部分品牌协议来自社区逆向资料，并包含大量 AI 辅助编写的代码。私有蓝牙指令未经原厂授权，切换实验性功能或响铃寻机时存在突发爆音、音量突变、固件异常甚至损坏设备的风险。**首次试用新机型或点击标有「实验」的功能前，请务必摘下耳机并调低系统音量。**
 
-**我们的目标是：让 Wear OS 手表用户都能跨品牌控制、适配自己的 TWS 蓝牙耳机。**
+---
 
-不用羡慕原厂全家桶生态——在 **Wear OS 3+ 手表**（如三星 Galaxy Watch 等）上，你可以**不依赖手机**，通过蓝牙切换耳机的降噪/通透模式、查看左/右耳与充电盒电量；耳机通常还能同时保持与手机的正常音频连接。
+## 0.5.0-exp 做了什么更新
 
-更进一步，这是一个**为 AI 自由适配而生**的开源项目：哪怕你完全不会写代码，也可以尝试把本页面和手头耳机的开源协议资料一并丢给 AI，让它照着项目内置的填空骨架帮你生成专属耳机驱动——**欢迎所有人 Fork、魔改、适配你自己的耳机！**
+相比早期的 `0.4.x` 版本，这一版把底层通信、功能框架、界面和手机端兼容性整体重构了一遍：
 
-> 💡 **项目说明**：本项目是单品牌前作 [vivo-tws-watch-control](https://github.com/hdzw1155/vivo-tws-watch-control) 的多品牌重构版，基于 MIT 协议开源，纯本地运行，不收集也不上传任何数据。
+1. **手机端「按需短连接」与防抢占守卫（解决同品牌手机反复断连）**
+   - 同品牌手机（如 ColorOS / OriginOS / HyperOS / HarmonyOS）的系统自带耳机服务优先级更高，长期占着 RFCOMM 通道会被系统每隔几秒踢掉，导致界面在「已连接 ↔ 未连接」之间来回跳。
+   - `0.5.0-exp` 在手机端默认启用 **按需短连接**：打开后同步完首屏状态，空闲 3.8 秒自动释放通道进入「按需待命」，界面数据保留；点击任意控制项时自动重连执行，完成后空闲 2.5 秒再归还通道（响铃寻机期间不会提前断开）。
+   - 同时加入了 12 秒稳定存活门禁，避免被秒踢后进入无限重连耗电循环；异品牌手机用户也可以在设置页的「手机连接策略」里切回「持续长连接」。手表端保持原本的常连逻辑不变。
+2. **通用特性引擎：更多耳机进阶功能直接上主界面**
+   - 在降噪三态与电量之外，统一建模了**降噪细分档位、通透子模式、抗风噪、内置 EQ / vivo DeepX、耳机硬件空间音频与头部追踪、游戏低延迟、双设备连接、佩戴检测/状态、查找耳机、固件版本**。
+   - 不再把内置 EQ 和硬件空间音频藏在“连点 5 下开发者设置”里，按设备实际探测结果直接显示在主界面 / 至上分页；未真机完整验证的条目统一标 `实验` 徽章，首次点击弹出听觉安全确认。
+   - 修复了同时支持抗风噪和降噪细分档位时细分档位被顶掉或点不动的问题，以及手表小圆屏下 `实验` 徽章文字被挤扁的问题。
+3. **本机单端空间音频 + 360° 双耳 HRTF 实验室**
+   - **明确区分边界**：主界面严格把「耳机硬件空间音频（厂商私有协议）」和「手表 / 手机空间音频（单端）」分栏标注。本机单端空间音频**只作用于当前安装 WearEars 这台设备本机播放的媒体音频**；如果手机在播歌、手表只当遥控器，手表端的本机空间音频不会生效。
+   - **本机单端 DSP**：基于 Android `DynamicsProcessing`（10 段 Pre-EQ + 3 段多段压缩 + 限幅）、会话级插入式 `EnvironmentalReverb`（绝不在全局 session 0 挂混响）与探测式 `Virtualizer`，提供「自然宽阔 / 影院 / 音乐厅 / 人声棚」4 种声场，任意蓝牙耳机可用。
+   - **防叠加仲裁**：检测到耳机硬件空间音频或系统自带 `Spatializer` 开启时自动旁路，避免双重空间化失真。
+   - **360° 双耳 HRTF 实验室**：内置纯 Java 11 零 GC 48 kHz 双耳声学内核（ITD / ILD / 耳廓陷波 / 早反射与 Hadamard FDN）与内置试听音源，手表支持表冠 15° 刻度调节，手机支持触屏拖拽。
+4. **四套皮肤统一 & 双端适配**
+   - 统一了 **至上（Suprematist）、新极简、新经典、新液位** 四套界面的主屏、设置页、空间实验室与弹窗风格，支持设置页日夜切换与中英文切换。
+   - 手机端自动切为 480dp 居中列、原生垂直滚动条和「至上」底部翻页条，修复了 Android 11 手机启动时的 `AppScrollView` 空指针闪退。
+5. **多层安全门禁与耗电治理**
+   - **查找耳机三层保护**：检测到入耳时直接拦截响铃 → 发声前弹出听力安全确认 → 响铃中提供一键停止窗、30 秒自动停响，以及放回耳中/断连/切后台时的实时急停。
+   - **70% 音量护栏**：进入和离开界面自动上锁（锁定时只能调小）；超过 70% 需二次确认；如果通过实体键把音量调回 70% 以下，会自动撤销之前的高音量授权。
+   - **省电优化**：零 WakeLock、零常驻前台服务、零后台 BLE 扫描；切后台立即断链并停动画；手机端彻底跳过 Wear OS 磁贴蓝牙广播唤醒；本机空间音频 DSP 在音乐暂停 45 秒后自动释放（含外部播放器暂停但不关闭 AudioSession 的场景）。
 
-## 📊 当前支持情况与核心功能
-
-* **手表端**：主力适配 **Wear OS 3+** 手表，我自己在三星 Galaxy Watch7 上长期实测；其他 Wear OS 3 及以上手表理论上也能直接用。
-* **手机端（v0.4.1 起初步适配）**：去掉了强制限定手表安装的限制，现在 **Android 11+** 手机也能直接装 APK 了。针对手机长方形屏幕改了右侧直边滚动条和左侧翻页条、去掉了圆屏椭圆裁切，也把「至上」风格的画布和状态栏/小白条安全区调了一下。手机端才刚起步，不同比例屏幕还在慢慢调，有显示问题欢迎反馈。
-* **主要功能**：
-  * **切降噪**：降噪 / 关闭 / 通透三档切换，当前状态会直接高亮显示。
-  * **看电量**：实时显示左耳、右耳、充电盒电量与充电状态；会自动记住上次电量，切回前台自动同步，断连后也会自动重试（最多 3 次）。
-  * **表圈 / 表冠与滚动反馈**：手表上转表圈或表冠按位移有细分段落微震，滑到头有触底反馈；圆表右侧是 1/4 短弧滚动条，手机端自动切为直边滚动条（设置页里可以换动态渐变或经典青蓝配色），滑动带回弹。
-  * **桌面磁贴**：在磁贴内切降噪、点电量区域刷新；“打开控制”才进入 App。连接状态单独查询，未连接或无法确认时不展示旧数值；电量缓存标明时间，切换中的目标与确认档位分开。
-  * **音量防误触**：每次进入默认锁定，可直接调小。从 0 调大时，点一下音量条上的锁（「至上」点音符），松手后再向右拖；也可以长按音量条解锁。到达不超过 70% 的系统档位会停下，需要再次确认才能继续增大。降回保护档以下会重新设防。
-  * **七套界面风格 + 设置页「白天 / 夜晚」切换**：在原有的极简、液位、经典和 **「至上」（Suprematist）** 基础上，新增了 **「新极简」「新经典」「新液位」** 三套新系列风格（重绘电量区、各自配套的音量条与桌面磁贴），原有四套风格完整保留。设置页里可以切夜晚/白天背景、换界面风格、指定要控制的耳机、开关音量条和切换中英文。
-  * **多品牌驱动**：原单品牌 `vivo-tws-watch-control` 的功能已全量合并进来（顺手修掉了 `vivo` GAIA 读流偶发错位 1 字节导致降噪/DeepX 失效的问题）。目前驱动已覆盖 vivo、华为/荣耀、小米/Redmi、OPPO/一加/realme、漫步者、弱水时砂、原道、Sony（MDR）和松下 Technics；认不出私有协议的耳机也会安全落回系统标准蓝牙电量，不会乱发指令。截至 2026-11，已真机确认可用的 9 款型号：**vivo TWS Air3 Pro、Sony WF-1000XM5、Redmi Buds 6（红米 Buds 6）、OPPO Enco Air5 Pro、OPPO Enco Free4、HONOR Earbuds X9、华为 FreeBuds 6i、华为 FreeBuds SE 4 ANC、原道原点（NiceHCK OriG in）**。
-  * **vivo 实验功能**：连点 5 下「开发者设置」，可使用空间音频开关和 DeepX。vivo TWS Air3 Pro 已验证开关状态读回，实际听感待测。标准、剧场、音乐厅、录音棚和演唱会由兼容手机端选择。切换前先摘下耳机并调低音量，详见[交接记录](docs/feedback-fixes-2026-11-18.md)。
-
-最新改动与真机验证记录见 [改动说明](docs/0.4-integration.md)、[协议验证记录](docs/protocol-validation.md) 与 [本轮核查记录](docs/scroll-and-driver-review.md)。
-
-本地开发中的磁贴点击修复、降噪能力分层、模块裁剪及 vivo/华为音效范围，见 [本轮交接记录](docs/session-modules-review.md)。新增 FreeBuds 5i/6i 内置 EQ 仍未真机验证；不代表其他品牌的空间音频或 EQ 已适配。[工作经验](docs/work-experience.md) 记录了维护这些功能时的注意点。
-
-2026-11-17 对当前源码的 [审计复核与修复交接](docs/redteam-review-2026-11-17.md) 补充了锁定时调小音量、系统音频连接查询、协议坏包恢复和旧磁贴入口迁移，包含逐条审计结论、离线验证及待实机确认项。
+---
 
 ## 📸 界面预览
+
+> 下图为早期 0.3.5 / 0.4.x 手表端实拍参考，`0.5.0-exp` 在此基础上统一了至上、新极简、新经典、新液位四套皮肤并补充了手机竖屏与进阶功能面板。
 
 <table>
   <tr>
@@ -57,364 +57,79 @@
     <td><img src="docs/tile-minimal-v2.jpg" width="200"/><br><div align="center">极简磁贴</div></td>
   </tr>
   <tr>
-    <td colspan="3" align="center"><img src="docs/settings-v2.jpg" width="200"/><br/><div align="center">0.3.5 设置页外观参考（0.4 沿用样式，增加选项）</div></td>
+    <td colspan="3" align="center"><img src="docs/settings-v2.jpg" width="200"/><br/><div align="center">设置页参考</div></td>
   </tr>
 </table>
 
-| 耳机品牌 | 蓝牙传输协议 | 降噪控制 | 电量显示 | 当前验证状态 |
+---
+
+## 📊 品牌支持与验证边界
+
+请区分三类来源：**历史真机验证基线**（旧版实测通过的基础链路与降噪/电量）、**开源资料扩展**（`0.5.0-exp` 新增的细分档位/抗风噪/EQ/扩展开关，未逐一真机验收前一律视为实验性），以及**标准蓝牙兜底**。
+
+| 耳机品牌 | 传输方式 | 基础控制（降噪 / 电量） | 扩展特性（按探测开放，多为实验性） | 验证状态 |
 | --- | --- | --- | --- | --- |
-| **vivo / iQOO TWS 家族** | RFCOMM (GAIA) | 开 / 关 / 通透三态 | 左 / 右 / 盒 | ✅ **已真机实测**（vivo TWS Air3 Pro 的电量、降噪、DeepX 状态和实验性空间音频开关读回） |
-| **华为 FreeBuds / 荣耀 HONOR** | RFCOMM (SPP) | 开 / 关 / 通透三态 | 左 / 右 / 盒（含充电状态） | ✅ **已真机验证 3 款**（FreeBuds 6i、FreeBuds SE 4 ANC、HONOR Earbuds X9 真机可用；其他型号 ⚠️ 实验性） |
-| **小米 / Redmi Buds** | RFCOMM (RCSP / MMA) | 按型号及状态确认三态；6 Play / 6 Active 不开放 | 左 / 右 / 盒（含充电状态） | ✅ **已真机验证 1 款**（Redmi Buds 6 / 红米 Buds 6 真机可用；Buds 5、3 Pro、6 Lite ⚠️ 实验性，XiaomiAuth 经 36 组真值单测） |
-| **OPPO / 一加 / realme / Enco** | RFCOMM (OPOv1 / HeyMelody) | 开 / 关 / 通透三态 | 左 / 右 / 盒（含充电状态） | ✅ **已真机验证 2 款**（OPPO Enco Air5 Pro、OPPO Enco Free4 真机可用；其他 OPOv1 型号 ⚠️ 实验性） |
-| **漫步者 EDIFIER** | RFCOMM (SPP) / BLE GATT | 开 / 关 / 通透（按型号 group 映射；未知 group 只读不写） | 已确认的左右耳；D0 头戴总电量，F2 盒电量未知 | ⚠️ **实验性支持**（协议来自社区公开逆向，未真机实测） |
-| **弱水时砂 RoseLink** | BLE GATT / RFCOMM (SPP) | 开 / 关 / 通透（风噪档不映射） | 左 / 右 / 盒 | ⚠️ **实验性支持**（协议来自社区公开逆向，未真机实测） |
-| **原道 NiceHCK** | RFCOMM (SPP) | 开 / 关 / 通透（含普通/深度降噪） | 左 / 右 / 盒 | ✅ **已真机验证 1 款**（OriG in 原道原点真机可用；支持中英文蓝牙名匹配；其他原道型号 ⚠️ 实验性） |
-| **Sony 指定 WH / WF 型号** | RFCOMM (MDR V1 / V2) | 合法三态回包确认后开放 | 按回包区分整机 / 左右耳 / 盒 | ✅ **已真机验证 1 款**（WF-1000XM5 真机可用；其余 MDR V1/V2 候选型号 ⚠️ 实验性） |
-| **Technics EAH-AZ** | RFCOMM (RACE) | 合法 Outside Control 回包确认后开放 | 左 / 右 / 盒，充电状态未知 | ⚠️ **实验性支持**（不含 A800 和其他松下型号） |
-| **其他品牌（标准协议兜底）** | 系统蓝牙（A2DP/HFP + HF Indicator 广播） | — | 仅整机总电量（系统聚合，分体电量系统不公开） | ⚠️ **实验性支持**（只读电量，不碰耳机私有协议） |
+| **vivo / iQOO** | RFCOMM (GAIA) | 三态降噪 / 左中右电量 | 降噪档位、DeepX/EQ、空间音频、低延迟、佩戴、查找、固件 | ✅ 历史真机：vivo TWS Air3 Pro（扩展项待全量复测） |
+| **华为 FreeBuds / 荣耀 HONOR** | RFCOMM (SPP) | 三态降噪 / 左中右电量（含充电） | 降噪档位、抗风噪、通透人声、内置 EQ、低延迟、佩戴、空间音频（HONOR 隔离不发不兼容帧） | ✅ 历史真机：FreeBuds 6i、SE 4 ANC、HONOR Earbuds X9 |
+| **小米 / Redmi Buds** | RFCOMM (RCSP / MMA) | 按型号确认三态 / 左中右电量 | 降噪档位、自适应、通透、低延迟、双设备、佩戴、查找、空间音频（6 Play / 6 Active 禁用降噪） | ✅ 历史真机：Redmi Buds 6；其余型号实验性 |
+| **OPPO / 一加 / realme** | RFCOMM (OPOv1) | 三态降噪 / 左中右电量（含充电） | 降噪档位、抗风噪（经能力回包确认后开放）、EQ、空间音频、低延迟、佩戴、查找 | ✅ 历史真机：Enco Air5 Pro、Enco Free4 |
+| **原道 NiceHCK** | RFCOMM (SPP) | 三态降噪 / 左中右电量 | 降噪深度、抗风噪等（按固件版本门控） | ✅ 历史真机：OriG in 原道原点 |
+| **Sony 指定 WH / WF** | RFCOMM (MDR V1/V2) | 回包确认三态 / 整机或分体电量 | 通透/语音聚焦、佩戴检测、多点等（按 V2 能力探测） | ✅ 历史真机：WF-1000XM5；其余候选型号实验性 |
+| **漫步者 EDIFIER** | RFCOMM (SPP) / BLE GATT | 按 group 映射（未知只读） / 电量 | 降噪深度、抗风噪、低延迟 | ⚠️ 实验性（社区资料实现，未真机验证） |
+| **弱水时砂 RoseLink** | BLE GATT / RFCOMM | 按型号族映射 / 左中右电量 | 入耳检测、低延迟等 | ⚠️ 实验性（社区资料实现，未真机验证） |
+| **Technics EAH-AZ** | RFCOMM (RACE) | 回包确认三态 / 左中右电量 | 降噪/通透强度等（不含 A800） | ⚠️ 实验性（社区资料实现，未真机验证） |
+| **其他蓝牙耳机** | 系统蓝牙 Profile + 广播 | 仅整机总电量（只读，不发私有指令） | 支持本机单端空间音频与 360° 实验室 | ⚠️ 标准兜底 |
 
-> 📌 **取设备规则**：可以在设置页指定已配对耳机；选“自动选择”时，先排除手机/平板，再优先选择品牌名与 A2DP Sink 角色匹配的设备，最后按名称或音频角色兜底。指定的耳机不可用时会提示，没有自动改选另一台。
+> 九个品牌驱动均可在构建期按需裁剪，未知品牌或无私有链路时自动退回系统标准蓝牙状态，不会向陌生耳机盲发私有指令。
 
-## 🚀 我是普通用户：怎么装到手表上用？（3 步搞定）
+---
 
-如果你不需要改代码，只想直接安装现成 App 到手表上体验，按下面 3 步操作：
+## 🚀 安装与使用
 
-1. **手表配对耳机**：先在手表系统的 `设置 → 连接 → 蓝牙` 里，让手表与你的蓝牙耳机完成配对连接（耳机可同时连着手机听歌）。
-2. **下载安装包**：去本项目 [**Releases 页面**](https://github.com/hdzw1155/WearEars/releases) 下载最新版 `.apk` 安装包。
-3. **安装到手表（任选一种方式）**：
-   * **方式 A（手机无线安装，推荐）**：在手机上安装 **WearOS 工具箱**（或水滴手表助手、Bugjaeger）→ 开启手表无线调试并连接 → 选择刚下载的本地 APK 一键安装。
-   * **方式 B（电脑 ADB 安装）**：电脑连接手表 ADB 后，运行 `adb install -r wearears-debug.apk`。
-   * **方式 C（完全不会装表？复制下面这段话丢给 AI 手把手教你）**：
+手表和手机共用同一个 APK（请前往 [Releases](https://github.com/hdzw1155/WearEars/releases) 下载，优先选择带版本号、以 `.apk` 结尾的文件，如 `WearEars-0.5.0-exp.apk`）：
 
-```text
-我是一名智能手表小白，手里刚下载了一个 Wear OS 手表应用的 APK 安装包。
-这个应用的 GitHub 仓库是 https://github.com/hdzw1155/WearEars
-（APK 就是从它的 Releases 页面下载的）。
-我的手机型号是：【填你的手机型号】，我的手表型号是：【填你的手表型号，如三星 Galaxy Watch7】。
-请用零基础也能看懂的大白话，一步步教我怎么在手表上开启"开发者选项"和"无线调试"，
-并用手机上的工具把这个 APK 装进手表里。每次只教我做一步，等我回复成功后再教下一步。
+1. **先配对耳机**：在手表或手机的系统蓝牙里正常连上耳机。
+2. **安装 APK**：
+   - **Android 手机**：直接点击 APK 安装。
+   - **Wear OS 手表**：用手机上的 **WearOS 工具箱** / 水滴助手 / Bugjaeger 通过无线调试安装，或电脑执行 `adb install -r WearEars-0.5.0-exp.apk`。
+   - **注意两个常见安装坑**：
+     1. 反复下载同名包时，手机或工具箱可能会把文件重命名为 `.apk.1`，ADB 会直接拒装——确保文件名以 `.apk` 结尾。
+     2. 官方 Release 发布的 `WearEars-0.5.0-exp.apk` 延续了 `v0.4.x` 签名，可直接覆盖升级；如果设备上装着自行编译的本地调试包并提示签名冲突，请先卸载旧版再装新版。
+3. **首次启动与磁贴**：首次打开或跨 `versionCode` 升级需确认免责声明；手表端可在磁贴列表添加「耳机控制」磁贴。
+
+---
+
+## 🛠️ 在 Windows 离线构建与裁剪驱动
+
+开发与架构详情请先看 [底层架构与交接](docs/HANDOFF.md) 和 [按问题查文件](docs/FILE_MAP.md)。
+
+环境要求：Python 3.9+（`py` 启动器）、JDK 17、Android SDK Platform 34、Build Tools 34.0.0。默认 JDK 目录 `%USERPROFILE%\android-tools\jdk-ms`，SDK 目录 `%LOCALAPPDATA%\Android\Sdk`（可用环境变量 `WEAREARS_JDK` 和 `ANDROID_SDK_ROOT` 覆盖）。Wear Tiles 等离线 jar 已随仓附带，无需联网拉取 Gradle 依赖。
+
+```powershell
+# 运行纯核心规则单测
+py -X utf8 build.py core
+
+# 运行全部 16 套 JVM / 平台适配层测试（含 234 组中英文文案对等检查）
+py -X utf8 build.py test
+
+# 全量测试 + 构建 APK + zipalign + apksigner 签名校验（产物：build/WearEars.apk）
+py -X utf8 build.py verify
 ```
 
-> 💡 装好之后可以顺手加个磁贴：在手表的磁贴列表底部点「添加磁贴」，找到「耳机控制」。先在 App 里连过一次耳机，磁贴就会显示上次连接的电量和时间；没连过也能点它打开控制。
+按需裁剪品牌驱动打包：
 
-## 🛠️ 我的耳机还没支持：怎么用 AI 自由适配新耳机？
-
-本项目把手表 UI、布局、表冠交互和省电逻辑全部封装好了。**适配一个新品牌耳机 = 让 AI 写 1 个驱动文件 + 注册 1 行代码**。哪怕你不懂 Java，也只需要当个"传话筒"，3 步让 AI 替你打工：
-
-### 第一步：找一份你耳机的开源协议资料
-
-去 GitHub 找找有没有大佬已经逆向出你这款耳机的蓝牙协议（比如参考文末致谢里的 [TWS-Pods-PC](https://github.com/Zhaoyi-ya/TWS-Pods-PC)、[HyperEars](https://github.com/silverpoetry/HyperEars)、[Pods-Protocol-Reverse](https://github.com/Star-ZER0/Pods-Protocol-Reverse) 等开源项目），或者准备好你自己的抓包记录。
-
-> 💡 *如果想自己抓包但不会分析，可以参考姊妹项目里的抓包与分析方法论：[vivo-tws-watch-control 的 AI_CONTEXT.md](https://github.com/hdzw1155/vivo-tws-watch-control/blob/main/docs/AI_CONTEXT.md)。*
-
-### 第二步：把下面这段提示词连同本页 README 丢给 AI
-
-打开任意 AI 编程助手（如 Cursor、Trae、Windsurf、Claude、ChatGPT、DeepSeek 等）。如果 AI 读不到 GitHub 仓库，只需把**本页 README 全文** + 仓库里的 **`src/com/hdz/wearcontrol/skeleton/SkeletonClient.java`**（可一并附上 **`TwsClient.java`**、**`DriverRegistry.java`**、**`RfcommClient.java`**、**`ProtocolWriter.java`**）+ **你找到的耳机协议资料**一起粘贴给它，并发送以下指令：
-
-```text
-我要给 Wear OS 开源项目 WearEars 适配一个新品牌耳机驱动：【在这里填你的耳机品牌与型号】。
-项目仓库地址：https://github.com/hdzw1155/WearEars
-（能联网读仓库的话，请先读取 README、src/com/hdz/wearcontrol/TwsClient.java、DriverRegistry.java、RfcommClient.java、ProtocolWriter.java 和 skeleton/SkeletonClient.java）
-
-我给你提供三份材料：
-1. 本消息附带的 README 全文（内含「驱动标准契约」与「协议表模板」）；
-2. 仓库里的填空骨架代码 src/com/hdz/wearcontrol/skeleton/SkeletonClient.java（读不到仓库的话我随后贴给你）；
-3. 我找到的该耳机蓝牙协议资料 / 开源逆向参考：【在这里粘贴协议文档、代码或抓包记录】。
-
-请你严格按以下两步帮我完成开发：
-
-第一步：整理协议并填表
-- 先把协议资料填入 README 的「协议表模板」中，缺失或没把握的命令留空，绝不允许臆造帧格式、指令字节或能力支持；
-- 区分同一品牌下的不同子型号：没有实证依据时不要套用相近型号的协议（如高配/低配协议分叉或无 ANC 型号必须写明排除条件），无法确认的电量用 0xFF 未知，不拿左右耳电量估算或伪造充电盒电量。
-
-第二步：基于 SkeletonClient.java 编写完整驱动并给出验证项
-1. 模块入口与注册：按 README 契约在驱动类内提供 `public static final class Module implements DriverModule`（包含无参构造、`matches(String)`、`create()`），并告诉我需要在 `DriverRegistry.MODULES` 的哪一位置注册完整类名（精确品牌词放前，泛词禁止抢先命中；不可硬编码到旧架构数组）。
-2. 能力分层与诚实标注：正确区分 `potentialCaps()`（候选可查能力，明确无降噪型号不得包含 `CAP_NOISE`）与 `caps()`（当前会话收到真包确认后的可写能力）；未知值按契约返回 `0xFF` / `-1` / `null`；如支持内置 EQ，沿用 `CAP_EQUALIZER`、`SoundPreset` 与 `equalizerPresets()`，不在 UI 写品牌分支；新驱动 `verifLevel()` 一律返回 `VERIF_UNTESTED`。
-3. 会话隔离与线程安全：驱动只负责单次会话的握手、收发和断开，不复用已断开的旧实例，不自建重连/后台扫描或周期定时器（交给 `HeadsetController` 统一管理）；跨线程状态加 `volatile`，可优先复用 `RfcommClient` / `ProtocolWriter` 串行发送，读线程检查取消标志并在断开后停止收发，`disconnect()` 幂等释放资源，`connect()` 失败等待 1~2 秒再回调 `onError`。
-4. 解码边界与 ACK 规则：解析入口先校验空值、载荷长度和数组边界；带长度与校验码的协议在做断包/错位重同步时只接纳通过校验的帧，避免把载荷字节误认成新帧头；纯成功 ACK 若不含状态字节，不直接伪造档位或开关状态（需要时发只读查询补确认），不使用固定几秒的回包屏蔽窗口。
-5. Java 8 免 Gradle 约束与离线验证：所有新增源码用 UTF-8 编码、纯 Java 8 显式匿名内部类，严禁 lambda、`::` 方法引用、`var` 及 `java.util.function`；顺手在 `scripts/ProtocolChecks.java` 补充新协议的编解码与坏包恢复测试用例，并告知我依次执行 `scripts\build.bat`、`scripts\test-protocols.ps1`、`scripts\test-modules.ps1` 和 `scripts\test-compact.ps1`（确认 R8 压缩仍保留 `$Module` 入口）。
-6. 模块边界与 UI/磁贴红线：本工程已按「品牌驱动 / 四大功能面板 / 磁贴服务」做源码级可裁剪模块化（参考 README「可选模块化边界」，需通过 `scripts\test-modules.ps1` 的 8 种裁剪编译）；禁止把新逻辑直接堆回 `MainActivity` 或在核心类硬引用具体品牌/可选模块。如需改动 UI 或磁贴，状态只读 `DeviceState`，动作走 `MainPanel.Actions`，音量唯一写入口必须经过 `VolumeGuard`，磁贴切档与刷新使用 `LoadAction`（不新开跳板 Activity），实时数值与点击交互不得烘死在静态位图里。
+```powershell
+py -X utf8 build.py apk --drivers none
+py -X utf8 build.py apk --drivers vivo,huawei,xiaomi,oppo
 ```
 
-### 第三步：几条命令一键打包出 APK
+首次构建会在 `.local/debug.p12` 生成本地调试密钥（不入库）。如需自定义发布签名，可设置 `WEAREARS_KEYSTORE`、`WEAREARS_KEY_ALIAS`、`WEAREARS_STORE_PASS`（必要时加 `WEAREARS_KEY_PASS`）。
 
-拿回 AI 写好的驱动代码放进工程，并在 `DriverRegistry.MODULES` 加上注册行后，本项目**免 Gradle 构建**，在 Windows 下直接运行几条脚本即可生成 APK：
+---
 
-1. 首次配置环境：运行 `scripts\setup-env.bat`
-2. 抓磁贴依赖：运行 `scripts\fetch-libs.bat`（从 Google Maven 下载 5 个 androidx 磁贴 jar，约 1.4MB，只需跑一次，`libs/` 不入库）
-3. 编译生成安装包：运行 `scripts\build.bat`（纯 Java，秒出 APK）
-4. 离线回归自检（推荐）：依次运行 `scripts\test-protocols.ps1`、`scripts\test-modules.ps1`、`scripts\test-compact.ps1` 和 `py scripts\test-interactions.py`，确认新协议解析、模块裁剪和 R8 入口都未破坏后再装表实测（离线检查不能替代真机蓝牙与固件兼容验证）。
+## ⚠️ 免责声明与开源致谢
 
-> ⚠️ **AI 折腾风险提示**：AI 生成的代码与蓝牙私有指令存在翻车可能，实验性功能切换瞬间可能出现突发爆音或音量突变。测试前请务必**摘下耳机并调低音量**，注意用机与听力安全！如果跑不通，用 `adb logcat` 抓一段原始十六进制日志丢回给 AI 对照修正即可。
-
-## 📐 架构与驱动标准契约（给开发者与 AI 看的规范）
-
-> 🤖 **提示**：以下两个章节（`驱动标准契约` 与 `协议表模板`）是专门为 AI 编程助手和开发者编写的硬性规范。普通用户无需阅读，在让 AI 适配新耳机时直接整页复制喂给 AI 即可。
-
-### 整体架构
-
-各品牌协议互相隔离，UI 层只认 `TwsClient` 接口（能力用 `caps()` 门控、成熟度用 `verifLevel()` 标注，全工程禁止出现 `instanceof` 具体品牌类）：
-
-```text
-TwsClient                    统一接口(驱动标准: 连接/电量/降噪三态 + 能力位 + 验证等级)
-├── vivo/VivoGaiaClient      GAIA 私有协议(Air3 Pro 真机验证)
-├── huawei/HuaweiSppClient   SPP + CRC16/XMODEM 帧(FreeBuds 6i / SE 4 ANC / HONOR Earbuds X9 真机验证, 其他型号实验性)
-├── xiaomi/XiaomiMmaClient   MMA 帧 + 挑战-应答认证(Redmi Buds 6 真机验证；XiaomiAuth 经 36/36 离线真值逐字节验证)
-├── oppo/OppoOpoClient       OPOv1 / HeyMelody 帧(OPPO Enco Air5 Pro / Enco Free4 真机验证, 其他型号实验性)
-├── EdifierClient           漫步者 Bes 帧(SPP/BLE, 未真机验证)
-├── RoseLinkClient          弱水时砂 V2/RS 帧(BLE/SPP, 未真机验证)
-├── NiceHckClient           原道 4E 帧(SPP, OriG in 原点真机验证, 其他型号实验性)
-├── SonyClient              MDR V1/V2(WF-1000XM5 真机验证, 其他候选型号实验性)
-├── TechnicsClient          EAH-AZ RACE（未真机验证，不含 A800）
-├── StandardClient          标准协议兜底(系统 A2DP/HFP/受支持的 LE Audio + HF Indicator, 只读电量)
-└── DriverRegistry           按蓝牙设备名自动挑品牌, 匹配规则内聚在各驱动里
-
-界面与磁贴(共用同一套数据契约):
-MainActivity(现有各界面风格) ── SettingsActivity(风格/语言/磁贴样式)
-             └─ MainPanels ── BatteryPanel / NoisePanel / VolumePanel / EffectsPanel
-TwsTileService ── TileLayouts / ClassicTileLayouts / TileResources(含 NeoTilePainter 与 SuprematistTilePainter)
-              └─ TileStore(prefs 数据契约) ── TileSnapshot(快照值对象) / TileState(连接状态与缓存时间文案)
-磁贴按键 ── LoadAction ── TwsTileService ── HeadsetController(共享会话与指令)
-旧缓存磁贴 ── ModeCyclerActivity(只更新磁贴并打开现有控制页)
-```
-
-#### 可选模块化边界与裁剪（源码级按模块隔离）
-
-本工程在免 Gradle 构建链下实现了「核心底座 + 可插拔模块」分层，支持按需裁剪且由 `scripts/test-modules.ps1` 对 8 种组合（`no-drivers`、`no-battery`、`no-noise`、`no-volume`、`no-effects`、`no-panels`、`no-tiles`、`minimal`）做无旧产物污染的独立编译验证；可选 R8 精简构建（`scripts/build-compact.ps1` + `scripts/shrink-rules.pro`）也会保留反射入口与 protobuf 字段：
-
-| 可选模块 | 入口与装配方式 | 缺席/裁剪时的退化行为与注意事项 |
-| --- | --- | --- |
-| **品牌驱动** | 各品牌类内 `Module implements DriverModule`，在 `DriverRegistry.MODULES` 按字符串注册 | 缺席品牌自动跳过，未命中设备回退至 `StandardClient` 只读总电量；整包删 `vivo/` 时需同步去掉 `AndroidManifest.xml` 中的 `VivoProbe` receiver |
-| **四大页面面板** | `MainPanels` 通过 `Class.forName` 装载 `BatteryPanel` / `NoisePanel` / `VolumePanel` / `EffectsPanel` | 缺席面板自动隐藏其布局卡片，仅读 `DeviceState`、动作走 `MainPanel.Actions`；XML 引用的公共自定义 View 属共享 UI 底层不单独删除 |
-| **磁贴服务** | `TileStore.pushNow` 反射调用 `TwsTileService.requestUpdate`；磁贴内点击走 `LoadAction` | 移去磁贴类及 `AndroidManifest.xml` 相关组件后，可不打包 Tiles JAR，`TileStore/TileSnapshot/TileState` 仍正常服务主页 |
-| **核心公共底座** | `HeadsetController`、`DeviceSelector`、`AudioConnections`、`VolumeGuard`、`DeviceState`、`ProtocolWriter` | 统一管会话代数隔离、重试/轮询、系统音频连接探测与 70% 音量保护，所有模块共用同一套实例与安全规则 |
-
-### 驱动标准契约
-
-#### 1. 角色分工
-
-```text
-MainActivity / UI 层
-    │  只认 TwsClient 接口：caps() 判能力、verifLevel() 判成熟度，
-    │  全工程禁止 instanceof 具体品牌类
-    ▼
-TwsClient（驱动标准接口）
-    ▲
-    │  实现：消化品牌私有协议（帧格式/命令号/认证/CRC）
-各品牌驱动（vivo/ huawei/ xiaomi/ …）
-```
-
-新品牌适配 = **一个驱动类 + DriverRegistry 里一行注册**，UI、布局、表冠、省电策略全部复用。
-
-品牌实现提供一个 `public static final class Module implements DriverModule`，实现 `matches(String)` 与 `create()`；在 `DriverRegistry.MODULES` 注册该类的完整名字（内部类使用 `$Module`）。匹配规则随品牌模块一起增删，缺少模块时跳过。UI 功能分别注册在 `MainPanels`，具体的模块化边界与裁剪验证见上方「可选模块化边界与裁剪」。
-
-#### 2. 生命周期
-
-1. `init(Context)`——创建方在 connect 前注入系统上下文；不需要系统服务的驱动空实现；必须容忍 `ctx == null`。
-2. `addListener(Listener)`——订阅回调，支持多订阅者。
-3. `connect(BluetoothDevice)`——内部自起线程，**不得阻塞调用方**；连上后自行完成握手/认证/首查，然后开始回调。
-4. `disconnect()`——幂等；关闭 socket、注销系统服务代理（如 HFP）、停掉所有内部线程。
-5. 连接与重试由 HeadsetController 统一管理（支持断线最多 3 次平滑重试与代数隔离），驱动专注于会话内协议收发，直接写操作走 ProtocolWriter 安全队列。
-
-#### 3. 能力位 caps()
-
-| 位 | 含义 | UI 行为 |
-| --- | --- | --- |
-| `CAP_NOISE` | 降噪三态切换 | 显示三个模式按钮 |
-| `CAP_BATTERY` | 三段电量 | 显示电量卡片 |
-| `CAP_BATTERY_SINGLE` | 只有整机总电量 | 电量区切成单格「总电量」，磁贴也换成单电量版 |
-| `CAP_SPATIAL` | 空间音频开关 | 显示开发者区空间音频开关（实验） |
-| `CAP_DEEPX` | 音效档位 | 显示开发者区音效按钮（实验） |
-| `CAP_EQUALIZER` | 内置 EQ 预设 | 显示开发者区内置 EQ 选项（需配合 `equalizerPresets()` 与 `onEqualizer(id)`） |
-
-没有的能力：相关 query/set 方法做**空实现**即可，不在候选能力中声明；界面不会提供可操作入口。
-
-`potentialCaps()` 表示已知可查询的候选能力；`caps()` 表示当前会话已确认可操作的能力。候选降噪卡片在确认前保留并禁用，避免首包延迟导致整卡消失。内置 EQ 使用 `CAP_EQUALIZER`、`equalizerPresets()`、`queryEqualizer()`、`setEqualizer(id)` 和 `onEqualizer(id)`；预设 ID 保留协议原值，界面不写品牌分支。
-
-#### 4. 验证等级 verifLevel()
-
-* `VERIF_REAL`：在本项目里真机验证过——UI 不加提示。
-* `VERIF_UNTESTED`：协议来自社区逆向文档，未真机验证——UI 自动挂"（实验性支持·未验证）"。
-
-诚实标注是硬要求：新驱动上线一律 `VERIF_UNTESTED`，直到有贡献者真机验证并更新上面的支持情况表后再改。
-
-#### 5. Listener 回调语义
-
-| 回调 | 线程 | 未知/不支持时的约定 |
-| --- | --- | --- |
-| `onConnected(name)` | 后台线程 | — |
-| `onDisconnected(reason)` | 后台线程 | reason 说人话 |
-| `onError(msg)` | 后台线程 | msg 说人话，带排查线索 |
-| `onBattery(l,r,box,flags)` | 后台线程 | 未上报用 `0xFF`；flags bit0/1/2 = 左/右/盒充电中 |
-| `onNoiseMode(mode)` | 后台线程 | 未知用 `-1` |
-| `onSpatial(Boolean)` | 后台线程 | 未知/解析失败用 `null` |
-| `onDeepX(Integer)` | 后台线程 | 未知/解析失败用 `null` |
-| `onEqualizer(Integer)` | 后台线程 | 当前内置预设 ID；未知用 `null`，默认空实现兼容旧驱动 |
-
-HeadsetController 将驱动回调切到主线程并检查会话代数；UI 面板读取当前 DeviceState。驱动自身也要检查取消状态，退出连接后停止收发。
-
-#### 6. 实现守则（都是踩过坑换来的）
-
-1. `socket`/`out` 等跨线程字段必须 `volatile`（连接线程写、UI 线程读）；每次连接使用全新驱动实例，不在断开后复用旧对象或跨会话共享残留线程。
-2. 读流错位时先校验长度和边界，带校验码的帧只接纳通过校验的候选帧（不可盲目 `drop(1)` 把载荷里的偶发字节误判成新帧头）。
-3. 未知帧全量打日志（hex），这是协议分析的 ground truth。
-4. 不支持的操作（如华为通透）用 `onError` 明说，不要静默；纯成功 ACK 若不含状态字节，不直接伪造档位/开关状态，也不使用固定几秒的回包屏蔽窗口。
-5. connect 失败先小睡 1~2 秒再回调：上一个连接刚死时耳机侧槽位要几秒才释放，立刻重试会陷入连-断循环。
-6. 纯 Java 8、显式匿名内部类，严禁 lambda、`::` 方法引用、`var` 与 `java.util.function`（免 Gradle 构建链没有 `core-lambda-stubs`）。
-
-#### 7. 注册
-
-在驱动类内提供 `public static final class Module implements DriverModule`（实现 `matches(String)` 和 `create()`，无参构造会被反射调用且已在 `scripts/shrink-rules.pro` 保留），再将完整类名（`...$Module`）按顺序放进 `DriverRegistry.MODULES`。精确品牌词排前面，泛词（`tws`/`air`/`buds` 之类）只能做兜底殿后。
-
-## 📋 协议表模板（适配新耳机的必填表，可让 AI 代填）
-
-### 0. 品牌基本信息
-
-| 项 | 值 |
-| --- | --- |
-| 品牌名（英文小写） | 例：oppo |
-| 蓝牙名匹配词（设备名小写包含即命中） | 例：oppo、oneplus、enco |
-| 传输层 | RFCOMM(SPP) / BLE GATT / 其他 |
-| SDP 服务 UUID 或固定通道 | 例：00001101-… 或 channel 6 |
-| 是否需要认证/握手 | 是（描述流程）/ 否 |
-| 协议资料来源 | 例：TWS-Pods-PC 的 xx 目录 / 自行抓包 |
-
-### 1. 帧格式
-
-```text
-（此处画帧结构，逐字节标注，例：）
-FF | VERB | 00 | LEN | VENDOR(2B 大端) | CMD(2B 大端) | PAYLOAD(LEN 字节)
-```
-
-* 字节序：大端 / 小端
-* 校验：无 / CRC16-XMODEM / 其他（多项式、初值、是否反射）
-* 换行或分隔符（ASCII 行协议才填）
-
-### 2. 命令表（状态列必须如实：✅真机验证 / 📄文档推断 / ❌已证伪）
-
-| 功能 | SET | QUERY | ACK | 主动上报 | payload 语义 | 状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| 电量 | — | 0x… | — | 0x… | 左/右/盒/充电位 | 📄 |
-| 降噪 | 0x… | 0x… | 0x… | 0x… | 00=降噪 01=关 02=通透 | 📄 |
-| （更多…） | | | | | | |
-
-### 3. 能力自评（caps / potentialCaps）
-
-勾选本协议当前有把握的：`☐CAP_NOISE` `☐CAP_BATTERY` `☐CAP_BATTERY_SINGLE` `☐CAP_SPATIAL` `☐CAP_DEEPX` `☐CAP_EQUALIZER`
-（`potentialCaps()` 仅列可查候选能力，明确无降噪的型号必须排除 `CAP_NOISE`；写入仍以收到回包确认后的 `caps()` 为准，没把握的一律留空实现）
-
-### 4. 坑位记录（适配过程中逐条追加，给后人）
-
-* 例：verb 用错耳机直接沉默不报错，表现为超时
-* 例：电量走 HFP AT 通道，SPP 上裸问无回包
-
-## 🔎 已适配品牌协议速查（贡献者参考）
-
-下表是几条实验性驱动的协议骨架，细节以实现为准；给新耳机写驱动前，建议先按上面的「协议表模板」把资料填成同样格式，再动手。
-
-### OPPO / 一加 / realme（OPOv1 · HeyMelody）
-
-| 项 | 值 |
-| --- | --- |
-| 匹配词 | oppo / enco / oneplus / realme |
-| 传输层 | RFCOMM (SPP)，SDP UUID `0000079A-D102-11E1-9B23-00025B00A5A5` / 回退 `00001107-D102-11E1-9B23-00025B00A5A5` / 反射信道 15；无 BLE 路径 |
-| 握手 | 连上 300ms 发 `0x0100`（空 payload），随后初始化轮询：`0103` 产品 ID → `0200` → `0205` 订阅 → `010D` → `010C` 降噪查询 → `0106` 电量 → `0109` 佩戴 → `0108` → `0105` |
-| 帧 | `AA | TotalLen(LEB128) | Slice | 00 | Cmd(2B 小端) | Seq | PayLen(2B 小端) | Payload`，TotalLen = 7 + PayLen，无校验 |
-| 电量 | `0x0106`（seq F0）→ `0x8106` 回包 `[00][count](part,raw)…`：part 1/2/3 = 左/右/盒，raw bit7 = 充电、低 7 位 = 百分比，FF = 未知；`0x0204` 主动上报 subtype 01 = 电量 |
-| 降噪 | 设置 `0x0404` payload `01 01 mask`：关 `0x01` / 降噪 `0x02` / 通透 `0x04`；查询 `0x010C`，状态回包 `0x810C` 的位与 SET 位不同：关 `0x0008` / 降噪 `0x0002` 或 `0x0010` / 通透 `0x0100`；`0x0204` subtype 03 = 降噪状态（`03 02 01` 为回声，忽略） |
-| 来源 | spizganed/QuickBuds（Wire/Battery/Anc 解析）；HeyMelody / OPOv1 社区整理 |
-
-### 漫步者 EDIFIER
-
-| 项 | 值 |
-| --- | --- |
-| 匹配词 | edifier / 漫步者 / neobuds / lollipods / fitbuds / fitclip / w820 / w860 / w260 |
-| 传输层 | RFCOMM (SPP) `EDF00000-EDFE-DFED-FEDF-EDFEDFEDFEDF` / BLE GATT 兜底 |
-| 握手 | 无，连上直接查 |
-| V2 帧 | `AA EC CMD LEN_H LEN_L PAYLOAD CRC8`，payload 通常双向 XOR 0xA5（FitBuds Turbo 使用明文），CRC8 = sum(前序线上字节) & 0xFF |
-| V1 帧 | `AA LEN CMD DATA CRC16_H CRC16_L`，LEN = len(DATA)+1，CRC16 = (0x2019+sum) & 0xFFFF |
-| 电量 | `D0` 单值 0..100；`F2` 六字节只解释偏移 1/2 的左右耳，盒与充电含义未确认 |
-| 降噪 | `CC` 查询 → `[group][mode]`；`C1` 设置 `[group][mode]`；group 0x10 / 0x1B / 0x17 与 V1 的 mode 表互不相同，未知 group 只读不写 |
-| 来源 | HyperEars 的 edifier Bes 协议文档、mEDIFIER、BudsLink |
-
-### 弱水时砂 RoseLink
-
-| 项 | 值 |
-| --- | --- |
-| 型号匹配 | 按 RoseProtocol 中明确列出的 RS/V2 型号选帧；不明型号、F8、ZT 走标准电量 |
-| 传输层 | BLE GATT 服务 `00FE` / 写 `00F1` / 通知 `00F2`；SPP `0cf12d31-fac3-4553-bd80-d6832e7b3931` |
-| 握手 | 无，连上发全量 getInfo |
-| V2 帧 | `FF SEQ LEN BODY CS AA`，CS = sum(FF,SEQ,LEN,BODY) & 0xFF；接收 `DD SEQ TLV… CS AA` |
-| RS Common 帧 | `FF 00 LEN BODY AA`（无 CS/SEQ），按型号固定使用，不从 V2 超时降级 |
-| 电量 | 参数 `0C` 三字节左/右/盒；V2 各槽低 7 位电量 / 高位充电，RS 盒槽按整字节读取；越界值显示未知 |
-| 降噪 | `09`：01=降噪 / 02=关 / 03=通透 / 04=风噪；按型号族固定选协议，不可探测 |
-| 来源 | IRDecoyFlare/roseselsa-RoseLink-Protocol、OPerepadia/rosebuds |
-
-### 原道 NiceHCK
-
-| 项 | 值 |
-| --- | --- |
-| 匹配词 | yuandao / orig / nicehck |
-| 传输层 | RFCOMM (SPP) `0000a100-1000-8000-4e48-434b4354524c`（失败尝试标准 SPP UUID） |
-| 握手 | 无，连上直接查 |
-| 帧 | `4E LEN_LO LEN_HI 00 OP_LO OP_HI PARAMS`，LEN = 3+params，u16 小端，无校验 |
-| 电量 | op `0x0005` 查询，响应 `[左][右][盒]`；保留原始 0，不猜测掉线 |
-| 降噪 | `0x0101` 查询（0=关 / 1=通透 / 2=普通降噪 / 3=深度 / 0x10 试验 / 0x11 风噪）；`0x0201` 设置 `[M] 00`，无 ack |
-| 来源 | ZaeXT/NiceHCK_Controller、HELPMEEADICE/NiceHCK_Controller_Windows |
-
-### Sony / Technics
-
-两条新驱动的端点、命令、能力门禁、精确候选型号及报文证据统一记录在 [协议验证记录](docs/protocol-validation.md)。均使用独立会话、有界接收缓冲和后台串行写入，未增加后台周期扫描。
-
-### 标准协议兜底
-
-| 项 | 值 |
-| --- | --- |
-| 传输层 | 系统蓝牙（A2DP/HFP 连接状态 + BluetoothHeadset HF Indicator 广播 / 隐藏 BATTERY_LEVEL_CHANGED 广播） |
-| 能力 | 仅 `CAP_BATTERY_SINGLE`（整机总电量），无降噪/空间音频 |
-| 注意 | 分体电量系统不公开；`BluetoothDevice.getBatteryLevel()` 是 @SystemApi，只能反射，多数机型返回 -1 |
-
-## ⚠️ 使用须知与免责声明
-
-App 首次启动有确认弹窗，页面底部与「使用须知 / NOTICE」内均有说明，项目源码仓库见：[https://github.com/hdzw1155/WearEars](https://github.com/hdzw1155/WearEars)。核心内容：
-
-* 本项目为第三方非官方社区工具，仅供个人学习研究和技术交流，与 vivo / 华为 / 小米 / OPPO / 一加 / realme / 漫步者 / 弱水时砂 / 原道 / Sony / Technics 及其关联公司无任何关联，未获其授权或背书；商标归各自权利人所有，仅作兼容性说明。
-* 按现状提供，不提供任何明示或默示担保；私有协议可能随固件更新变更。
-* 实验性功能切换瞬间可能出现突发爆音、音量突变，操作前务必摘下耳机并调低音量，听力损伤不可逆；勿在驾驶、骑行等场景使用。
-* 使用风险（含听力不适、财产损失、固件异常、数据丢失、软件安全风险、保修失效、违反第三方条款）由使用者自行承担，法律强制不得排除的责任除外。
-
-如权利人认为本项目侵犯其合法权益，请联系作者，将及时处理。
-
-## 🙏 致谢与协议边界说明
-
-协议知识全部来自社区公开逆向成果：
-
-* **[Zhaoyi-ya/TWS-Pods-PC](https://github.com/Zhaoyi-ya/TWS-Pods-PC)** — vivo 全套协议文档与真机抓包；华为 SPP 协议记录（上游为 HuaweiPods 项目，GPL-3.0）；小米 MMA 协议与认证算法复刻（36 组真值）
-* **[mos9527/SonyHeadphonesClient](https://github.com/mos9527/SonyHeadphonesClient)** — Sony MDR V1/V2 字段与公开报文；本项目独立实现 Java 子集。
-* **[ncr/omarchy-headphones](https://github.com/ncr/omarchy-headphones/blob/main/PROTOCOL.md)** — Redmi Buds 5 / 3 Pro、Sony WH-CH720N、Enco Air3 Pro 的实际通信记录。
-* **[creeperkafasi/redmi-buds-linux](https://github.com/creeperkafasi/redmi-buds-linux/blob/e8a9b48b7c15cd4a9dec2fc9d1779a7a1bafad6a/PROTOCOL.md)** — Redmi Buds 6 Play / 6 Lite 协议与认证验证。
-* **[silverpoetry/HyperEars](https://github.com/silverpoetry/HyperEars)** — vivo/iQOO 家族协议画像与机型线格式配置；漫步者 Bes 控制协议文档（实验性驱动依据）
-* **[Star-ZER0/Pods-Protocol-Reverse](https://github.com/Star-ZER0/Pods-Protocol-Reverse)** — vivo 公共协议画像
-* **[IRDecoyFlare/roseselsa-RoseLink-Protocol](https://github.com/IRDecoyFlare/roseselsa-RoseLink-Protocol)** — 弱水时砂 RoseLink 全系机型族协议逆向
-* **[OPerepadia/rosebuds](https://github.com/OPerepadia/rosebuds)** — 弱水时砂 BLE GATT 控制路径参考（MIT）
-* **[ZaeXT/NiceHCK_Controller](https://github.com/ZaeXT/NiceHCK_Controller)** — 原道 SPP 控制协议（Java / MIT）；**[HELPMEEADICE/NiceHCK_Controller_Windows](https://github.com/HELPMEEADICE/NiceHCK_Controller_Windows)** — 同协议 Rust 实现
-* **[creeperkafasi/redmi-buds-linux](https://github.com/creeperkafasi/redmi-buds-linux)** — Redmi Buds RCSP 协议与 E21 认证真值；**[thetriu/OpenXia](https://github.com/thetriu/OpenXia)** — 同协议 Kotlin 实现参考
-* **[spizganed/QuickBuds](https://github.com/spizganed/QuickBuds)** — OPPO / HeyMelody OPOv1 帧、电量与降噪解析参考
-* 前作 **[vivo-tws-watch-control](https://github.com/hdzw1155/vivo-tws-watch-control)** 的全部实机调优经验
-
-**关于华为部分与 GPL-3.0 的边界**：本项目的华为实现是阅读上述仓库的**协议描述文档**（帧格式 / CRC 算法 / 命令号）后独立编写的 Java 代码，未复制上游源码；新增内置 EQ 的报文字段另外核对了 OpenFreebuds 的公开实现，范围见 [本轮交接记录](docs/session-modules-review.md)；协议规格本身属于功能性事实，不受版权保护。小米部分同理（认证算法为按公开算法描述的独立移植，并与公开真值对拍验证）。漫步者 / 弱水时砂 / 原道 / OPPO 系实验性驱动同样只读上游仓库的协议文档与 MIT 实现描述，独立编写 Java 代码，未复制任何 GPL/AGPL 实现。因此本项目整体保持 MIT 许可。
-
-## 📢 开源授权声明
-
-* 本项目**源代码基于 [MIT](LICENSE) 开源**，不收集任何用户隐私数据，欢迎个人学习、研究、Fork 与 PR。
-* **企业与声学品牌合作**：欢迎厂商工程师按 MIT 引用参考开源代码；如声学品牌或 ODM 方案商需获得「WearEars」品牌联合认证、专属磁贴定制或基于厂商官方授权协议的商业 SDK 集成维护，请与项目团队另行接洽授权合作。
-* 参考或使用本项目代码请保留版权声明并注明来源；使用底层协议参数请一并致谢上述上游项目。
-
-## 📄 许可证
-
-代码：[MIT](LICENSE)。
-
-<!--
-11101000 10101111 10111011 11100101 10001000 10110000 11101000 10111111 10011001 11101001 10000111 10001100 11100111 10011010 10000100 01000001 01001001 11101111 10111100 10001100 11101000 10111110 10011011 11101000 10001011 10100110 11100100 10111101 10100000 11100100 10111010 10000110 11101111 10111100 10001100 11101000 10101111 10110111 11101000 10101110 10101001 11100100 10111101 10100000 11100111 10011010 10000100 11100100 10111000 10111011 11100100 10111010 10111010 11101000 10101111 10110111 11100100 10111101 10100000 11100101 10010110 10011101 11100100 10111000 10000000 11100110 10011101 10101111 11100111 10010100 10110101 11100101 10101101 10010000 11100101 10010010 10010110 11100101 10010101 10100001 11100010 10000000 10010100 11100010 10000000 10010100 01011010 01001101
--->
+- 本项目为非官方第三方社区开源工具，仅供个人学习与技术交流，与 vivo / 华为 / 荣耀 / 小米 / OPPO / 一加 / realme / 漫步者 / 弱水时砂 / 原道 / Sony / Technics 及其关联公司无任何隶属或授权关系。
+- 按现状提供，不作任何明示或默示担保；因使用本项目引发的设备异常、听力不适或保修问题由使用者自行承担。
+- 协议资料参考自开源社区公开逆向文档与项目：TWS-Pods-PC、HyperEars、Pods-Protocol-Reverse、QuickBuds、SonyHeadphonesClient、redmi-buds-linux、OpenXia、omarchy-headphones、RoseLink-Protocol、rosebuds、NiceHCK_Controller 及其 Windows 实现、OpenFreebuds 等。完整上游归属见 [NOTICE](NOTICE)，离线依赖许可见 [vendor/NOTICE.md](vendor/NOTICE.md)。
+- 源码许可证：[MIT](LICENSE)。

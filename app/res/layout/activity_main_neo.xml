@@ -1,0 +1,1105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Unified Neo series main screen (Neo Minimal / Classic / Liquid).
+     All colors and surfaces resolve via Theme.Neo.* in styles.xml.
+     Experimental hardware features are directly exposed with non-clipping EXP badges & safety gates. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="?attr/neoBg">
+
+    <com.hdz.wearcontrol.AppScrollView
+        android:id="@+id/scroll"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fadeScrollbars="true"
+        android:fillViewport="true"
+        android:scrollbarStyle="insideOverlay"
+        android:scrollbars="vertical">
+
+        <LinearLayout
+            android:id="@+id/neo_content_column"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingLeft="18dp"
+            android:paddingTop="30dp"
+            android:paddingRight="18dp"
+            android:paddingBottom="18dp">
+
+            <!-- status pill -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:background="?attr/neoPill"
+                android:gravity="center_vertical"
+                android:minHeight="28dp"
+                android:orientation="horizontal"
+                android:paddingLeft="12dp"
+                android:paddingRight="12dp">
+
+                <com.hdz.wearcontrol.StatusDotView
+                    android:id="@+id/status_dot"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginEnd="7dp" />
+
+                <TextView
+                    android:id="@+id/status"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="@string/status_idle"
+                    android:textColor="?attr/neoText"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/status_chip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:background="?attr/neoChipWarn"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:paddingLeft="6dp"
+                    android:paddingTop="2dp"
+                    android:paddingRight="6dp"
+                    android:paddingBottom="2dp"
+                    android:singleLine="true"
+                    android:textColor="?attr/neoWarn"
+                    android:textSize="9sp"
+                    android:textStyle="bold"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/sub"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="7dp"
+                android:ellipsize="end"
+                android:gravity="center"
+                android:maxLines="1"
+                android:minHeight="16dp"
+                android:textColor="?attr/neoTextDim"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/cta_reconnect"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="10dp"
+                android:background="?attr/neoCta"
+                android:gravity="center"
+                android:minHeight="36dp"
+                android:paddingLeft="20dp"
+                android:paddingRight="20dp"
+                android:text="@string/cta_reconnect"
+                android:textColor="?attr/neoCtaText"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <!-- battery -->
+            <LinearLayout
+                android:id="@+id/battery_header"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingLeft="6dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:letterSpacing="0.12"
+                    android:text="@string/battery_title"
+                    android:textColor="?attr/neoTextFaint"
+                    android:textSize="10sp" />
+
+                <ImageView
+                    android:id="@+id/refresh"
+                    android:layout_width="30dp"
+                    android:layout_height="30dp"
+                    android:background="?attr/neoIconBtn"
+                    android:contentDescription="@string/btn_refresh"
+                    android:focusable="false"
+                    android:focusableInTouchMode="false"
+                    android:padding="8dp"
+                    android:src="@drawable/ic_refresh"
+                    android:tint="?attr/neoTextDim" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/neo_battery_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="?attr/neoHero"
+                android:orientation="vertical"
+                android:padding="10dp">
+
+                <LinearLayout
+                    android:id="@+id/neo_classic_header"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:letterSpacing="0.06"
+                        android:paddingStart="2dp"
+                        android:text="@string/battery_title"
+                        android:textColor="?attr/neoTextDim"
+                        android:textSize="13sp" />
+
+                    <ImageView
+                        android:id="@+id/refresh_card"
+                        android:layout_width="30dp"
+                        android:layout_height="30dp"
+                        android:background="@drawable/bg_neo_icon_classic_in"
+                        android:contentDescription="@string/btn_refresh"
+                        android:focusable="false"
+                        android:focusableInTouchMode="false"
+                        android:padding="7dp"
+                        android:src="@drawable/ic_refresh"
+                        android:tint="?attr/neoTextDim" />
+                </LinearLayout>
+
+                <com.hdz.wearcontrol.NeoBatteryView
+                    android:id="@+id/neo_battery"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+
+            <!-- volume (toggled in Settings) -->
+            <LinearLayout
+                android:id="@+id/volume_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="?attr/neoCard"
+                android:orientation="vertical"
+                android:padding="14dp"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:letterSpacing="0.12"
+                        android:text="@string/volume_title"
+                        android:textColor="?attr/neoTextFaint"
+                        android:textSize="10sp" />
+
+                    <TextView
+                        android:id="@+id/volume_value"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFeatureSettings="tnum"
+                        android:textColor="?attr/neoText"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <com.hdz.wearcontrol.VolumeBarView
+                    android:id="@+id/volume_bar"
+                    android:layout_width="match_parent"
+                    android:layout_height="28dp"
+                    android:layout_marginTop="8dp"
+                    android:contentDescription="@string/volume_title" />
+            </LinearLayout>
+
+            <!-- noise control + sub-levels + wind noise reduction -->
+            <LinearLayout
+                android:id="@+id/noise_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="?attr/neoCard"
+                android:orientation="vertical"
+                android:padding="14dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:letterSpacing="0.12"
+                    android:text="@string/noise_title"
+                    android:textColor="?attr/neoTextFaint"
+                    android:textSize="10sp" />
+
+                <com.hdz.wearcontrol.NoiseSegmentedView
+                    android:id="@+id/noise_seg"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:layout_marginTop="9dp" />
+
+                <LinearLayout
+                    android:id="@+id/noise_sub_container"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <LinearLayout
+                        android:id="@+id/noise_sub_header"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:id="@+id/noise_sub_label"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:ellipsize="end"
+                            android:letterSpacing="0.12"
+                            android:maxLines="1"
+                            android:text="@string/noise_sub_label"
+                            android:textColor="?attr/neoTextFaint"
+                            android:textSize="10sp" />
+
+                        <TextView
+                            android:id="@+id/badge_noise_sub_exp"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="6dp"
+                            android:background="?attr/neoChipWarn"
+                            android:includeFontPadding="false"
+                            android:maxLines="1"
+                            android:paddingLeft="6dp"
+                            android:paddingTop="2dp"
+                            android:paddingRight="6dp"
+                            android:paddingBottom="2dp"
+                            android:singleLine="true"
+                            android:text="@string/badge_experimental"
+                            android:textColor="?attr/neoWarn"
+                            android:textSize="9sp"
+                            android:textStyle="bold"
+                            android:visibility="gone" />
+                    </LinearLayout>
+
+                    <com.hdz.wearcontrol.SnapChipRow
+                        android:id="@+id/noise_sub_scroller"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:visibility="gone">
+
+                        <LinearLayout
+                            android:id="@+id/noise_sub_row"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal" />
+                    </com.hdz.wearcontrol.SnapChipRow>
+
+                    <LinearLayout
+                        android:id="@+id/wind_toggle_row"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:visibility="gone">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingEnd="8dp">
+
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:ellipsize="end"
+                                android:importantForAccessibility="no"
+                                android:maxLines="1"
+                                android:text="@string/wind_reduction_title"
+                                android:textColor="?attr/neoText"
+                                android:textSize="13sp" />
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="3dp"
+                                android:gravity="center_vertical"
+                                android:orientation="horizontal">
+
+                                <TextView
+                                    android:id="@+id/badge_wind_exp"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginEnd="6dp"
+                                    android:background="?attr/neoChipWarn"
+                                    android:includeFontPadding="false"
+                                    android:maxLines="1"
+                                    android:paddingLeft="6dp"
+                                    android:paddingTop="2dp"
+                                    android:paddingRight="6dp"
+                                    android:paddingBottom="2dp"
+                                    android:singleLine="true"
+                                    android:text="@string/badge_experimental"
+                                    android:textColor="?attr/neoWarn"
+                                    android:textSize="9sp"
+                                    android:textStyle="bold"
+                                    android:visibility="gone" />
+
+                                <TextView
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:ellipsize="end"
+                                    android:maxLines="1"
+                                    android:text="@string/wind_reduction_hint"
+                                    android:textColor="?attr/neoTextDim"
+                                    android:textSize="10sp" />
+                            </LinearLayout>
+                        </LinearLayout>
+
+                        <Switch
+                            android:id="@+id/switch_wind"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:contentDescription="@string/wind_reduction_title"
+                            android:showText="false"
+                            android:thumbTint="?attr/neoSwitchThumb"
+                            android:trackTint="?attr/neoSwitchTrack" />
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- unified built-in EQ / DeepX card (directly on main screen) -->
+            <LinearLayout
+                android:id="@+id/equalizer_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="?attr/neoCard"
+                android:orientation="vertical"
+                android:padding="14dp"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/equalizer_title"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:letterSpacing="0.12"
+                        android:maxLines="1"
+                        android:text="@string/equalizer_label"
+                        android:textColor="?attr/neoTextFaint"
+                        android:textSize="10sp" />
+
+                    <TextView
+                        android:id="@+id/badge_eq_exp"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
+                        android:background="?attr/neoChipWarn"
+                        android:includeFontPadding="false"
+                        android:maxLines="1"
+                        android:paddingLeft="6dp"
+                        android:paddingTop="2dp"
+                        android:paddingRight="6dp"
+                        android:paddingBottom="2dp"
+                        android:singleLine="true"
+                        android:text="@string/badge_experimental"
+                        android:textColor="?attr/neoWarn"
+                        android:textSize="9sp"
+                        android:textStyle="bold"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/deepx_current"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:gravity="end"
+                        android:maxLines="1"
+                        android:textColor="?attr/neoTextDim"
+                        android:textSize="10sp" />
+                </LinearLayout>
+
+                <com.hdz.wearcontrol.SnapChipRow
+                    android:id="@+id/deepx_scroller"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp">
+
+                    <LinearLayout
+                        android:id="@+id/deepx_row"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal" />
+                </com.hdz.wearcontrol.SnapChipRow>
+            </LinearLayout>
+
+            <!-- earbud hardware spatial audio (directly on main screen with safety dialog) -->
+            <LinearLayout
+                android:id="@+id/spatial_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="?attr/neoCard"
+                android:orientation="vertical"
+                android:padding="14dp"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:paddingEnd="8dp">
+
+                        <TextView
+                            android:id="@+id/spatial_title"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:ellipsize="end"
+                            android:importantForAccessibility="no"
+                            android:maxLines="1"
+                            android:text="@string/earbud_spatial_title"
+                            android:textColor="?attr/neoText"
+                            android:textSize="13sp" />
+
+                        <TextView
+                            android:id="@+id/badge_spatial_exp"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="3dp"
+                            android:background="?attr/neoChipWarn"
+                            android:includeFontPadding="false"
+                            android:maxLines="1"
+                            android:paddingLeft="6dp"
+                            android:paddingTop="2dp"
+                            android:paddingRight="6dp"
+                            android:paddingBottom="2dp"
+                            android:singleLine="true"
+                            android:text="@string/badge_experimental"
+                            android:textColor="?attr/neoWarn"
+                            android:textSize="9sp"
+                            android:textStyle="bold"
+                            android:visibility="gone" />
+                    </LinearLayout>
+
+                    <Switch
+                        android:id="@+id/switch_spatial"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:contentDescription="@string/spatial_switch"
+                        android:showText="false"
+                        android:thumbTint="?attr/neoSwitchThumb"
+                        android:trackTint="?attr/neoSwitchTrack" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/spatial_hint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="@string/spatial_state_unknown"
+                    android:textColor="?attr/neoTextDim"
+                    android:textSize="10sp" />
+
+                <LinearLayout
+                    android:id="@+id/spatial_scene_container"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:letterSpacing="0.08"
+                        android:text="@string/spatial_scene_label"
+                        android:textColor="?attr/neoTextFaint"
+                        android:textSize="10sp" />
+
+                    <com.hdz.wearcontrol.SnapChipRow
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp">
+
+                        <LinearLayout
+                            android:id="@+id/spatial_scene_row"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal" />
+                    </com.hdz.wearcontrol.SnapChipRow>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/head_tracking_row"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:paddingEnd="8dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:ellipsize="end"
+                            android:importantForAccessibility="no"
+                            android:maxLines="1"
+                            android:text="@string/head_tracking_title"
+                            android:textColor="?attr/neoText"
+                            android:textSize="12sp" />
+
+                        <TextView
+                            android:id="@+id/badge_head_tracking_exp"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="3dp"
+                            android:background="?attr/neoChipWarn"
+                            android:includeFontPadding="false"
+                            android:maxLines="1"
+                            android:paddingLeft="6dp"
+                            android:paddingTop="2dp"
+                            android:paddingRight="6dp"
+                            android:paddingBottom="2dp"
+                            android:singleLine="true"
+                            android:text="@string/badge_experimental"
+                            android:textColor="?attr/neoWarn"
+                            android:textSize="9sp"
+                            android:textStyle="bold"
+                            android:visibility="gone" />
+                    </LinearLayout>
+
+                    <Switch
+                        android:id="@+id/switch_head_tracking"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:contentDescription="@string/head_tracking_title"
+                        android:showText="false"
+                        android:thumbTint="?attr/neoSwitchThumb"
+                        android:trackTint="?attr/neoSwitchTrack" />
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:lineSpacingExtra="2dp"
+                    android:text="@string/spatial_caption_lines"
+                    android:textColor="?attr/neoTextFaint"
+                    android:textSize="10sp" />
+            </LinearLayout>
+
+            <!-- local host spatial audio + 360 lab -->
+            <LinearLayout
+                android:id="@+id/local_spatial_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="?attr/neoCard"
+                android:orientation="vertical"
+                android:padding="14dp"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/local_spatial_title"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:importantForAccessibility="no"
+                        android:maxLines="1"
+                        android:paddingEnd="8dp"
+                        android:text="@string/phone_spatial_title"
+                        android:textColor="?attr/neoText"
+                        android:textSize="13sp" />
+
+                    <Switch
+                        android:id="@+id/switch_local_spatial"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:contentDescription="@string/phone_spatial_title"
+                        android:showText="false"
+                        android:thumbTint="?attr/neoSwitchThumb"
+                        android:trackTint="?attr/neoSwitchTrack" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/local_spatial_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/local_spatial_status_idle"
+                    android:textColor="?attr/neoTextDim"
+                    android:textSize="10sp" />
+
+                <TextView
+                    android:id="@+id/local_spatial_limit"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:lineSpacingExtra="2dp"
+                    android:text="@string/local_spatial_limit"
+                    android:textColor="?attr/neoTextFaint"
+                    android:textSize="10sp" />
+
+                <com.hdz.wearcontrol.SnapChipRow
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp">
+
+                    <LinearLayout
+                        android:id="@+id/local_spatial_scene_row"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal" />
+                </com.hdz.wearcontrol.SnapChipRow>
+
+                <TextView
+                    android:id="@+id/btn_spatial_lab"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:background="?attr/neoPill"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:minHeight="36dp"
+                    android:paddingLeft="14dp"
+                    android:paddingRight="14dp"
+                    android:text="@string/spatial_lab_btn"
+                    android:textColor="?attr/neoText"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- device extras & capability scope -->
+            <LinearLayout
+                android:id="@+id/extras_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:id="@+id/extras_toggles_card"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:background="?attr/neoCard"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <LinearLayout
+                        android:id="@+id/wear_status_row"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingTop="2dp"
+                        android:paddingBottom="6dp"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/wear_status_title"
+                            android:textColor="?attr/neoTextDim"
+                            android:textSize="12sp" />
+
+                        <TextView
+                            android:id="@+id/wear_status_text"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/wear_status_unknown"
+                            android:textColor="?attr/neoText"
+                            android:textSize="12sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/row_low_latency"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingTop="5dp"
+                        android:paddingBottom="5dp"
+                        android:visibility="gone">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingEnd="8dp">
+
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:ellipsize="end"
+                                android:importantForAccessibility="no"
+                                android:maxLines="1"
+                                android:text="@string/low_latency_title"
+                                android:textColor="?attr/neoText"
+                                android:textSize="13sp" />
+
+                            <TextView
+                                android:id="@+id/badge_low_latency_exp"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="3dp"
+                                android:background="?attr/neoChipWarn"
+                                android:includeFontPadding="false"
+                                android:maxLines="1"
+                                android:paddingLeft="6dp"
+                                android:paddingTop="2dp"
+                                android:paddingRight="6dp"
+                                android:paddingBottom="2dp"
+                                android:singleLine="true"
+                                android:text="@string/badge_experimental"
+                                android:textColor="?attr/neoWarn"
+                                android:textSize="9sp"
+                                android:textStyle="bold"
+                                android:visibility="gone" />
+                        </LinearLayout>
+
+                        <Switch
+                            android:id="@+id/switch_low_latency"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:contentDescription="@string/low_latency_title"
+                            android:showText="false"
+                            android:thumbTint="?attr/neoSwitchThumb"
+                            android:trackTint="?attr/neoSwitchTrack" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/row_multipoint"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingTop="5dp"
+                        android:paddingBottom="5dp"
+                        android:visibility="gone">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingEnd="8dp">
+
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:ellipsize="end"
+                                android:importantForAccessibility="no"
+                                android:maxLines="1"
+                                android:text="@string/multipoint_title"
+                                android:textColor="?attr/neoText"
+                                android:textSize="13sp" />
+
+                            <TextView
+                                android:id="@+id/badge_multipoint_exp"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="3dp"
+                                android:background="?attr/neoChipWarn"
+                                android:includeFontPadding="false"
+                                android:maxLines="1"
+                                android:paddingLeft="6dp"
+                                android:paddingTop="2dp"
+                                android:paddingRight="6dp"
+                                android:paddingBottom="2dp"
+                                android:singleLine="true"
+                                android:text="@string/badge_experimental"
+                                android:textColor="?attr/neoWarn"
+                                android:textSize="9sp"
+                                android:textStyle="bold"
+                                android:visibility="gone" />
+                        </LinearLayout>
+
+                        <Switch
+                            android:id="@+id/switch_multipoint"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:contentDescription="@string/multipoint_title"
+                            android:showText="false"
+                            android:thumbTint="?attr/neoSwitchThumb"
+                            android:trackTint="?attr/neoSwitchTrack" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/row_wear_detect"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingTop="5dp"
+                        android:paddingBottom="5dp"
+                        android:visibility="gone">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingEnd="8dp">
+
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:ellipsize="end"
+                                android:importantForAccessibility="no"
+                                android:maxLines="1"
+                                android:text="@string/wear_detection_title"
+                                android:textColor="?attr/neoText"
+                                android:textSize="13sp" />
+
+                            <TextView
+                                android:id="@+id/badge_wear_detect_exp"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="3dp"
+                                android:background="?attr/neoChipWarn"
+                                android:includeFontPadding="false"
+                                android:maxLines="1"
+                                android:paddingLeft="6dp"
+                                android:paddingTop="2dp"
+                                android:paddingRight="6dp"
+                                android:paddingBottom="2dp"
+                                android:singleLine="true"
+                                android:text="@string/badge_experimental"
+                                android:textColor="?attr/neoWarn"
+                                android:textSize="9sp"
+                                android:textStyle="bold"
+                                android:visibility="gone" />
+                        </LinearLayout>
+
+                        <Switch
+                            android:id="@+id/switch_wear_detect"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:contentDescription="@string/wear_detection_title"
+                            android:showText="false"
+                            android:thumbTint="?attr/neoSwitchThumb"
+                            android:trackTint="?attr/neoSwitchTrack" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/btn_find_buds"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:background="?attr/neoPill"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center"
+                        android:minHeight="36dp"
+                        android:orientation="horizontal"
+                        android:paddingLeft="14dp"
+                        android:paddingRight="14dp"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:maxLines="1"
+                            android:text="@string/find_buds_btn"
+                            android:textColor="?attr/neoText"
+                            android:textSize="12sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/badge_find_buds_exp"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="6dp"
+                            android:background="?attr/neoChipWarn"
+                            android:includeFontPadding="false"
+                            android:maxLines="1"
+                            android:paddingLeft="6dp"
+                            android:paddingTop="2dp"
+                            android:paddingRight="6dp"
+                            android:paddingBottom="2dp"
+                            android:singleLine="true"
+                            android:text="@string/badge_experimental"
+                            android:textColor="?attr/neoWarn"
+                            android:textSize="9sp"
+                            android:textStyle="bold"
+                            android:visibility="gone" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/scope_limit_card"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:background="?attr/neoCard"
+                    android:orientation="vertical"
+                    android:padding="14dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/firmware_info_text"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="3dp"
+                        android:textColor="?attr/neoTextDim"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/scope_limit_text"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:lineSpacingExtra="2dp"
+                        android:textColor="?attr/neoTextFaint"
+                        android:textSize="10sp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- disclaimer -->
+            <LinearLayout
+                android:id="@+id/disclaimer_row"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="?attr/neoCard"
+                android:orientation="vertical"
+                android:padding="14dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/disclaimer_heading_official"
+                    android:textColor="?attr/neoTextDim"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:lineSpacingExtra="3dp"
+                    android:text="@string/disclaimer_body_official"
+                    android:textColor="?attr/neoTextFaint"
+                    android:textSize="11sp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="@string/disclaimer_heading_safety"
+                    android:textColor="?attr/neoTextDim"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:lineSpacingExtra="3dp"
+                    android:text="@string/disclaimer_body_safety"
+                    android:textColor="?attr/neoTextFaint"
+                    android:textSize="11sp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="@string/disclaimer_heading_risk"
+                    android:textColor="?attr/neoTextDim"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:lineSpacingExtra="3dp"
+                    android:text="@string/disclaimer_body_risk"
+                    android:textColor="?attr/neoTextFaint"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/open_settings"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="16dp"
+                android:background="?attr/neoPill"
+                android:gravity="center"
+                android:minHeight="38dp"
+                android:minWidth="108dp"
+                android:paddingLeft="22dp"
+                android:paddingRight="22dp"
+                android:text="@string/cta_settings"
+                android:textColor="?attr/neoText"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <Space
+                android:layout_width="match_parent"
+                android:layout_height="44dp" />
+        </LinearLayout>
+    </com.hdz.wearcontrol.AppScrollView>
+
+    <com.hdz.wearcontrol.ArcIndicatorView
+        android:id="@+id/indicator"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+</FrameLayout>

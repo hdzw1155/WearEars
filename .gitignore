@@ -1,7 +1,4 @@
-build/
-*.apk
+/build/
+/.local/
+__pycache__/
 *.idsig
-keystore/
-libs/
-AI_HANDOFF.md
-HANDOFF_PROMPT.md
