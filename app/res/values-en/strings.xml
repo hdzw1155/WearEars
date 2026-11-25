@@ -23,13 +23,13 @@
     <string name="spatial_dialog_title">Experimental feature</string>
     <string name="spatial_dialog_msg">This switch is experimental. The vivo TWS Air3 Pro reports its switch state. The audible effect still needs testing.\n\n⚠️ Toggling may cause sudden volume changes or loud noise. Take the earbuds out and set the volume to minimum. Put them back on when it is safe.\n\nContinue?</string>
     <string name="deepx_label">DeepX audio</string>
-    <string name="equalizer_label">Built-in EQ (experimental)</string>
+    <string name="equalizer_label">Built-in EQ</string>
     <string name="deepx_caption">May take a few seconds to apply. Some vivo models (TWS Air 3 Pro) only. Take the earbuds out and lower the volume while testing; do not switch repeatedly.</string>
     <string name="dialog_ok">I understand, continue</string>
     <string name="dialog_cancel">Cancel</string>
     <string name="global_disclaimer_title">Disclaimer</string>
-    <string name="global_disclaimer_msg">This is an unofficial, unauthorized third-party research tool that controls the earbuds by reverse-engineered private protocol. It collects and uploads no data.\nGitHub: https://github.com/hdzw1155/WearEars\n\n⚠️ Safety: private commands are not certified by the vendor. They may cause sudden loud noise, feedback or volume jumps and damage your hearing. Before connecting a new model, the first use after a firmware update, or before enabling any experimental feature under "Developer", take the earbuds out (do not wear them), set volume to minimum, and only put them on after confirming it is safe. Do not use while driving, cycling or operating machinery.\n\nHearing damage is irreversible. Please be careful. You use this app entirely at your own risk.\n\nDo you agree and want to continue?</string>
-    <string name="disclaimer_page_msg">This is an unofficial, unauthorized third-party research tool that controls the earbuds by reverse-engineered private protocol. It collects and uploads no data.\nGitHub: https://github.com/hdzw1155/WearEars\n\n⚠️ Safety: private commands are not certified by the vendor. They may cause sudden loud noise, feedback or volume jumps and damage your hearing. Before connecting a new model, the first use after a firmware update, or before enabling any experimental feature under "Developer", take the earbuds out (do not wear them), set volume to minimum, and only put them on after confirming it is safe. Do not use while driving, cycling or operating machinery.\n\nHearing damage is irreversible. Please be careful. You use this app entirely at your own risk.</string>
+    <string name="global_disclaimer_msg">This is an unofficial, unauthorized third-party research tool that controls the earbuds by reverse-engineered private protocol. It collects and uploads no data.\nGitHub: https://github.com/hdzw1155/WearEars\n\n⚠️ Safety: private commands are not certified by the vendor. They may cause sudden loud noise, feedback or volume jumps and damage your hearing. Before connecting a new model, the first use after a firmware update, or before enabling any feature marked "EXP", take the earbuds out (do not wear them), set volume to minimum, and only put them on after confirming it is safe. Do not use while driving, cycling or operating machinery.\n\nHearing damage is irreversible. Please be careful. You use this app entirely at your own risk.\n\nDo you agree and want to continue?</string>
+    <string name="disclaimer_page_msg">This is an unofficial, unauthorized third-party research tool that controls the earbuds by reverse-engineered private protocol. It collects and uploads no data.\nGitHub: https://github.com/hdzw1155/WearEars\n\n⚠️ Safety: private commands are not certified by the vendor. They may cause sudden loud noise, feedback or volume jumps and damage your hearing. Before connecting a new model, the first use after a firmware update, or before enabling any feature marked "EXP", take the earbuds out (do not wear them), set volume to minimum, and only put them on after confirming it is safe. Do not use while driving, cycling or operating machinery.\n\nHearing damage is irreversible. Please be careful. You use this app entirely at your own risk.</string>
     <string name="dialog_agree">I understand and agree</string>
     <string name="dialog_refuse">Disagree and exit</string>
     <string name="disclaimer">Disclaimer: a personal research project, not affiliated with vivo / Huawei / Xiaomi / Edifier / Samsung / Qualcomm. "Developer" holds experimental commands inferred from reverse engineering and validated on some models (e.g. vivo TWS Air 3 Pro).\nGitHub: https://github.com/hdzw1155/WearEars\n⚠️ Before any experimental toggle: take the earbuds out, set volume to minimum, then wear them after confirming it is safe. Hearing damage is irreversible. Do not use while driving or cycling.\nYou use this app entirely at your own risk, including but not limited to hearing discomfort, property loss, firmware issues, data loss or security risks.</string>
@@ -142,6 +142,7 @@
     <string name="settings_volume_show">Show volume bar</string>
     <string name="settings_volume_hide">Hide volume bar</string>
     <string name="tile_refresh_hint">, tap to refresh battery</string>
+    <string name="tile_charging">charging</string>
     <string name="settings_style_supreme">Supreme</string>
     <string name="settings_style_neo_new">Neo Minimal</string>
     <string name="settings_style_neo_classic">Neo Classic</string>
@@ -167,4 +168,89 @@
     <string name="sub_profiles_retry">Retry or select earbuds in app settings</string>
     <string name="status_pin_unavailable">Selected earbuds unavailable</string>
     <string name="sub_connect_audio">Connect your paired earbuds and retry</string>
+
+    <!-- ANC sub-controls & wind reduction (Wave 2 / Wave 4) -->
+    <string name="noise_sub_label">ANC Level</string>
+    <string name="trans_sub_label">Transparency</string>
+    <string name="wind_reduction_title">Wind Noise Reduction</string>
+    <string name="wind_reduction_hint">Reduce wind noise outdoors</string>
+
+    <!-- Earbud vs local spatial audio & 360° Spatial Lab -->
+    <string name="earbud_spatial_title">Earbud Spatial Audio</string>
+    <string name="earbud_spatial_hint">Runs on earbuds (works for phone &amp; watch audio)</string>
+    <string name="earbud_spatial_air3_limit">Toggle only; Air3 Pro hardware lacks scenes &amp; head tracking</string>
+    <string name="spatial_scene_label">Scene</string>
+    <string name="head_tracking_title">Head Tracking</string>
+    <string name="head_tracking_msg">Head tracking may alter audio balance suddenly. Confirm before enabling.</string>
+    <string name="watch_spatial_title">Watch Spatial Audio (Local)</string>
+    <string name="phone_spatial_title">Phone Spatial Audio (Local)</string>
+    <string name="local_spatial_limit">Only affects audio played on this device; no effect when another device streams audio</string>
+    <string name="local_spatial_status_idle">Off · Processes local media audio when enabled</string>
+    <string name="local_spatial_status_session">Active on local player</string>
+    <string name="local_spatial_status_global">Global mix mode (local)</string>
+    <string name="local_spatial_status_unsupported">Host DSP restricted on ROM; 360° Lab only</string>
+    <string name="local_spatial_status_bypass_hw">Bypassed: Earbud spatial active</string>
+    <string name="local_spatial_status_bypass_os">Bypassed: OS Spatializer active</string>
+    <string name="spatial_lab_btn">360° Spatial Lab (WearEars HRTF)</string>
+    <string name="spatial_lab_title">360° Spatial Lab</string>
+    <string name="spatial_lab_sub">Proprietary binaural HRTF · Crown or drag</string>
+    <string name="spatial_lab_play">Play</string>
+    <string name="spatial_lab_stop">Stop</string>
+    <string name="spatial_lab_azimuth">Azimuth %1$d°</string>
+    <string name="spatial_lab_head_width">Head Width %1$d%%</string>
+    <string name="spatial_lab_pinna">Pinna Notch %1$d Hz</string>
+    <string name="spatial_lab_vol_cap">Volume &gt;70%: test tone attenuated for safety</string>
+    <string name="spatial_scene_wide">Natural</string>
+    <string name="spatial_scene_cinema">Cinema</string>
+    <string name="spatial_scene_concert">Concert</string>
+    <string name="spatial_scene_studio">Studio</string>
+
+    <!-- Device extras, safety gates & form factor labels -->
+    <string name="extras_title">Device Controls</string>
+    <string name="low_latency_title">Low Latency</string>
+    <string name="multipoint_title">Dual Connection</string>
+    <string name="wear_detection_title">Wear Detection</string>
+    <string name="wear_status_title">Wear Status</string>
+    <string name="wear_status_both">Both In Ear</string>
+    <string name="wear_status_left">Left In Ear</string>
+    <string name="wear_status_right">Right In Ear</string>
+    <string name="wear_status_none">Not Worn</string>
+    <string name="wear_status_unknown">Wear Unknown</string>
+    <string name="find_buds_btn">Find Earbuds</string>
+    <string name="find_buds_pick_title">Ring Earbuds</string>
+    <string name="find_buds_left">Ring Left</string>
+    <string name="find_buds_right">Ring Right</string>
+    <string name="find_buds_both">Ring Both</string>
+    <string name="find_buds_blocked_wear">Blocked: earbud is in ear — remove first to protect hearing</string>
+    <string name="find_buds_confirm_title">Hearing Safety Check</string>
+    <string name="find_buds_confirm_msg">⚠️ High-volume chime ahead!\n\nConfirm the target earbud is NOT in your ear to avoid permanent hearing damage.</string>
+    <string name="find_buds_confirm_unknown_wear">\n\nNote: wear status is unavailable; verify manually.</string>
+    <string name="find_buds_confirm_ok">Confirmed Not Worn, Ring</string>
+    <string name="find_buds_ringing_title">Ringing Earbuds</string>
+    <string name="find_buds_ringing_msg">Chime active. Stops automatically in 30s or if worn.</string>
+    <string name="find_buds_stop">Stop Ringing</string>
+    <string name="firmware_label">Firmware</string>
+    <string name="scope_standard_limit">System Bluetooth (battery only; ANC/EQ need vendor protocol)</string>
+    <string name="scope_partial_limit">Partial control (only confirmed features enabled)</string>
+    <string name="badge_experimental">EXP</string>
+    <string name="exp_first_warn_title">Experimental Feature</string>
+    <string name="exp_first_warn_msg">Based on community reverse-engineering and not fully verified on this model. Remove buds or lower volume first. Continue?</string>
+    <string name="sup_sec_acoustic_plus">02 / ACOUSTIC &amp; EQ</string>
+    <string name="sup_sec_spatial">03 / SPATIAL AUDIO</string>
+    <string name="sup_sec_extras">04 / DEVICE+</string>
+    <string name="feature_pending">Applying…</string>
+    <string name="feature_failed">Unconfirmed; reverted</string>
+    <string name="watch_mode_label">Watch Mode</string>
+    <string name="phone_mode_label">Phone Mode</string>
+    <string name="phone_page_prev">Prev</string>
+    <string name="phone_page_next">Next</string>
+
+    <!-- Phone on-demand burst mode & OEM channel guard -->
+    <string name="status_parked">Standby</string>
+    <string name="sub_parked_hint">Connects on tap</string>
+    <string name="status_channel_contested">Control channel busy</string>
+    <string name="sub_channel_contested">Busy with OEM earbud service · Tap to retry</string>
+    <string name="settings_conn_mode">Phone connection</string>
+    <string name="settings_conn_burst">On-demand</string>
+    <string name="settings_conn_keep">Always-on</string>
 </resources>

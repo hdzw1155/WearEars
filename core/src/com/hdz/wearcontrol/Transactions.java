@@ -37,12 +37,12 @@ final class Transactions {
     synchronized Request receipt() { return active; }
     static boolean dispatched(Request request) { return request != null && request.phase == Phase.SENT; }
 
-    void begin(int mode) {
-        if (mode < -1 || mode > 2) return;
+    boolean begin(int mode) {
+        if (mode < -1 || mode > 2) return false;
         Request next = new Request(mode);
         synchronized (this) {
             Request old = active;
-            if (old != null && mode >= 0 && old.mode == mode) return;
+            if (old != null && mode >= 0 && old.mode == mode) return false;
             if (old != null) host.cancel(old.timer);
             active = next;
             next.force = unresolved >= 0;
@@ -50,6 +50,7 @@ final class Transactions {
         host.changed(mode, true, false);
         next.timer = () -> timeout(next);
         if (host.live()) connected();
+        return true;
     }
     void connected() {
         Request r = active;
@@ -125,6 +126,13 @@ final class Transactions {
             active.phase = Phase.WAIT;
         }
     }
+    void abortQueued(BooleanSupplier claim) {
+        if (claim.getAsBoolean()) {
+            synchronized (this) { unresolved = -1; }
+            finish(false);
+        }
+    }
+
     void finish(boolean success) {
         Request r;
         synchronized (this) { r = active; active = null; }

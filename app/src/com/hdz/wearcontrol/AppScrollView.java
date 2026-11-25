@@ -91,6 +91,8 @@ public class AppScrollView extends ScrollView {
     private long lastOverscrollAt;
 
     private boolean active = true;
+    private boolean phoneMode;
+    private boolean vibratorReady;
 
     /** true = 当前 scrollY 由旋转输入驱动; 手指拖动时不接管 scrollY */
     private boolean rotaryDriving;
@@ -163,11 +165,11 @@ public class AppScrollView extends ScrollView {
         unitPx = DP_PER_UNIT * density;
         feedback = new ScrollFeedback(TICK_DIST_DP * density);
         maxOverscrollPx = MAX_OVERSCROLL_DP * density;
-        setOverScrollMode(View.OVER_SCROLL_NEVER);
-        setVerticalScrollBarEnabled(false);
-        setHorizontalScrollBarEnabled(false);
-        initVibrator();
-        initEffects();
+        phoneMode = DeviceForm.isPhone(context);
+        applyScrollForm();
+        if (!phoneMode) {
+            ensureVibrator();
+        }
         setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
@@ -176,6 +178,61 @@ public class AppScrollView extends ScrollView {
                 return false;
             }
         });
+    }
+
+    void setPhoneMode(boolean phone) {
+        if (phoneMode == phone) {
+            return;
+        }
+        phoneMode = phone;
+        applyScrollForm();
+        if (phone) {
+            overscrollPx = 0f;
+            overscrollTarget = 0f;
+            applyOverscroll();
+        } else {
+            ensureVibrator();
+        }
+    }
+
+    private void applyScrollForm() {
+        if (phoneMode) {
+            setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+            setVerticalScrollBarEnabled(true);
+            applyPhoneScrollbarSafely();
+        } else {
+            setOverScrollMode(View.OVER_SCROLL_NEVER);
+            setVerticalScrollBarEnabled(false);
+        }
+        setHorizontalScrollBarEnabled(false);
+    }
+
+    private void applyPhoneScrollbarSafely() {
+        try {
+            setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
+            if (isAttachedToWindow()) {
+                setScrollbarFadingEnabled(true);
+            }
+        } catch (RuntimeException ignored) {
+            // Android 11 View.mScrollCache may not be initialized during inflation
+        }
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        if (phoneMode) {
+            applyPhoneScrollbarSafely();
+        }
+    }
+
+    private void ensureVibrator() {
+        if (vibratorReady) {
+            return;
+        }
+        vibratorReady = true;
+        initVibrator();
+        initEffects();
     }
 
     private void initVibrator() {
@@ -306,16 +363,22 @@ public class AppScrollView extends ScrollView {
             // 顶部超限: 页面被继续往下拉(橡皮筋)
             target = 0f;
             hitEdge = true;
-            overscrollTarget += (0f - rawTarget) * OVERSCROLL_DAMP;
+            if (!phoneMode) {
+                overscrollTarget += (0f - rawTarget) * OVERSCROLL_DAMP;
+            }
         } else if (rawTarget >= max) {
             // 底部超限: 页面被继续往上拉
             target = max;
             hitEdge = true;
-            overscrollTarget -= (rawTarget - max) * OVERSCROLL_DAMP;
+            if (!phoneMode) {
+                overscrollTarget -= (rawTarget - max) * OVERSCROLL_DAMP;
+            }
         } else {
             overscrollTarget = 0f;
         }
-        if (overscrollTarget > maxOverscrollPx) {
+        if (phoneMode) {
+            overscrollTarget = 0f;
+        } else if (overscrollTarget > maxOverscrollPx) {
             overscrollTarget = maxOverscrollPx;
         } else if (overscrollTarget < -maxOverscrollPx) {
             overscrollTarget = -maxOverscrollPx;
@@ -337,18 +400,20 @@ public class AppScrollView extends ScrollView {
         }
 
         if (hitEdge) {
-            // 已在端点时立刻反馈；尚未到达则由 onScrollChanged 在实际抵达时反馈。
-            if (getScrollY() <= 0 && rawTarget <= 0f)
-                playFeedback(feedback.limit(-1, lastInputAt));
-            else if (getScrollY() >= max && rawTarget >= max)
-                playFeedback(feedback.limit(1, lastInputAt));
+            if (!phoneMode) {
+                // 已在端点时立刻反馈；尚未到达则由 onScrollChanged 在实际抵达时反馈。
+                if (getScrollY() <= 0 && rawTarget <= 0f)
+                    playFeedback(feedback.limit(-1, lastInputAt));
+                else if (getScrollY() >= max && rawTarget >= max)
+                    playFeedback(feedback.limit(1, lastInputAt));
+            }
             return;
         }
     }
 
     @Override protected void onScrollChanged(int x, int y, int oldX, int oldY) {
         super.onScrollChanged(x, y, oldX, oldY);
-        if (feedback == null || !active || !hasWindowFocus()) return;
+        if (phoneMode || feedback == null || !active || !hasWindowFocus()) return;
         if (rotaryDriving && !touchTracking) {
             playFeedback(feedback.scrolled(y, oldY, getMaxScroll(), SystemClock.uptimeMillis()));
         }
@@ -396,7 +461,7 @@ public class AppScrollView extends ScrollView {
      * 橡皮筋拉伸要在这里单独接一份。只旁听, 返回 false 让 ScrollView 继续滚。
      */
     private void handleTouch(MotionEvent e) {
-        if (!active) return;
+        if (!active || phoneMode) return;
         int action = e.getActionMasked();
         if (action == MotionEvent.ACTION_DOWN) {
             touchTracking = true;
@@ -448,7 +513,7 @@ public class AppScrollView extends ScrollView {
         if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
             touchTracking = false;
             overscrollTarget = 0f;
-            if (active && overscrollPx != 0f) startOverscrollLoop();
+            if (active && !phoneMode && overscrollPx != 0f) startOverscrollLoop();
         }
         return handled;
     }
@@ -461,7 +526,7 @@ public class AppScrollView extends ScrollView {
     }
 
     private boolean hapticsAllowed() {
-        if (!active || !isHapticFeedbackEnabled() || !isShown() || !hasWindowFocus()) return false;
+        if (phoneMode || !active || !isHapticFeedbackEnabled() || !isShown() || !hasWindowFocus()) return false;
         long now = SystemClock.uptimeMillis();
         if (now - settingsCheckedAt >= 200L) {
             settingsCheckedAt = now;

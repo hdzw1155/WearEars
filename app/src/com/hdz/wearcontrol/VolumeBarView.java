@@ -31,7 +31,10 @@ public class VolumeBarView extends View {
         void onLevelChanged(int level, int max);
         default void onLockChanged() { }
         default void onLockedIncrease() { }
+        default void onHighGuardConfirmNeeded() { onLockedIncrease(); }
     }
+
+    private static final long AUTO_LOCK_MS = 4000L;
 
     private static final int STYLE_CLASSIC = AppPrefs.STYLE_CLASSIC;
     private static final int STYLE_LIQUID = AppPrefs.STYLE_LIQUID;
@@ -79,17 +82,28 @@ public class VolumeBarView extends View {
     private boolean dragging;
     private VolumeGuard guard = new VolumeGuard();
     private float downX, downY;
-    private boolean holding, unlockedThisTouch, lockPressed, hintSent;
+    private boolean holding, unlockedThisTouch, unlockedOnDown, lockPressed, hintSent;
     /** 新系列状态: 画法、按下回弹、锁钮弹跳、液面晃动 */
     private boolean neo;
     private NeoVolumeArt neoArt;
     private float press, pressTarget, lockScale = 1f, wavePhase = 0.6f, waveEnergy;
     private ValueAnimator pressAnim, lockAnim, waveAnim;
+    private final Runnable autoLockTask = new Runnable() {
+        @Override public void run() {
+            if (!guard.isUnlocked()) return;
+            guard.lock();
+            updateLockDescription();
+            if (listener != null) listener.onLockChanged();
+            popLock();
+            invalidate();
+        }
+    };
     private final Runnable unlock = new Runnable() {
         @Override public void run() {
             if (!holding) return;
             guard.unlock();
             unlockedThisTouch = true;
+            scheduleAutoLock();
             updateLockDescription();
             if (listener != null) listener.onLockChanged();
             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
@@ -99,15 +113,48 @@ public class VolumeBarView extends View {
     };
 
     void setVolumeGuard(VolumeGuard guard) { this.guard = guard; updateLockDescription(); }
+    private void scheduleAutoLock() {
+        removeCallbacks(autoLockTask);
+        if (guard.isUnlocked()) postDelayed(autoLockTask, AUTO_LOCK_MS);
+    }
     private void updateLockDescription() {
         setContentDescription(getContext().getString(guard.isUnlocked()
                 ? R.string.sup_vol_unlocked_hint : R.string.volume_locked));
     }
-    void cancelInteraction() {
+    private void resetTouchState() {
         holding = dragging = unlockedThisTouch = false;
         animatePress(0f);
         updateLockDescription();
         removeCallbacks(unlock);
+        if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
+        invalidate();
+    }
+    private void cancelAnimations() {
+        if (animator != null) {
+            animator.cancel();
+            animator = null;
+        }
+        if (pressAnim != null) {
+            pressAnim.cancel();
+            pressAnim = null;
+        }
+        if (lockAnim != null) {
+            lockAnim.cancel();
+            lockAnim = null;
+        }
+        if (waveAnim != null) {
+            waveAnim.cancel();
+            waveAnim = null;
+        }
+        press = pressTarget = waveEnergy = 0f;
+        lockScale = 1f;
+    }
+    void cancelInteraction() {
+        holding = dragging = unlockedThisTouch = false;
+        removeCallbacks(unlock);
+        removeCallbacks(autoLockTask);
+        cancelAnimations();
+        updateLockDescription();
         if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
         invalidate();
     }
@@ -387,20 +434,24 @@ public class VolumeBarView extends View {
             removeCallbacks(unlock);
             holding = true;
             dragging = unlockedThisTouch = hintSent = false;
+            unlockedOnDown = guard.isUnlocked();
             lockPressed = e.getX() >= lockZoneLeft();
             if (!guard.isUnlocked()) postDelayed(unlock, ViewConfiguration.getLongPressTimeout());
-            else if (!lockPressed) animatePress(1f);
+            else {
+                scheduleAutoLock();
+                if (!lockPressed) animatePress(1f);
+            }
             return true;
         }
         if (action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_POINTER_DOWN) {
-            cancelInteraction();
+            resetTouchState();
             return true;
         }
         if (!holding && !dragging) return false;
         if (action != MotionEvent.ACTION_MOVE && action != MotionEvent.ACTION_UP) return true;
         boolean released = action == MotionEvent.ACTION_UP;
         if (unlockedThisTouch) {
-            if (released) cancelInteraction();
+            if (released) resetTouchState();
             return true;
         }
         if (holding) {
@@ -409,12 +460,12 @@ public class VolumeBarView extends View {
                 if (released) {
                     if (!lockPressed) changeLevel(e.getX());
                     else if (e.getX() >= lockZoneLeft()) performClick();
-                    cancelInteraction();
+                    resetTouchState();
                 }
                 return true;
             }
             if (Math.abs(dx) <= Math.abs(dy) || (lockPressed && !guard.isUnlocked())) {
-                cancelInteraction();
+                resetTouchState();
                 return false;
             }
             removeCallbacks(unlock);
@@ -424,8 +475,9 @@ public class VolumeBarView extends View {
             animatePress(1f);
             if (!released && getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
         }
+        if (guard.isUnlocked()) scheduleAutoLock();
         changeLevel(e.getX());
-        if (released) cancelInteraction();
+        if (released) resetTouchState();
         return true;
     }
 
@@ -434,7 +486,13 @@ public class VolumeBarView extends View {
         float fraction = b > a ? (x - a) / (b - a) : 0f;
         int target = Math.round(Math.max(0f, Math.min(1f, fraction)) * max);
         if (!guard.isUnlocked() && target > level) {
-            if (!hintSent && !guard.needsHighConfirmation() && listener != null) listener.onLockedIncrease();
+            if (!hintSent && listener != null) {
+                if (guard.needsHighConfirmation()) {
+                    if (!unlockedOnDown) listener.onHighGuardConfirmNeeded();
+                } else {
+                    listener.onLockedIncrease();
+                }
+            }
             hintSent = true;
             return;
         }
@@ -444,6 +502,8 @@ public class VolumeBarView extends View {
         kickWave();
         invalidate();
         if (listener != null) listener.onLevelChanged(level, max);
+        if (guard.isUnlocked()) scheduleAutoLock();
+        else removeCallbacks(autoLockTask);
     }
 
     // ---------------- 新系列: 几何与 Q 弹动效 ----------------
@@ -546,7 +606,13 @@ public class VolumeBarView extends View {
     /** 明确的确认入口：点锁或无障碍点击解锁，下一次拖动才可增大。 */
     @Override public boolean performClick() {
         super.performClick();
-        if (guard.isUnlocked()) guard.lock(); else guard.unlock();
+        if (guard.isUnlocked()) {
+            guard.lock();
+            removeCallbacks(autoLockTask);
+        } else {
+            guard.unlock();
+            scheduleAutoLock();
+        }
         updateLockDescription();
         if (listener != null) listener.onLockChanged();
         performHapticFeedback(HapticFeedbackConstants.CONFIRM);
@@ -559,15 +625,6 @@ public class VolumeBarView extends View {
     protected void onDetachedFromWindow() {
         guard.lock();
         cancelInteraction();
-        if (animator != null) {
-            animator.cancel();
-        }
-        animator = null;
-        if (pressAnim != null) pressAnim.cancel();
-        if (lockAnim != null) lockAnim.cancel();
-        if (waveAnim != null) waveAnim.cancel();
-        press = pressTarget = waveEnergy = 0f;
-        lockScale = 1f;
         super.onDetachedFromWindow();
     }
 }

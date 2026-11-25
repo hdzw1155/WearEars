@@ -16,13 +16,15 @@ final class BatteryPanel implements MainPanel {
         if (neo == null) return;
         int style = AppPrefs.uiStyle(activity);
         View card = activity.findViewById(R.id.neo_battery_card);
-        if (style == StyleChoice.MINIMAL) card.setPadding(0, 0, 0, 0);
+        if (style == StyleChoice.MINIMAL && card != null) card.setPadding(0, 0, 0, 0);
         if (style == StyleChoice.CLASSIC) {
-            activity.findViewById(R.id.battery_header).setVisibility(View.GONE);
-            activity.findViewById(R.id.neo_classic_header).setVisibility(View.VISIBLE);
+            View bh = activity.findViewById(R.id.battery_header);
+            View ch = activity.findViewById(R.id.neo_classic_header);
+            if (bh != null) bh.setVisibility(View.GONE);
+            if (ch != null) ch.setVisibility(View.VISIBLE);
             float density = activity.getResources().getDisplayMetrics().density;
             int sides = Math.round(14 * density), ends = Math.round(12 * density);
-            card.setPadding(sides, ends, sides, ends);
+            if (card != null) card.setPadding(sides, ends, sides, ends);
             ViewGroup.MarginLayoutParams lp = (ViewGroup.MarginLayoutParams) neo.getLayoutParams();
             lp.topMargin = Math.round(6 * density); neo.setLayoutParams(lp);
         }

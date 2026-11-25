@@ -80,7 +80,9 @@ public class SuprematistDialView extends View {
 
     private String statusText = "";
     private String subText = "";
+    private String subTag = "";
     private String chipText = "";
+    private final float[] posterBox = new float[3];
     private boolean connected;
     private boolean connecting;
     private boolean idleReconnect;
@@ -95,6 +97,14 @@ public class SuprematistDialView extends View {
         if (capability == TwsClient.CAP_NOISE) noisePanel = true;
         if (capability == 0) volumePanel = true;
         invalidate();
+    }
+
+    void setVolumeEnabled(boolean enabled) {
+        if (volumePanel != enabled) {
+            volumePanel = enabled;
+            if (!enabled) cancelVolumeInteraction();
+            invalidate();
+        }
     }
 
     private int volLevel = 5;
@@ -141,12 +151,15 @@ public class SuprematistDialView extends View {
     private int pressedTarget = HIT_NONE;
     private boolean draggingVolBar;
     private boolean pendingHoldUnlock;
+    private boolean pendingNoiseLongPress;
+    private boolean noiseLongPressFired;
     private float downX;
     private float downY;
     private long lastTapVolAt;
     private int lastSentVol = -1;
 
     private OnHeroActionListener heroListener;
+    private Runnable noiseLongPressListener;
 
     public interface OnHeroActionListener {
         void onRefreshRequested();
@@ -180,6 +193,24 @@ public class SuprematistDialView extends View {
         public void run() {
             if (volumeGuard.isUnlocked()) {
                 setVolumeUnlocked(false, false);
+            }
+        }
+    };
+
+    private final Runnable noiseLongPressTask = new Runnable() {
+        @Override
+        public void run() {
+            if (pendingNoiseLongPress && (pressedTarget == HIT_ANC_0 || pressedTarget == HIT_ANC_1)) {
+                int idx = pressedTarget - HIT_ANC_0;
+                if (connected && hasNoiseCap && noiseMode == NOISE_MODES[idx]
+                        && noiseLongPressListener != null) {
+                    pendingNoiseLongPress = false;
+                    noiseLongPressFired = true;
+                    pressedTarget = HIT_NONE;
+                    performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                    invalidate();
+                    noiseLongPressListener.run();
+                }
             }
         }
     };
@@ -235,6 +266,10 @@ public class SuprematistDialView extends View {
         this.heroListener = l;
     }
 
+    public void setOnNoiseLongPressListener(Runnable action) {
+        this.noiseLongPressListener = action;
+    }
+
     public void setLanguageEnglish(boolean en) {
         if (useEnglish != en) {
             useEnglish = en;
@@ -258,6 +293,14 @@ public class SuprematistDialView extends View {
         String s = sub == null ? "" : sub;
         if (!s.equals(this.subText)) {
             this.subText = s;
+            invalidate();
+        }
+    }
+
+    public void setSubTag(String tag) {
+        String t = tag == null ? "" : tag.trim();
+        if (!t.equals(this.subTag)) {
+            this.subTag = t;
             invalidate();
         }
     }
@@ -319,16 +362,23 @@ public class SuprematistDialView extends View {
         }
     }
 
+    static void computePosterBox(View view, int w, int h, float[] outBox) {
+        boolean round = view.getResources().getConfiguration().isScreenRound();
+        float minSide = Math.min(w, h);
+        float d = round ? minSide : minSide * 0.94f;
+        outBox[0] = d;
+        outBox[1] = (w - d) * 0.5f;
+        outBox[2] = (h - d) * 0.5f;
+    }
+
     private void updateGeometry(int w, int h) {
-        boolean round = getResources().getConfiguration().isScreenRound();
-        if (round) {
-            dSize = Math.min(w, h);
-            posterOx = (w - dSize) * 0.5f;
-        } else {
-            dSize = Math.min(w * 1.04f, h * 0.80f);
-            posterOx = (w - dSize) * 0.5f + 8f * density;
+        if (w <= 0 || h <= 0) {
+            return;
         }
-        posterOy = (h - dSize) * 0.5f;
+        computePosterBox(this, w, h, posterBox);
+        dSize = posterBox[0];
+        posterOx = posterBox[1];
+        posterOy = posterBox[2];
         float ox = posterOx;
         float oy = posterOy;
 
@@ -358,6 +408,12 @@ public class SuprematistDialView extends View {
         vMinusCx = ox + 0.415f * dSize;
         vPlusCx = ox + 0.575f * dSize;
         vBtnR = 0.046f * dSize;
+    }
+
+    @Override
+    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+        updateGeometry(w, h);
     }
 
     @Override
@@ -466,6 +522,7 @@ public class SuprematistDialView extends View {
         // Device subtitle or temp guard hint (enlarged & clearly legible on wrist)
         float maxSubW = Math.max(0.10f * d, ancLeft - sx - 0.020f * d);
         subTextPaint.setColor(0xFF232730);
+        subTextPaint.setTextAlign(Paint.Align.LEFT);
         subTextPaint.setTextSize(0.035f * d);
         CharSequence clipped = TextUtils.ellipsize(subText, subTextPaint, maxSubW, TextUtils.TruncateAt.END);
         canvas.drawText(clipped, 0, clipped.length(), sx, oy + 0.358f * d, subTextPaint);
@@ -494,7 +551,38 @@ public class SuprematistDialView extends View {
             reconnectRect.setEmpty();
             // Thin black accent underline under status cluster
             fillPaint.setColor(COL_INK);
-            canvas.drawRect(sx, oy + 0.378f * d, sx + 0.095f * d, oy + 0.385f * d, fillPaint);
+            canvas.drawRect(sx, oy + 0.378f * d, sx + 0.088f * d, oy + 0.385f * d, fillPaint);
+
+            if (subTag.length() > 0) {
+                float pillLeft = sx + 0.100f * d;
+                float maxRight = ancLeft - 0.014f * d;
+                float availW = maxRight - pillLeft;
+                if (availW > 0.055f * d) {
+                    float pillTop = oy + 0.365f * d;
+                    float pillBot = oy + 0.409f * d;
+                    float skew = 0.012f * d;
+                    subTextPaint.setTextSize(0.025f * d);
+                    float maxTextW = Math.max(4f, availW - 0.036f * d);
+                    CharSequence tagClip = TextUtils.ellipsize(subTag, subTextPaint, maxTextW, TextUtils.TruncateAt.END);
+                    float textW = subTextPaint.measureText(tagClip, 0, tagClip.length());
+                    float pillRight = Math.min(maxRight, pillLeft + textW + 0.034f * d);
+
+                    fillPaint.setColor(COL_INK);
+                    setSkewRect(pillLeft, pillTop, pillRight, pillBot, skew);
+                    canvas.drawPath(workPath, fillPaint);
+
+                    fillPaint.setColor(COL_RED);
+                    setSkewRect(pillLeft, pillTop, pillLeft + 0.018f * d, pillBot, skew);
+                    canvas.drawPath(workPath, fillPaint);
+
+                    subTextPaint.setColor(COL_WHITE);
+                    subTextPaint.setTextAlign(Paint.Align.CENTER);
+                    Paint.FontMetrics tfm = subTextPaint.getFontMetrics();
+                    float tx = (pillLeft + 0.008f * d + pillRight) * 0.5f;
+                    float ty = (pillTop + pillBot) * 0.5f - (tfm.ascent + tfm.descent) * 0.5f;
+                    canvas.drawText(tagClip, 0, tagClip.length(), tx, ty, subTextPaint);
+                }
+            }
         }
     }
 
@@ -795,6 +883,9 @@ public class SuprematistDialView extends View {
     }
 
     private int hitTest(float x, float y) {
+        if (dSize <= 0f && getWidth() > 0 && getHeight() > 0) {
+            updateGeometry(getWidth(), getHeight());
+        }
         float pad = 6f * density;
         if (x >= refreshRect.left - pad && x <= refreshRect.right + pad
                 && y >= refreshRect.top - pad && y <= refreshRect.bottom + pad) {
@@ -834,6 +925,8 @@ public class SuprematistDialView extends View {
 
         switch (action) {
             case MotionEvent.ACTION_DOWN:
+                cancelNoiseLongPress();
+                noiseLongPressFired = false;
                 volumeUnlockedOnDown = volumeGuard.isUnlocked();
                 downX = x;
                 downY = y;
@@ -859,6 +952,13 @@ public class SuprematistDialView extends View {
                     }
                 } else if (pressedTarget == HIT_VOL_MINUS || pressedTarget == HIT_VOL_PLUS) {
                     scheduleAutoLock();
+                } else if ((pressedTarget == HIT_ANC_0 || pressedTarget == HIT_ANC_1)
+                        && connected && hasNoiseCap && noiseLongPressListener != null) {
+                    int idx = pressedTarget - HIT_ANC_0;
+                    if (noiseMode == NOISE_MODES[idx]) {
+                        pendingNoiseLongPress = true;
+                        ui.postDelayed(noiseLongPressTask, ViewConfiguration.getLongPressTimeout());
+                    }
                 }
                 invalidate();
                 return true;
@@ -880,8 +980,11 @@ public class SuprematistDialView extends View {
                                 updateVolumeFromX(x);
                                 return true;
                             }
-                            if (downX >= vBarLeft && x - downX > Math.abs(y - downY) && heroListener != null
-                                    && !volumeGuard.needsHighConfirmation()) heroListener.onVolumeGuardHint(false);
+                            if (downX >= vBarLeft && x - downX > Math.abs(y - downY)) {
+                                lockPulseUntil = System.currentTimeMillis() + 520L;
+                                if (heroListener != null) heroListener.onVolumeGuardHint(false);
+                                invalidate();
+                            }
                             pressedTarget = HIT_NONE;
                             return false;
                         }
@@ -908,6 +1011,7 @@ public class SuprematistDialView extends View {
                     return true;
                 }
                 if (dist > touchSlop) {
+                    cancelNoiseLongPress();
                     pressedTarget = HIT_NONE;
                     invalidate();
                     return false;
@@ -918,6 +1022,15 @@ public class SuprematistDialView extends View {
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
                 cancelHoldUnlock();
+                cancelNoiseLongPress();
+                if (noiseLongPressFired) {
+                    noiseLongPressFired = false;
+                    pressedTarget = HIT_NONE;
+                    draggingVolBar = false;
+                    if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
+                    invalidate();
+                    return action == MotionEvent.ACTION_UP;
+                }
                 int hit = pressedTarget;
                 boolean wasDragging = draggingVolBar;
                 pressedTarget = HIT_NONE;
@@ -1001,6 +1114,11 @@ public class SuprematistDialView extends View {
         ui.removeCallbacks(holdUnlockTask);
     }
 
+    private void cancelNoiseLongPress() {
+        pendingNoiseLongPress = false;
+        ui.removeCallbacks(noiseLongPressTask);
+    }
+
     private void scheduleAutoLock() {
         ui.removeCallbacks(autoLockTask);
         ui.postDelayed(autoLockTask, AUTO_LOCK_MS);
@@ -1053,6 +1171,8 @@ public class SuprematistDialView extends View {
 
     @Override
     protected void onDetachedFromWindow() {
+        cancelNoiseLongPress();
+        noiseLongPressFired = false;
         cancelVolumeInteraction();
         ui.removeCallbacksAndMessages(null);
         super.onDetachedFromWindow();

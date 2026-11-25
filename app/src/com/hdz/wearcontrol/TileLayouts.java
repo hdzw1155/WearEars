@@ -169,7 +169,7 @@ final class TileLayouts {
                         .build())
                 .addContent(supremeHitBox(screenDp, 0.34f, 0.38f, 84f, 76f,
                         actions.mode(-1),
-                        dialDescription(ctx, s) + ", " + ctx.getString(R.string.tile_refresh_hint)))
+                        dialDescription(ctx, s) + label(ctx, R.string.tile_refresh_hint)))
                 .addContent(supremeHitBox(screenDp, 0.485f, 0.625f, 32f, 32f,
                         hasNoise ? actions.mode(TwsClient.MODE_OFF) : null,
                         ctx.getString(s.mode == TwsClient.MODE_OFF
@@ -370,7 +370,7 @@ final class TileLayouts {
         ModifiersBuilders.Modifiers modifiers = new ModifiersBuilders.Modifiers.Builder()
                 .setClickable(actions.mode(-1))
                 .setSemantics(new ModifiersBuilders.Semantics.Builder()
-                        .setContentDescription(dialDescription(ctx, s) + ", " + ctx.getString(R.string.tile_refresh_hint))
+                        .setContentDescription(dialDescription(ctx, s) + label(ctx, R.string.tile_refresh_hint))
                         .build())
                 .build();
         return new LayoutElementBuilders.Image.Builder()
@@ -383,19 +383,27 @@ final class TileLayouts {
 
     /** 读屏用: "左耳 88%，右耳 86%，充电盒 92%"(PNG 里的字读屏读不到, 只能在这里补) */
     private static String dialDescription(Context ctx, TileSnapshot s) {
+        if (s.isSingleBattery()) {
+            int pct = TileSnapshot.batteryKnown(s.battTotal) ? s.battTotal : s.battL;
+            StringBuilder sb = new StringBuilder();
+            appendBattery(ctx, sb, label(ctx, R.string.label_total), pct,
+                    s.charging(TileSnapshot.FLAG_CHARGE_LEFT));
+            return sb.toString();
+        }
         StringBuilder sb = new StringBuilder();
-        appendBattery(sb, label(ctx, R.string.label_left), s.battL,
+        String sep = isEnglish(ctx) ? ", " : "，";
+        appendBattery(ctx, sb, label(ctx, R.string.label_left), s.battL,
                 s.charging(TileSnapshot.FLAG_CHARGE_LEFT));
-        sb.append('，');
-        appendBattery(sb, label(ctx, R.string.label_right), s.battR,
+        sb.append(sep);
+        appendBattery(ctx, sb, label(ctx, R.string.label_right), s.battR,
                 s.charging(TileSnapshot.FLAG_CHARGE_RIGHT));
-        sb.append('，');
-        appendBattery(sb, label(ctx, R.string.label_case), s.battC,
+        sb.append(sep);
+        appendBattery(ctx, sb, label(ctx, R.string.label_case), s.battC,
                 s.charging(TileSnapshot.FLAG_CHARGE_CASE));
         return sb.toString();
     }
 
-    private static void appendBattery(StringBuilder sb, String label, int pct, boolean charging) {
+    private static void appendBattery(Context ctx, StringBuilder sb, String label, int pct, boolean charging) {
         sb.append(label).append(' ');
         if (TileSnapshot.batteryKnown(pct)) {
             sb.append(pct).append('%');
@@ -403,7 +411,20 @@ final class TileLayouts {
             sb.append("--");
         }
         if (charging) {
-            sb.append("（充电中）");
+            String chg = label(ctx, R.string.tile_charging);
+            if (!chg.isEmpty()) {
+                sb.append(isEnglish(ctx) ? " (" : "（")
+                        .append(chg)
+                        .append(isEnglish(ctx) ? ")" : "）");
+            }
+        }
+    }
+
+    private static boolean isEnglish(Context ctx) {
+        try {
+            return "en".equals(ctx.getResources().getConfiguration().locale.getLanguage());
+        } catch (RuntimeException e) {
+            return false;
         }
     }
 
@@ -418,7 +439,7 @@ final class TileLayouts {
         ModifiersBuilders.Modifiers.Builder modifiers = new ModifiersBuilders.Modifiers.Builder()
                 .setClickable(actions.mode(-1))
                 .setSemantics(new ModifiersBuilders.Semantics.Builder()
-                        .setContentDescription(label(ctx, R.string.battery_title) + " " + value + ", " + ctx.getString(R.string.tile_refresh_hint))
+                        .setContentDescription(label(ctx, R.string.battery_title) + " " + value + label(ctx, R.string.tile_refresh_hint))
                         .build());
         if (supreme) {
             modifiers.setBackground(new ModifiersBuilders.Background.Builder()

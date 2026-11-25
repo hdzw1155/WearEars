@@ -349,12 +349,23 @@ public class NoiseSegmentedView extends View {
                 dragIndex = indexAt(downX);
                 return true;
             case MotionEvent.ACTION_MOVE:
-                if (tracking && !dragging
-                        && (Math.abs(event.getX() - downX) > touchSlop * 1.5f
-                        || Math.abs(event.getY() - downY) > touchSlop * 1.5f)) {
-                    dragging = true;
-                    draggingCenter = clampPillCenter(centerOf(indexAt(downX)));
-                    pillCenter = draggingCenter;
+                if (!tracking && !dragging) return false;
+                float dx = event.getX() - downX;
+                float dy = event.getY() - downY;
+                if (tracking && !dragging) {
+                    if (Math.abs(dx) > touchSlop && Math.abs(dx) > Math.abs(dy)) {
+                        dragging = true;
+                        draggingCenter = clampPillCenter(centerOf(indexAt(downX)));
+                        pillCenter = draggingCenter;
+                        if (getParent() != null) {
+                            getParent().requestDisallowInterceptTouchEvent(true);
+                        }
+                    } else if (Math.abs(dy) > touchSlop && Math.abs(dy) > Math.abs(dx)) {
+                        tracking = false;
+                        resetSpringIfNeeded();
+                        invalidate();
+                        return false;
+                    }
                 }
                 if (dragging) {
                     float target = clampPillCenter(event.getX());
@@ -369,29 +380,45 @@ public class NoiseSegmentedView extends View {
                 }
                 return true;
             case MotionEvent.ACTION_UP:
+                if (getParent() != null) {
+                    getParent().requestDisallowInterceptTouchEvent(false);
+                }
+                if (!tracking && !dragging) return false;
                 int index = indexAt(event.getX());
                 int newMode = MODES[index];
                 boolean changed = newMode != mode;
                 dragging = false;
                 tracking = false;
-                mode = newMode;
                 if (changed) {
                     performHapticFeedback(HapticFeedbackConstants.TEXT_HANDLE_MOVE);
+                    if (listener != null) {
+                        listener.onModeSelected(newMode);
+                    }
                 }
-                startSpring();
+                resetSpringIfNeeded();
                 invalidate();
-                if (changed && listener != null) {
-                    listener.onModeSelected(newMode);
-                }
                 return true;
+            case MotionEvent.ACTION_POINTER_DOWN:
             case MotionEvent.ACTION_CANCEL:
+                if (getParent() != null) {
+                    getParent().requestDisallowInterceptTouchEvent(false);
+                }
                 dragging = false;
                 tracking = false;
-                startSpring();
+                resetSpringIfNeeded();
                 invalidate();
                 return true;
             default:
                 return super.onTouchEvent(event);
+        }
+    }
+
+    private void resetSpringIfNeeded() {
+        if (indexOfMode(mode) >= 0) {
+            startSpring();
+        } else {
+            stopSpring();
+            pillVelocity = 0;
         }
     }
 

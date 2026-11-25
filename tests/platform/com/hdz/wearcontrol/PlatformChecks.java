@@ -185,8 +185,52 @@ public final class PlatformChecks {
         check(TileLedger.consume(c,TileCommand.id(finalToken,0,address)) == null, "disk failure cannot dispatch a command");
     }
 
+    private static void api33DualNotificationGuard() {
+        int savedSdk = Build.VERSION.SDK_INT;
+        try {
+            Build.VERSION.SDK_INT = 33;
+            Rig openRig = new Rig(false, true);
+            openRig.ready();
+            openRig.inbound.setValue(new byte[]{11});
+            openRig.link.onCharacteristicChanged(openRig.gatt, openRig.inbound);
+            openRig.link.onCharacteristicChanged(openRig.gatt, openRig.inbound, new byte[]{22});
+            openRig.actor.advance(0);
+            check(openRig.notifications.equals(Collections.singletonList(22)) && openRig.failures == 0,
+                    "API 33 suppresses 2-arg onCharacteristicChanged and delivers 3-arg notification once");
+
+            openRig.inbound.setValue(new byte[]{33});
+            openRig.link.onCharacteristicChanged(openRig.gatt, openRig.inbound, new byte[]{44});
+            openRig.link.onCharacteristicChanged(openRig.gatt, openRig.inbound);
+            openRig.actor.advance(0);
+            check(openRig.notifications.equals(Arrays.asList(22, 44)) && openRig.failures == 0,
+                    "API 33 delivers 3-arg notification once regardless of callback order");
+
+            Rig settlingRig = new Rig(false, true);
+            settlingRig.discover();
+            settlingRig.subscribe();
+            settlingRig.inbound.setValue(new byte[]{55});
+            settlingRig.link.onCharacteristicChanged(settlingRig.gatt, settlingRig.inbound);
+            settlingRig.link.onCharacteristicChanged(settlingRig.gatt, settlingRig.inbound, new byte[]{66});
+            settlingRig.actor.advance(250);
+            check(settlingRig.opens == 1 && settlingRig.notifications.equals(Collections.singletonList(66))
+                    && settlingRig.failures == 0,
+                    "API 33 dual callback during settle buffers only one notification");
+
+            Build.VERSION.SDK_INT = 30;
+            Rig legacyRig = new Rig(true, false);
+            legacyRig.ready();
+            legacyRig.inbound.setValue(new byte[]{77});
+            legacyRig.link.onCharacteristicChanged(legacyRig.gatt, legacyRig.inbound);
+            legacyRig.actor.advance(0);
+            check(legacyRig.notifications.equals(Collections.singletonList(77)) && legacyRig.failures == 0,
+                    "API < 33 continues delivering 2-arg onCharacteristicChanged");
+        } finally {
+            Build.VERSION.SDK_INT = savedSdk;
+        }
+    }
+
     public static void main(String[] args) {
-        platform(30); platform(34); setupFailures(); consent();
+        platform(30); platform(33); platform(34); api33DualNotificationGuard(); setupFailures(); consent();
         System.out.println("PASS " + checks + " Android GATT and persisted consent checks");
     }
 }

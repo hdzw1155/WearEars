@@ -6,7 +6,6 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Typeface;
-import android.os.SystemClock;
 import android.util.AttributeSet;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
@@ -26,7 +25,6 @@ public class SuprematistControlView extends View {
     private static final int COL_RED = 0xFFDF1B22;
     private static final int COL_BLUE = 0xFF0D4FB8;
     private static final int COL_YELLOW = 0xFFF6C100;
-    private static final long TAP_RESET_MS = 1200L;
 
     private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -35,27 +33,24 @@ public class SuprematistControlView extends View {
     private final Path slabPath = new Path();
     private final RectF btnSettingsRect = new RectF();
     private final RectF btnDevRect = new RectF();
+    private final float[] posterBox = new float[3];
 
     private float density;
     private int touchSlop;
     private boolean useEnglish;
-    private boolean devUnlocked;
-    private int devTaps = 0;
-    private long lastTapAt = 0L;
-    private int pressedHit = 0; // 1=settings, 2=dev
+    private int pressedHit = 0; // 1=settings, 2=spatial lab
     private float downX;
     private float downY;
+    private float dSize;
+    private float posterOx;
+    private float posterOy;
 
     private OnControlActionListener listener;
 
     public interface OnControlActionListener {
         void onOpenSettings();
 
-        void onDevUnlocked();
-
-        void onJumpToDev();
-
-        void onDevTick();
+        void onOpenSpatialLab();
     }
 
     public SuprematistControlView(Context context) {
@@ -89,11 +84,35 @@ public class SuprematistControlView extends View {
         }
     }
 
-    public void setDevUnlocked(boolean unlocked) {
-        if (devUnlocked != unlocked) {
-            devUnlocked = unlocked;
-            invalidate();
+    private void updateGeometry(int w, int h) {
+        if (w <= 0 || h <= 0) {
+            return;
         }
+        SuprematistDialView.computePosterBox(this, w, h, posterBox);
+        dSize = posterBox[0];
+        posterOx = posterBox[1];
+        posterOy = posterBox[2];
+        float d = dSize;
+        float ox = posterOx;
+        float oy = posterOy;
+
+        float sLeft = ox + 0.112f * d;
+        float sRight = ox + 0.835f * d;
+        float sTop = oy + 0.408f * d;
+        float sBot = oy + 0.532f * d;
+        btnSettingsRect.set(sLeft, sTop, sRight, sBot);
+
+        float dLeft = ox + 0.114f * d;
+        float dRight = ox + 0.745f * d;
+        float dTop = oy + 0.580f * d;
+        float dBot = oy + 0.692f * d;
+        btnDevRect.set(dLeft, dTop, dRight, dBot);
+    }
+
+    @Override
+    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+        updateGeometry(w, h);
     }
 
     @Override
@@ -103,10 +122,10 @@ public class SuprematistControlView extends View {
         if (w <= 0 || h <= 0) {
             return;
         }
-        boolean round = getResources().getConfiguration().isScreenRound();
-        float d = round ? Math.min(w, h) : Math.min(w * 1.04f, h * 0.80f);
-        float ox = round ? (w - d) * 0.5f : (w - d) * 0.5f + 8f * density;
-        float oy = (h - d) * 0.5f;
+        updateGeometry(w, h);
+        float d = dSize;
+        float ox = posterOx;
+        float oy = posterOy;
 
         // 1) Top-left enlarged WearEars brand lockup matching Reference Image #2
         float bx = ox + 0.235f * d;
@@ -146,12 +165,11 @@ public class SuprematistControlView extends View {
         canvas.drawText("CONTROL", hx + 0.038f * d, oy + 0.364f * d, textPaint);
 
         // 3) Enlarged crimson skewed Settings slab + hard black offset shadow
-        float sLeft = ox + 0.112f * d;
-        float sRight = ox + 0.835f * d;
-        float sTop = oy + 0.408f * d;
-        float sBot = oy + 0.532f * d;
+        float sLeft = btnSettingsRect.left;
+        float sRight = btnSettingsRect.right;
+        float sTop = btnSettingsRect.top;
+        float sBot = btnSettingsRect.bottom;
         float skew = 0.038f * d;
-        btnSettingsRect.set(sLeft, sTop, sRight, sBot);
 
         fillPaint.setColor(COL_INK);
         setSkewRect(sLeft + 0.018f * d, sTop + 0.016f * d,
@@ -177,12 +195,11 @@ public class SuprematistControlView extends View {
         canvas.drawText(setLabel, sLeft + 0.180f * d,
                 (sTop + sBot) * 0.5f - (fm.ascent + fm.descent) * 0.5f, textPaint);
 
-        // 4) Enlarged obsidian skewed Dev Lab slab + gold label + "</>" glyph
-        float dLeft = ox + 0.114f * d;
-        float dRight = ox + 0.745f * d;
-        float dTop = oy + 0.580f * d;
-        float dBot = oy + 0.692f * d;
-        btnDevRect.set(dLeft, dTop, dRight, dBot);
+        // 4) Enlarged obsidian skewed 360° Spatial Lab slab + gold label + orbit glyph
+        float dLeft = btnDevRect.left;
+        float dRight = btnDevRect.right;
+        float dTop = btnDevRect.top;
+        float dBot = btnDevRect.bottom;
 
         fillPaint.setColor(pressedHit == 2 ? 0xFF282D36 : COL_INK);
         setSkewRect(dLeft, dTop, dRight, dBot, skew);
@@ -190,9 +207,9 @@ public class SuprematistControlView extends View {
 
         textPaint.setColor(COL_WHITE);
         textPaint.setTextAlign(Paint.Align.CENTER);
-        textPaint.setTextSize(0.035f * d);
+        textPaint.setTextSize(0.032f * d);
         fm = textPaint.getFontMetrics();
-        canvas.drawText("</>", dLeft + 0.082f * d,
+        canvas.drawText("360\u00b0", dLeft + 0.082f * d,
                 (dTop + dBot) * 0.5f - (fm.ascent + fm.descent) * 0.5f, textPaint);
 
         strokePaint.setColor(0x66FFFFFF);
@@ -202,12 +219,10 @@ public class SuprematistControlView extends View {
 
         textPaint.setColor(COL_YELLOW);
         textPaint.setTextAlign(Paint.Align.LEFT);
-        textPaint.setTextSize(0.042f * d);
+        textPaint.setTextSize(0.041f * d);
         fm = textPaint.getFontMetrics();
-        String devLabel = devUnlocked
-                ? (useEnglish ? "Dev Sheet Ready \u2192" : "\u5b9e\u9a8c\u9875\u5df2\u89e3\u9501 \u2192")
-                : (useEnglish ? "Developer Lab" : "\u5f00\u53d1\u8005\u8bbe\u7f6e");
-        canvas.drawText(devLabel, dLeft + 0.176f * d,
+        String labLabel = useEnglish ? "Spatial Lab \u2192" : "\u7a7a\u95f4\u5b9e\u9a8c\u5ba4 \u2192";
+        canvas.drawText(labLabel, dLeft + 0.176f * d,
                 (dTop + dBot) * 0.5f - (fm.ascent + fm.descent) * 0.5f, textPaint);
 
         // 5) Bottom-left signature 3 colored micro-squares matching Reference Image #2
@@ -246,6 +261,9 @@ public class SuprematistControlView extends View {
     }
 
     private int hitTest(float x, float y) {
+        if (btnSettingsRect.isEmpty() && getWidth() > 0 && getHeight() > 0) {
+            updateGeometry(getWidth(), getHeight());
+        }
         float pad = 6f * density;
         if (x >= btnSettingsRect.left - pad && x <= btnSettingsRect.right + pad
                 && y >= btnSettingsRect.top - pad && y <= btnSettingsRect.bottom + pad) {
@@ -291,7 +309,10 @@ public class SuprematistControlView extends View {
                         listener.onOpenSettings();
                     }
                 } else if (hit == 2 && hitTest(x, y) == 2) {
-                    handleDevTap();
+                    performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                    if (listener != null) {
+                        listener.onOpenSpatialLab();
+                    }
                 }
                 return hit != 0;
 
@@ -301,31 +322,5 @@ public class SuprematistControlView extends View {
                 return false;
         }
         return false;
-    }
-
-    private void handleDevTap() {
-        if (devUnlocked) {
-            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
-            if (listener != null) {
-                listener.onJumpToDev();
-            }
-            return;
-        }
-        long now = SystemClock.elapsedRealtime();
-        devTaps = (now - lastTapAt > TAP_RESET_MS) ? 1 : devTaps + 1;
-        lastTapAt = now;
-        if (devTaps >= 5) {
-            devUnlocked = true;
-            invalidate();
-            performHapticFeedback(HapticFeedbackConstants.CONFIRM);
-            if (listener != null) {
-                listener.onDevUnlocked();
-            }
-        } else {
-            performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK);
-            if (listener != null) {
-                listener.onDevTick();
-            }
-        }
     }
 }

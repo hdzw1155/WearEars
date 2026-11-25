@@ -29,18 +29,33 @@ public class SnapChipRow extends HorizontalScrollView {
     private boolean applying;          // 磁吸动画进行中, 别自己再触发
     private int currentIndex = -1;
     private boolean pendingCenter;     // 布局还没量好时, 等 onLayout 再补一次居中
+    private android.animation.ValueAnimator scrollAnim;
+
+    private final Runnable layoutCenterTask = new Runnable() {
+        @Override
+        public void run() {
+            centerOn(currentIndex);
+        }
+    };
+
+    private final Runnable selectTask = new Runnable() {
+        @Override
+        public void run() {
+            if (currentIndex >= 0) {
+                centerOn(currentIndex);
+            } else {
+                snapToNearest();
+            }
+        }
+    };
 
     @Override
     protected void onLayout(boolean changed, int l, int t, int r, int b) {
         super.onLayout(changed, l, t, r, b);
         if (pendingCenter && currentIndex >= 0 && getWidth() > 0) {
             pendingCenter = false;
-            post(new Runnable() {
-                @Override
-                public void run() {
-                    centerOn(currentIndex);
-                }
-            });
+            removeCallbacks(layoutCenterTask);
+            post(layoutCenterTask);
         }
     }
 
@@ -88,22 +103,29 @@ public class SnapChipRow extends HorizontalScrollView {
         // 要画"钉在视口上"的渐变, 坐标必须自己加回 getScrollX().
         int h = getHeight();
         int sx = getScrollX();
-        // 左右各 16dp 羽化: 从卡片底色渐到全透明, 消掉"胶囊被垂直切断"的硬边
-        fadePaint.setShader(new LinearGradient(sx, 0, sx + fadeWidth, 0,
-                new int[]{cardColor, cardColor, cardColor & 0x00FFFFFF},
-                new float[]{0f, 0.35f, 1f}, Shader.TileMode.CLAMP));
-        canvas.drawRect(sx, 0, sx + fadeWidth, h, fadePaint);
-        int right = sx + getWidth();
-        fadePaint.setShader(new LinearGradient(right - fadeWidth, 0, right, 0,
-                new int[]{cardColor & 0x00FFFFFF, cardColor, cardColor},
-                new float[]{0f, 0.65f, 1f}, Shader.TileMode.CLAMP));
-        canvas.drawRect(right - fadeWidth, 0, right, h, fadePaint);
+        // 左右各 16dp 羽化: 仅在实际可向该方向滚动时绘制, 避免短列表或手机宽屏被无端遮边
+        if (canScrollHorizontally(-1)) {
+            fadePaint.setShader(new LinearGradient(sx, 0, sx + fadeWidth, 0,
+                    new int[]{cardColor, cardColor, cardColor & 0x00FFFFFF},
+                    new float[]{0f, 0.35f, 1f}, Shader.TileMode.CLAMP));
+            canvas.drawRect(sx, 0, sx + fadeWidth, h, fadePaint);
+        }
+        if (canScrollHorizontally(1)) {
+            int right = sx + getWidth();
+            fadePaint.setShader(new LinearGradient(right - fadeWidth, 0, right, 0,
+                    new int[]{cardColor & 0x00FFFFFF, cardColor, cardColor},
+                    new float[]{0f, 0.65f, 1f}, Shader.TileMode.CLAMP));
+            canvas.drawRect(right - fadeWidth, 0, right, h, fadePaint);
+        }
     }
 
     @Override
     public boolean onTouchEvent(android.view.MotionEvent event) {
-        boolean handled = super.onTouchEvent(event);
         int action = event.getActionMasked();
+        if (action == android.view.MotionEvent.ACTION_DOWN) {
+            cancelPendingWork();
+        }
+        boolean handled = super.onTouchEvent(event);
         if (action == android.view.MotionEvent.ACTION_UP
                 || action == android.view.MotionEvent.ACTION_CANCEL) {
             removeCallbacks(snapTask);
@@ -141,21 +163,12 @@ public class SnapChipRow extends HorizontalScrollView {
 
     /** 让第 index 个 chip 居中并放大; 传 -1 表示无选中(全部还原) */
     public void select(int index, boolean animate) {
+        cancelPendingWork();
         currentIndex = index;
         pendingCenter = true;
         applyScales(animate);
-        removeCallbacks(snapTask);
         // 等一帧让 chip 量好尺寸再吸附(首次进入时刚 inflate, 宽度还是 0)
-        postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                if (currentIndex >= 0) {
-                    centerOn(currentIndex);
-                } else {
-                    snapToNearest();
-                }
-            }
-        }, animate ? 60L : 0L);
+        postDelayed(selectTask, animate ? 60L : 0L);
     }
 
     /** 把第 index 个 chip 滚到视口正中 */
@@ -167,7 +180,6 @@ public class SnapChipRow extends HorizontalScrollView {
         // ScrollView 的子 View 从 paddingLeft 开始排, 所以屏幕坐标 = paddingLeft + childLeft - scrollX
         int target = getPaddingLeft() + chip.getLeft() + chip.getWidth() / 2 - getWidth() / 2;
         pendingCenter = false;
-        android.util.Log.d("SnapDbg", "centerOn idx=" + index + " left=" + chip.getLeft() + " w=" + chip.getWidth() + " vw=" + getWidth() + " pad=" + getPaddingLeft() + " target=" + target + " sx=" + getScrollX());
         animateScrollTo(clampScroll(target));
     }
 
@@ -219,14 +231,20 @@ public class SnapChipRow extends HorizontalScrollView {
 
     /** 滚到指定位置: 240ms 轻微过冲, 带一点"吸过去"的 Q 弹感 */
     private void animateScrollTo(final int target) {
+        if (scrollAnim != null) {
+            scrollAnim.cancel();
+            scrollAnim = null;
+        }
         final int start = getScrollX();
         if (start == target) {
+            applying = false;
             return;
         }
         // 先掐掉可能还在跑的惯性滑行, 否则它和吸附动画会互相拉扯
         super.fling(0);
         applying = true;
-        android.animation.ValueAnimator anim = android.animation.ValueAnimator.ofFloat(0f, 1f);
+        final android.animation.ValueAnimator anim = android.animation.ValueAnimator.ofFloat(0f, 1f);
+        scrollAnim = anim;
         anim.setDuration(SNAP_DURATION_MS);
         anim.setInterpolator(new DecelerateInterpolator(1.6f));
         anim.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
@@ -239,11 +257,17 @@ public class SnapChipRow extends HorizontalScrollView {
         anim.addListener(new android.animation.AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(android.animation.Animator a) {
+                if (scrollAnim == anim) {
+                    scrollAnim = null;
+                }
                 applying = false;
             }
 
             @Override
             public void onAnimationCancel(android.animation.Animator a) {
+                if (scrollAnim == anim) {
+                    scrollAnim = null;
+                }
                 applying = false;
             }
         });
@@ -275,9 +299,26 @@ public class SnapChipRow extends HorizontalScrollView {
         }
     }
 
+    private void cancelPendingWork() {
+        removeCallbacks(snapTask);
+        removeCallbacks(layoutCenterTask);
+        removeCallbacks(selectTask);
+        if (scrollAnim != null) {
+            scrollAnim.cancel();
+            scrollAnim = null;
+        }
+        applying = false;
+    }
+
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
-        removeCallbacks(snapTask);
+        cancelPendingWork();
+        if (getChildCount() > 0 && getChildAt(0) instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) getChildAt(0);
+            for (int i = 0; i < group.getChildCount(); i++) {
+                group.getChildAt(i).animate().cancel();
+            }
+        }
     }
 }

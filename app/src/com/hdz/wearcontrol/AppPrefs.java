@@ -49,6 +49,13 @@ final class AppPrefs {
     private static final String KEY_SHOW_VOLUME = "show_volume";
     private static final String KEY_SETTINGS_DAY = "settings_day_mode";
     private static final String KEY_DISCLAIMER_VERSION = "disclaimer_ack_vc";
+    private static final String KEY_LOCAL_SPATIAL_ENABLED = "local_spatial_enabled";
+    private static final String KEY_LOCAL_SPATIAL_SCENE = "local_spatial_scene";
+    private static final String KEY_LOCAL_SPATIAL_GLOBAL_FALLBACK = "local_spatial_global_fallback";
+    private static final String KEY_SPATIAL_HEAD_WIDTH_PCT = "spatial_head_width_pct";
+    private static final String KEY_SPATIAL_PINNA_NOTCH_HZ = "spatial_pinna_notch_hz";
+    /** 手机端按需短连接模式（防同品牌系统耳机服务抢占 RFCOMM，默认开启；手表端不启用） */
+    private static final String KEY_PHONE_BURST_MODE = "phone_burst_mode";
 
     private AppPrefs() {
     }
@@ -144,6 +151,58 @@ final class AppPrefs {
     static void setScrollColorStyle(Context ctx, int style) {
         prefs(ctx).edit().putInt(KEY_SCROLL_COLOR,
                 (style == SCROLL_COLOR_CLASSIC) ? SCROLL_COLOR_CLASSIC : SCROLL_COLOR_DYNAMIC).apply();
+    }
+
+    static boolean localSpatialEnabled(Context ctx) {
+        return prefs(ctx).getBoolean(KEY_LOCAL_SPATIAL_ENABLED, false);
+    }
+
+    static void setLocalSpatialEnabled(Context ctx, boolean enabled) {
+        prefs(ctx).edit().putBoolean(KEY_LOCAL_SPATIAL_ENABLED, enabled).apply();
+    }
+
+    static int localSpatialScene(Context ctx) {
+        return clampInt(prefs(ctx).getInt(KEY_LOCAL_SPATIAL_SCENE, 0), 0, 3);
+    }
+
+    static void setLocalSpatialScene(Context ctx, int scene) {
+        prefs(ctx).edit().putInt(KEY_LOCAL_SPATIAL_SCENE, clampInt(scene, 0, 3)).apply();
+    }
+
+    static boolean localSpatialGlobalFallback(Context ctx) {
+        return prefs(ctx).getBoolean(KEY_LOCAL_SPATIAL_GLOBAL_FALLBACK, true);
+    }
+
+    static void setLocalSpatialGlobalFallback(Context ctx, boolean enabled) {
+        prefs(ctx).edit().putBoolean(KEY_LOCAL_SPATIAL_GLOBAL_FALLBACK, enabled).apply();
+    }
+
+    static int spatialHeadWidthPct(Context ctx) {
+        return clampInt(prefs(ctx).getInt(KEY_SPATIAL_HEAD_WIDTH_PCT, 100), 85, 115);
+    }
+
+    static void setSpatialHeadWidthPct(Context ctx, int pct) {
+        prefs(ctx).edit().putInt(KEY_SPATIAL_HEAD_WIDTH_PCT, clampInt(pct, 85, 115)).apply();
+    }
+
+    static int spatialPinnaNotchHz(Context ctx) {
+        return clampInt(prefs(ctx).getInt(KEY_SPATIAL_PINNA_NOTCH_HZ, 8000), 7500, 9000);
+    }
+
+    static void setSpatialPinnaNotchHz(Context ctx, int hz) {
+        prefs(ctx).edit().putInt(KEY_SPATIAL_PINNA_NOTCH_HZ, clampInt(hz, 7500, 9000)).apply();
+    }
+
+    static boolean phoneBurstMode(Context ctx) {
+        return prefs(ctx).getBoolean(KEY_PHONE_BURST_MODE, true);
+    }
+
+    static void setPhoneBurstMode(Context ctx, boolean enabled) {
+        prefs(ctx).edit().putBoolean(KEY_PHONE_BURST_MODE, enabled).apply();
+    }
+
+    private static int clampInt(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     private static boolean isSystemChinese(Context ctx) {

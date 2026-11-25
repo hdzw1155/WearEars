@@ -28,7 +28,922 @@
                 android:layout_height="match_parent" />
         </FrameLayout>
 
-        <!-- Sheet 1: Reference #2 Constructivist Control Poster ("02 / 控制") -->
+        <!-- Sheet 1 (Dynamic): Acoustic Sub-levels, Wind & Unified Built-in EQ -->
+        <FrameLayout
+            android:id="@+id/sup_page_acoustic"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:tag="paper">
+
+            <com.hdz.wearcontrol.SuprematistDecorView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:tag="paper" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingLeft="38dp"
+                android:paddingTop="22dp"
+                android:paddingRight="34dp"
+                android:paddingBottom="22dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <View
+                        android:layout_width="7dp"
+                        android:layout_height="7dp"
+                        android:layout_marginEnd="6dp"
+                        android:background="#DF1B22" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:letterSpacing="0.06"
+                        android:text="@string/sup_sec_acoustic_plus"
+                        android:textColor="@color/sup_ink"
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <!-- Noise Sub-levels & Wind Reduction -->
+                <LinearLayout
+                    android:id="@+id/noise_sub_container"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp"
+                    android:background="@drawable/bg_sup_card_paper"
+                    android:orientation="vertical"
+                    android:paddingLeft="8dp"
+                    android:paddingTop="5dp"
+                    android:paddingRight="8dp"
+                    android:paddingBottom="5dp"
+                    android:visibility="gone">
+
+                    <LinearLayout
+                        android:id="@+id/noise_sub_header"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:id="@+id/noise_sub_label"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:maxLines="1"
+                            android:text="@string/noise_sub_label"
+                            android:textColor="@color/sup_ink"
+                            android:textSize="9sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/badge_noise_sub_exp"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="4dp"
+                            android:background="@drawable/bg_sup_chip"
+                            android:includeFontPadding="false"
+                            android:maxLines="1"
+                            android:paddingLeft="4dp"
+                            android:paddingTop="1dp"
+                            android:paddingRight="4dp"
+                            android:paddingBottom="1dp"
+                            android:singleLine="true"
+                            android:text="@string/badge_experimental"
+                            android:textColor="@color/sup_amber"
+                            android:textSize="7.5sp"
+                            android:textStyle="bold"
+                            android:visibility="gone" />
+                    </LinearLayout>
+
+                    <com.hdz.wearcontrol.SnapChipRow
+                        android:id="@+id/noise_sub_scroller"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:visibility="gone">
+
+                        <LinearLayout
+                            android:id="@+id/noise_sub_row"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal" />
+                    </com.hdz.wearcontrol.SnapChipRow>
+
+                    <LinearLayout
+                        android:id="@+id/wind_toggle_row"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:visibility="gone">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingEnd="4dp">
+
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:ellipsize="end"
+                                android:importantForAccessibility="no"
+                                android:maxLines="1"
+                                android:text="@string/wind_reduction_title"
+                                android:textColor="@color/sup_ink"
+                                android:textSize="9.5sp"
+                                android:textStyle="bold" />
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="1dp"
+                                android:gravity="center_vertical"
+                                android:orientation="horizontal">
+
+                                <TextView
+                                    android:id="@+id/badge_wind_exp"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginEnd="4dp"
+                                    android:background="@drawable/bg_sup_chip"
+                                    android:includeFontPadding="false"
+                                    android:maxLines="1"
+                                    android:paddingLeft="4dp"
+                                    android:paddingTop="1dp"
+                                    android:paddingRight="4dp"
+                                    android:paddingBottom="1dp"
+                                    android:singleLine="true"
+                                    android:text="@string/badge_experimental"
+                                    android:textColor="@color/sup_amber"
+                                    android:textSize="7.5sp"
+                                    android:textStyle="bold"
+                                    android:visibility="gone" />
+
+                                <TextView
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:ellipsize="end"
+                                    android:maxLines="1"
+                                    android:text="@string/wind_reduction_hint"
+                                    android:textColor="@color/sup_ink_dim"
+                                    android:textSize="7.5sp" />
+                            </LinearLayout>
+                        </LinearLayout>
+
+                        <Switch
+                            android:id="@+id/switch_wind"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:contentDescription="@string/wind_reduction_title"
+                            android:minHeight="24dp"
+                            android:showText="false"
+                            android:thumbTint="@color/switch_thumb"
+                            android:trackTint="@color/switch_track" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- Unified Built-in Equalizer / DeepX Card -->
+                <LinearLayout
+                    android:id="@+id/equalizer_card"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp"
+                    android:background="@drawable/bg_sup_card_paper"
+                    android:orientation="vertical"
+                    android:paddingLeft="8dp"
+                    android:paddingTop="5dp"
+                    android:paddingRight="8dp"
+                    android:paddingBottom="5dp"
+                    android:visibility="gone">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/equalizer_title"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:maxLines="1"
+                            android:text="@string/equalizer_label"
+                            android:textColor="@color/sup_ink"
+                            android:textSize="9.5sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/badge_eq_exp"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="4dp"
+                            android:background="@drawable/bg_sup_chip"
+                            android:includeFontPadding="false"
+                            android:maxLines="1"
+                            android:paddingLeft="4dp"
+                            android:paddingTop="1dp"
+                            android:paddingRight="4dp"
+                            android:paddingBottom="1dp"
+                            android:singleLine="true"
+                            android:text="@string/badge_experimental"
+                            android:textColor="@color/sup_amber"
+                            android:textSize="7.5sp"
+                            android:textStyle="bold"
+                            android:visibility="gone" />
+
+                        <TextView
+                            android:id="@+id/deepx_current"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="4dp"
+                            android:layout_weight="1"
+                            android:ellipsize="end"
+                            android:gravity="end"
+                            android:maxLines="1"
+                            android:text="--"
+                            android:textColor="#0D4FB8"
+                            android:textSize="9sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <com.hdz.wearcontrol.SnapChipRow
+                        android:id="@+id/deepx_scroller"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp">
+
+                        <LinearLayout
+                            android:id="@+id/deepx_row"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal" />
+                    </com.hdz.wearcontrol.SnapChipRow>
+                </LinearLayout>
+            </LinearLayout>
+        </FrameLayout>
+
+        <!-- Sheet 2 (Dynamic): Hardware Spatial Audio + Local Host Spatial Audio & 360 Lab -->
+        <FrameLayout
+            android:id="@+id/sup_page_spatial"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:tag="paper">
+
+            <com.hdz.wearcontrol.SuprematistDecorView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:tag="paper" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingLeft="38dp"
+                android:paddingTop="22dp"
+                android:paddingRight="34dp"
+                android:paddingBottom="22dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <View
+                        android:layout_width="7dp"
+                        android:layout_height="7dp"
+                        android:layout_marginEnd="6dp"
+                        android:background="#F6C100" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:letterSpacing="0.06"
+                        android:text="@string/sup_sec_spatial"
+                        android:textColor="@color/sup_ink"
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <!-- Earbud Hardware Spatial Audio Card -->
+                <LinearLayout
+                    android:id="@+id/spatial_card"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp"
+                    android:background="@drawable/bg_sup_card_paper"
+                    android:orientation="vertical"
+                    android:paddingLeft="8dp"
+                    android:paddingTop="4dp"
+                    android:paddingRight="8dp"
+                    android:paddingBottom="4dp"
+                    android:visibility="gone">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingEnd="4dp">
+
+                            <TextView
+                                android:id="@+id/spatial_title"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:ellipsize="end"
+                                android:importantForAccessibility="no"
+                                android:maxLines="1"
+                                android:text="@string/earbud_spatial_title"
+                                android:textColor="@color/sup_ink"
+                                android:textSize="9.5sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/badge_spatial_exp"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="1dp"
+                                android:background="@drawable/bg_sup_chip"
+                                android:includeFontPadding="false"
+                                android:maxLines="1"
+                                android:paddingLeft="4dp"
+                                android:paddingTop="1dp"
+                                android:paddingRight="4dp"
+                                android:paddingBottom="1dp"
+                                android:singleLine="true"
+                                android:text="@string/badge_experimental"
+                                android:textColor="@color/sup_amber"
+                                android:textSize="7.5sp"
+                                android:textStyle="bold"
+                                android:visibility="gone" />
+                        </LinearLayout>
+
+                        <Switch
+                            android:id="@+id/switch_spatial"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:contentDescription="@string/spatial_switch"
+                            android:minHeight="24dp"
+                            android:showText="false"
+                            android:thumbTint="@color/switch_thumb"
+                            android:trackTint="@color/switch_track" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/spatial_hint"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:text="@string/spatial_state_unknown"
+                        android:textColor="@color/sup_ink_dim"
+                        android:textSize="7.5sp" />
+
+                    <LinearLayout
+                        android:id="@+id/spatial_scene_container"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <com.hdz.wearcontrol.SnapChipRow
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content">
+
+                            <LinearLayout
+                                android:id="@+id/spatial_scene_row"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:orientation="horizontal" />
+                        </com.hdz.wearcontrol.SnapChipRow>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/head_tracking_row"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:visibility="gone">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:paddingEnd="4dp">
+
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:ellipsize="end"
+                                android:importantForAccessibility="no"
+                                android:maxLines="1"
+                                android:text="@string/head_tracking_title"
+                                android:textColor="@color/sup_ink"
+                                android:textSize="9sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/badge_head_tracking_exp"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="1dp"
+                                android:background="@drawable/bg_sup_chip"
+                                android:includeFontPadding="false"
+                                android:maxLines="1"
+                                android:paddingLeft="4dp"
+                                android:paddingTop="1dp"
+                                android:paddingRight="4dp"
+                                android:paddingBottom="1dp"
+                                android:singleLine="true"
+                                android:text="@string/badge_experimental"
+                                android:textColor="@color/sup_amber"
+                                android:textSize="7.5sp"
+                                android:textStyle="bold"
+                                android:visibility="gone" />
+                        </LinearLayout>
+
+                        <Switch
+                            android:id="@+id/switch_head_tracking"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:contentDescription="@string/head_tracking_title"
+                            android:minHeight="24dp"
+                            android:showText="false"
+                            android:thumbTint="@color/switch_thumb"
+                            android:trackTint="@color/switch_track" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- Local Host Spatial Audio Card -->
+                <LinearLayout
+                    android:id="@+id/local_spatial_card"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp"
+                    android:background="@drawable/bg_sup_card_paper"
+                    android:orientation="vertical"
+                    android:paddingLeft="8dp"
+                    android:paddingTop="4dp"
+                    android:paddingRight="8dp"
+                    android:paddingBottom="5dp"
+                    android:visibility="gone">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/local_spatial_title"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:ellipsize="end"
+                            android:importantForAccessibility="no"
+                            android:maxLines="1"
+                            android:paddingEnd="4dp"
+                            android:text="@string/watch_spatial_title"
+                            android:textColor="@color/sup_ink"
+                            android:textSize="9.5sp"
+                            android:textStyle="bold" />
+
+                        <Switch
+                            android:id="@+id/switch_local_spatial"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:contentDescription="@string/watch_spatial_title"
+                            android:minHeight="24dp"
+                            android:showText="false"
+                            android:thumbTint="@color/switch_thumb"
+                            android:trackTint="@color/switch_track" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/local_spatial_status"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:text="@string/local_spatial_status_idle"
+                        android:textColor="@color/sup_ink"
+                        android:textSize="8sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/local_spatial_limit"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:maxLines="2"
+                        android:text="@string/local_spatial_limit"
+                        android:textColor="@color/sup_ink_dim"
+                        android:textSize="7.5sp" />
+
+                    <com.hdz.wearcontrol.SnapChipRow
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="3dp">
+
+                        <LinearLayout
+                            android:id="@+id/local_spatial_scene_row"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal" />
+                    </com.hdz.wearcontrol.SnapChipRow>
+
+                    <TextView
+                        android:id="@+id/btn_spatial_lab"
+                        android:layout_width="match_parent"
+                        android:layout_height="22dp"
+                        android:layout_marginTop="4dp"
+                        android:background="@drawable/bg_sup_cta_blue"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center"
+                        android:paddingLeft="6dp"
+                        android:paddingRight="6dp"
+                        android:text="@string/spatial_lab_btn"
+                        android:textColor="@color/sup_paper"
+                        android:textSize="8sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+            </LinearLayout>
+        </FrameLayout>
+
+        <!-- Sheet 3 (Dynamic): Device Extras, Wear Status, Find Buds & Scope Limits -->
+        <FrameLayout
+            android:id="@+id/sup_page_extras"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:tag="paper">
+
+            <com.hdz.wearcontrol.SuprematistDecorView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:tag="paper" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingLeft="38dp"
+                android:paddingTop="22dp"
+                android:paddingRight="34dp"
+                android:paddingBottom="22dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <View
+                        android:layout_width="7dp"
+                        android:layout_height="7dp"
+                        android:layout_marginEnd="6dp"
+                        android:background="#0D4FB8" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:letterSpacing="0.06"
+                        android:text="@string/sup_sec_extras"
+                        android:textColor="@color/sup_ink"
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/extras_card"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:orientation="vertical">
+
+                    <LinearLayout
+                        android:id="@+id/extras_toggles_card"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/bg_sup_card_paper"
+                        android:orientation="vertical"
+                        android:paddingLeft="8dp"
+                        android:paddingTop="4dp"
+                        android:paddingRight="8dp"
+                        android:paddingBottom="5dp">
+
+                        <LinearLayout
+                            android:id="@+id/wear_status_row"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:paddingTop="1dp"
+                            android:paddingBottom="2dp"
+                            android:visibility="gone">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/wear_status_title"
+                                android:textColor="@color/sup_ink_dim"
+                                android:textSize="8.5sp" />
+
+                            <TextView
+                                android:id="@+id/wear_status_text"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/wear_status_unknown"
+                                android:textColor="@color/sup_ink"
+                                android:textSize="8.5sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:id="@+id/row_low_latency"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:paddingTop="2dp"
+                            android:paddingBottom="2dp"
+                            android:visibility="gone">
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical"
+                                android:paddingEnd="4dp">
+
+                                <TextView
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:ellipsize="end"
+                                    android:importantForAccessibility="no"
+                                    android:maxLines="1"
+                                    android:text="@string/low_latency_title"
+                                    android:textColor="@color/sup_ink"
+                                    android:textSize="9.5sp"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:id="@+id/badge_low_latency_exp"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="1dp"
+                                    android:background="@drawable/bg_sup_chip"
+                                    android:includeFontPadding="false"
+                                    android:maxLines="1"
+                                    android:paddingLeft="4dp"
+                                    android:paddingTop="1dp"
+                                    android:paddingRight="4dp"
+                                    android:paddingBottom="1dp"
+                                    android:singleLine="true"
+                                    android:text="@string/badge_experimental"
+                                    android:textColor="@color/sup_amber"
+                                    android:textSize="7.5sp"
+                                    android:textStyle="bold"
+                                    android:visibility="gone" />
+                            </LinearLayout>
+
+                            <Switch
+                                android:id="@+id/switch_low_latency"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:contentDescription="@string/low_latency_title"
+                                android:minHeight="24dp"
+                                android:showText="false"
+                                android:thumbTint="@color/switch_thumb"
+                                android:trackTint="@color/switch_track" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:id="@+id/row_multipoint"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:paddingTop="2dp"
+                            android:paddingBottom="2dp"
+                            android:visibility="gone">
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical"
+                                android:paddingEnd="4dp">
+
+                                <TextView
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:ellipsize="end"
+                                    android:importantForAccessibility="no"
+                                    android:maxLines="1"
+                                    android:text="@string/multipoint_title"
+                                    android:textColor="@color/sup_ink"
+                                    android:textSize="9.5sp"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:id="@+id/badge_multipoint_exp"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="1dp"
+                                    android:background="@drawable/bg_sup_chip"
+                                    android:includeFontPadding="false"
+                                    android:maxLines="1"
+                                    android:paddingLeft="4dp"
+                                    android:paddingTop="1dp"
+                                    android:paddingRight="4dp"
+                                    android:paddingBottom="1dp"
+                                    android:singleLine="true"
+                                    android:text="@string/badge_experimental"
+                                    android:textColor="@color/sup_amber"
+                                    android:textSize="7.5sp"
+                                    android:textStyle="bold"
+                                    android:visibility="gone" />
+                            </LinearLayout>
+
+                            <Switch
+                                android:id="@+id/switch_multipoint"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:contentDescription="@string/multipoint_title"
+                                android:minHeight="24dp"
+                                android:showText="false"
+                                android:thumbTint="@color/switch_thumb"
+                                android:trackTint="@color/switch_track" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:id="@+id/row_wear_detect"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:paddingTop="2dp"
+                            android:paddingBottom="2dp"
+                            android:visibility="gone">
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical"
+                                android:paddingEnd="4dp">
+
+                                <TextView
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:ellipsize="end"
+                                    android:importantForAccessibility="no"
+                                    android:maxLines="1"
+                                    android:text="@string/wear_detection_title"
+                                    android:textColor="@color/sup_ink"
+                                    android:textSize="9.5sp"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:id="@+id/badge_wear_detect_exp"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="1dp"
+                                    android:background="@drawable/bg_sup_chip"
+                                    android:includeFontPadding="false"
+                                    android:maxLines="1"
+                                    android:paddingLeft="4dp"
+                                    android:paddingTop="1dp"
+                                    android:paddingRight="4dp"
+                                    android:paddingBottom="1dp"
+                                    android:singleLine="true"
+                                    android:text="@string/badge_experimental"
+                                    android:textColor="@color/sup_amber"
+                                    android:textSize="7.5sp"
+                                    android:textStyle="bold"
+                                    android:visibility="gone" />
+                            </LinearLayout>
+
+                            <Switch
+                                android:id="@+id/switch_wear_detect"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:contentDescription="@string/wear_detection_title"
+                                android:minHeight="24dp"
+                                android:showText="false"
+                                android:thumbTint="@color/switch_thumb"
+                                android:trackTint="@color/switch_track" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:id="@+id/btn_find_buds"
+                            android:layout_width="match_parent"
+                            android:layout_height="24dp"
+                            android:layout_marginTop="4dp"
+                            android:background="@drawable/bg_sup_btn_paper"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:gravity="center"
+                            android:orientation="horizontal"
+                            android:paddingLeft="8dp"
+                            android:paddingRight="8dp"
+                            android:visibility="gone">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:maxLines="1"
+                                android:text="@string/find_buds_btn"
+                                android:textColor="@color/sup_ink"
+                                android:textSize="9sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/badge_find_buds_exp"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="4dp"
+                                android:background="@drawable/bg_sup_chip"
+                                android:includeFontPadding="false"
+                                android:maxLines="1"
+                                android:paddingLeft="4dp"
+                                android:paddingTop="1dp"
+                                android:paddingRight="4dp"
+                                android:paddingBottom="1dp"
+                                android:singleLine="true"
+                                android:text="@string/badge_experimental"
+                                android:textColor="@color/sup_amber"
+                                android:textSize="7.5sp"
+                                android:textStyle="bold"
+                                android:visibility="gone" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/scope_limit_card"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:background="@drawable/bg_sup_card_paper"
+                        android:orientation="vertical"
+                        android:paddingLeft="8dp"
+                        android:paddingTop="3dp"
+                        android:paddingRight="8dp"
+                        android:paddingBottom="4dp"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:id="@+id/firmware_info_text"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:ellipsize="end"
+                            android:maxLines="1"
+                            android:textColor="@color/sup_ink"
+                            android:textSize="8.5sp"
+                            android:textStyle="bold"
+                            android:visibility="gone" />
+
+                        <TextView
+                            android:id="@+id/scope_limit_text"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:ellipsize="end"
+                            android:maxLines="3"
+                            android:textColor="@color/sup_ink_dim"
+                            android:textSize="8sp" />
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+        </FrameLayout>
+
+        <!-- Sheet 4: Constructivist Control Poster (Settings + 360° Spatial Lab shortcut) -->
         <FrameLayout
             android:id="@+id/sup_page_control"
             android:layout_width="match_parent"
@@ -46,240 +961,7 @@
                 android:layout_height="match_parent" />
         </FrameLayout>
 
-        <!-- Sheet 2: Dedicated Dev Lab Sheet (Enabled on 5-tap unlock, Circular-Safe, Zero Scroll) -->
-        <FrameLayout
-            android:id="@+id/sup_page_dev"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:tag="paper">
-
-            <com.hdz.wearcontrol.SuprematistDecorView
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:tag="hazard" />
-
-            <LinearLayout
-                android:id="@+id/dev_section"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:paddingLeft="42dp"
-                android:paddingTop="22dp"
-                android:paddingRight="36dp"
-                android:paddingBottom="22dp"
-                android:visibility="visible">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <View
-                        android:layout_width="8dp"
-                        android:layout_height="8dp"
-                        android:layout_marginEnd="6dp"
-                        android:background="#DF1B22" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:letterSpacing="0.06"
-                        android:text="@string/sup_sec_dev"
-                        android:textColor="@color/sup_ink"
-                        android:textSize="10.5sp"
-                        android:textStyle="bold" />
-                </LinearLayout>
-
-                <!-- Spatial Audio Card -->
-                <LinearLayout
-                    android:id="@+id/spatial_card"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:background="@drawable/bg_sup_card_paper"
-                    android:orientation="vertical"
-                    android:paddingLeft="8dp"
-                    android:paddingTop="4dp"
-                    android:paddingRight="8dp"
-                    android:paddingBottom="4dp">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:importantForAccessibility="no"
-                            android:text="@string/spatial_title_short"
-                            android:textColor="@color/sup_ink"
-                            android:textSize="11sp"
-                            android:textStyle="bold" />
-
-                        <Switch
-                            android:id="@+id/switch_spatial"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:contentDescription="@string/spatial_switch"
-                            android:minHeight="26dp"
-                            android:thumbTint="@color/switch_thumb"
-                            android:trackTint="@color/switch_track" />
-                    </LinearLayout>
-
-                    <TextView
-                        android:id="@+id/spatial_hint"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/spatial_state_unknown"
-                        android:textColor="@color/sup_ink"
-                        android:textSize="8sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/spatial_caption_lines"
-                        android:textColor="@color/sup_ink"
-                        android:textSize="8sp" />
-                </LinearLayout>
-
-                <!-- Equalizer Card, compact 2-row grid -->
-                <LinearLayout
-                    android:id="@+id/equalizer_card"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="5dp"
-                    android:background="@drawable/bg_sup_card_paper"
-                    android:orientation="vertical"
-                    android:paddingLeft="7dp"
-                    android:paddingTop="4dp"
-                    android:paddingRight="7dp"
-                    android:paddingBottom="5dp">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <TextView
-                            android:id="@+id/equalizer_title"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="@string/deepx_label"
-                            android:textColor="@color/sup_ink"
-                            android:textSize="10.5sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:id="@+id/deepx_current"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="--"
-                            android:textColor="#0D4FB8"
-                            android:textSize="10sp"
-                            android:textStyle="bold" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:id="@+id/deepx_row"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:orientation="vertical">
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal">
-
-                            <TextView
-                                android:id="@+id/deepx_0"
-                                android:layout_width="0dp"
-                                android:layout_height="22dp"
-                                android:layout_marginEnd="3dp"
-                                android:layout_weight="1"
-                                android:background="@drawable/bg_sup_chip"
-                                android:gravity="center"
-                                android:maxLines="1"
-                                android:text="@string/deepx_std"
-                                android:textColor="@color/sup_ink"
-                                android:textSize="9sp"
-                                android:textStyle="bold" />
-
-                            <TextView
-                                android:id="@+id/deepx_1"
-                                android:layout_width="0dp"
-                                android:layout_height="22dp"
-                                android:layout_marginEnd="3dp"
-                                android:layout_weight="1"
-                                android:background="@drawable/bg_sup_chip"
-                                android:gravity="center"
-                                android:maxLines="1"
-                                android:text="@string/deepx_vocal"
-                                android:textColor="@color/sup_ink"
-                                android:textSize="9sp"
-                                android:textStyle="bold" />
-
-                            <TextView
-                                android:id="@+id/deepx_2"
-                                android:layout_width="0dp"
-                                android:layout_height="22dp"
-                                android:layout_weight="1"
-                                android:background="@drawable/bg_sup_chip"
-                                android:gravity="center"
-                                android:maxLines="1"
-                                android:text="@string/deepx_bass"
-                                android:textColor="@color/sup_ink"
-                                android:textSize="9sp"
-                                android:textStyle="bold" />
-                        </LinearLayout>
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="3dp"
-                            android:orientation="horizontal">
-
-                            <TextView
-                                android:id="@+id/deepx_3"
-                                android:layout_width="0dp"
-                                android:layout_height="22dp"
-                                android:layout_marginEnd="3dp"
-                                android:layout_weight="1"
-                                android:background="@drawable/bg_sup_chip"
-                                android:gravity="center"
-                                android:maxLines="1"
-                                android:text="@string/deepx_treble"
-                                android:textColor="@color/sup_ink"
-                                android:textSize="9sp"
-                                android:textStyle="bold" />
-
-                            <TextView
-                                android:id="@+id/deepx_4"
-                                android:layout_width="0dp"
-                                android:layout_height="22dp"
-                                android:layout_weight="1"
-                                android:background="@drawable/bg_sup_chip"
-                                android:gravity="center"
-                                android:maxLines="1"
-                                android:text="@string/deepx_book"
-                                android:textColor="@color/sup_ink"
-                                android:textSize="9sp"
-                                android:textStyle="bold" />
-                        </LinearLayout>
-                    </LinearLayout>
-                </LinearLayout>
-            </LinearLayout>
-        </FrameLayout>
-
-        <!-- Sheet 3: Poster Manifesto Notice (Circular-Safe Inset, Zero Scroll) -->
+        <!-- Sheet 5: Poster Manifesto Notice (Circular-Safe Inset, Zero Scroll) -->
         <FrameLayout
             android:id="@+id/sup_page_notice"
             android:layout_width="match_parent"
@@ -347,7 +1029,7 @@
                 <TextView
                     android:id="@+id/sup_full_notice"
                     android:layout_width="wrap_content"
-                    android:layout_height="21dp"
+                    android:layout_height="22dp"
                     android:layout_gravity="center_horizontal"
                     android:layout_marginTop="4dp"
                     android:background="@drawable/bg_sup_cta_blue"
@@ -369,4 +1051,65 @@
         android:id="@+id/page_rail"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
+
+    <!-- Bottom phone sheet navigation bar (shown only on rectangular Android phones) -->
+    <LinearLayout
+        android:id="@+id/sup_phone_bar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="16dp"
+        android:background="@drawable/bg_sup_card_paper"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingLeft="8dp"
+        android:paddingTop="5dp"
+        android:paddingRight="8dp"
+        android:paddingBottom="5dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/sup_btn_prev"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:background="@drawable/bg_sup_btn_paper"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:paddingLeft="12dp"
+            android:paddingRight="12dp"
+            android:text="@string/phone_page_prev"
+            android:textColor="@color/sup_ink"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/sup_phone_page_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFeatureSettings="tnum"
+            android:gravity="center"
+            android:minWidth="56dp"
+            android:paddingLeft="10dp"
+            android:paddingRight="10dp"
+            android:text="1 / 4"
+            android:textColor="@color/sup_ink"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/sup_btn_next"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:background="@drawable/bg_sup_cta_blue"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:paddingLeft="12dp"
+            android:paddingRight="12dp"
+            android:text="@string/phone_page_next"
+            android:textColor="@color/sup_paper"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </LinearLayout>
 </FrameLayout>

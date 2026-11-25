@@ -120,6 +120,20 @@ final class EdifierProtocol {
         return -1;
     }
 
+    static boolean isWind(int group, int value) {
+        return (group == 0x10 && value == 3) || (group == 0x1B && value == 4);
+    }
+
+    static boolean isAncLevel(int group, int value) {
+        return (group == 0x10 && value >= 1 && value <= 3)
+                || (group == 0x1B && value >= 1 && value <= 4);
+    }
+
+    static byte[] ancLevelCommand(boolean v2, int group, int value) {
+        if (!v2 || !isAncLevel(group, value)) return null;
+        return new byte[]{(byte) group, (byte) value};
+    }
+
     static byte[] modeCommand(boolean v2, int group, int mode) {
         if (mode < 0 || mode > 2) return null;
         int wire = -1;

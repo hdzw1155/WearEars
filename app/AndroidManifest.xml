@@ -8,6 +8,8 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <!-- 旋转表圈/表冠的短脉冲震感直接走 Vibrator, 需要这条普通权限 -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- 本机单端空间音频 DSP (AudioEffect / DynamicsProcessing) 所需普通权限 -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
     <uses-feature android:name="android.hardware.type.watch" android:required="false" />
 
@@ -18,7 +20,8 @@
 
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -29,6 +32,11 @@
             android:name=".SettingsActivity"
             android:exported="false"
             android:label="@string/settings_title" />
+
+        <activity
+            android:name=".SpatialLabActivity"
+            android:exported="false"
+            android:label="@string/spatial_lab_title" />
 
         <receiver android:name=".TileConnectionReceiver" android:exported="true">
             <intent-filter>

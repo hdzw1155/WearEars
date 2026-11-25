@@ -14,6 +14,16 @@ final class VolumeGuard {
         unlocked = true;
     }
 
+    void observe(int current, int max) {
+        if (max <= 0) return;
+        current = Math.max(0, Math.min(max, current));
+        int boundary = (int) (max * 7L / 10L);
+        if (current < boundary) {
+            highAllowed = false;
+            highConfirmation = false;
+        }
+    }
+
     int limit(int current, int requested, int max) {
         if (max <= 0) return 0;
         current = Math.max(0, Math.min(max, current));

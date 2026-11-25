@@ -18,7 +18,6 @@ final class TileResources {
     /** 复合仪表盘(三层环 + 全部文字) */
     static final String ID_DIAL = "dial";
     static final String ID_DIAL_PENDING = "dial_pending";
-    static final String ID_SUP_BG = "sup_bg";
     static final String ID_IC_OFF = "ic_off";
     static final String ID_IC_TRANS = "ic_trans";
     static final String ID_IC_ANC = "ic_anc";
@@ -28,7 +27,6 @@ final class TileResources {
 
     private static volatile byte[] cachePng;
     private static volatile String cacheVersion;
-    private static volatile byte[] cacheSupBgPng;
 
     private TileResources() {
     }
@@ -71,10 +69,8 @@ final class TileResources {
                 .addIdToImageMapping(ID_IC_OFF, androidImage(R.drawable.ic_off))
                 .addIdToImageMapping(ID_IC_TRANS, androidImage(R.drawable.ic_trans))
                 .addIdToImageMapping(ID_IC_ANC, androidImage(R.drawable.ic_anc));
-        if (supreme) {
-            if (s.pendingMode >= 0) res.addIdToImageMapping(ID_DIAL_PENDING, inline(png, imgW, imgH));
-            res.addIdToImageMapping(ID_SUP_BG, inline(supBgPng(),
-                    SuprematistTilePainter.BG_PX, SuprematistTilePainter.BG_PX));
+        if (supreme && s.pendingMode >= 0) {
+            res.addIdToImageMapping(ID_DIAL_PENDING, inline(png, imgW, imgH));
         }
         return res.build();
     }
@@ -92,15 +88,6 @@ final class TileResources {
                 .addIdToImageMapping(ID_IC_TRANS, androidImage(R.drawable.ic_trans))
                 .addIdToImageMapping(ID_IC_ANC, androidImage(R.drawable.ic_anc));
         return res.build();
-    }
-
-    private static byte[] supBgPng() {
-        byte[] bg = cacheSupBgPng;
-        if (bg == null) {
-            bg = SuprematistTilePainter.bgPng();
-            cacheSupBgPng = bg;
-        }
-        return bg;
     }
 
     /**

@@ -12,7 +12,6 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.SystemClock;
 import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -31,7 +30,6 @@ import android.widget.Toast;
 public class MainActivity extends Activity implements TwsClient.Listener, ControlHub.UiListener, MainPanel.Actions {
 
     private static final int REQ_PERM = 1;
-    private static final long TAP_RESET_MS = 2000L;
     private static final long TEMP_SUB_MS = 1600L;
     // 视觉令牌 (与 res/values/colors.xml 保持一致; 代码里要动态给自绘控件上色)
     private static final int COL_ACCENT = 0xFF2B6CB0;
@@ -57,7 +55,13 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
     private ArcIndicatorView indicator;
     private SuprematistFanDeckView fanDeck;
     private SuprematistPageRailView pageRail;
-    private View supDevPage;
+    private View supAcousticPage;
+    private View supSpatialPage;
+    private View supExtrasPage;
+    private View supPhoneBar;
+    private View supBtnPrev;
+    private View supBtnNext;
+    private TextView supPhonePageLabel;
     private SuprematistDialView supDial;
     private SuprematistControlView supControl;
     private boolean lastConnState = false;
@@ -75,8 +79,6 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
     private boolean neo;
     private boolean lightUi;
 
-    private View devSection;
-    private View devHint;
     private View disclaimerRow;
 
     private int pendingMode = -1;
@@ -84,13 +86,12 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
     private boolean connecting;
     private String deviceName = "";
 
-    private int devTaps = 0;
-    private long lastTapAt = 0;
     private boolean disclaimerDialogUp = false;
+    private boolean permPrompted = false;
     private AlertDialog disclaimerDialog, noticeDialog;
 
     /** 主界面是否在前台(onResume/onPause 维护; 断开后的自动重连只在界面前台时投任务) */
-    static volatile boolean resumed = false;
+    private boolean resumed = false;
 
     // ---- 主状态行当前值, 供临时副行结束后恢复 ----
     private int stateRes = R.string.status_idle;
@@ -121,16 +122,50 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
 
         scrollView = (AppScrollView) findViewById(R.id.scroll);
         indicator = (ArcIndicatorView) findViewById(R.id.indicator);
-        if (indicator != null && scrollView != null) {
+        DeviceForm.styleScrollContainer(this, scrollView, indicator);
+        if (indicator != null && scrollView != null && DeviceForm.isWatch(this)) {
             indicator.attachTo(scrollView);
         }
         fanDeck = (SuprematistFanDeckView) findViewById(R.id.fan_deck);
         pageRail = (SuprematistPageRailView) findViewById(R.id.page_rail);
-        supDevPage = findViewById(R.id.sup_page_dev);
+        supAcousticPage = findViewById(R.id.sup_page_acoustic);
+        supSpatialPage = findViewById(R.id.sup_page_spatial);
+        supExtrasPage = findViewById(R.id.sup_page_extras);
+        supPhoneBar = findViewById(R.id.sup_phone_bar);
+        supBtnPrev = findViewById(R.id.sup_btn_prev);
+        supBtnNext = findViewById(R.id.sup_btn_next);
+        supPhonePageLabel = (TextView) findViewById(R.id.sup_phone_page_label);
         supDial = (SuprematistDialView) findViewById(R.id.sup_dial);
         supControl = (SuprematistControlView) findViewById(R.id.sup_control);
-        if (fanDeck != null && supDevPage != null) {
-            fanDeck.setPageEnabled(supDevPage, false);
+        if (fanDeck != null) {
+            if (supAcousticPage != null) fanDeck.setPageEnabled(supAcousticPage, false);
+            if (supSpatialPage != null) fanDeck.setPageEnabled(supSpatialPage, false);
+            if (supExtrasPage != null) fanDeck.setPageEnabled(supExtrasPage, false);
+        }
+        final boolean isPhone = DeviceForm.isPhone(this);
+        if (pageRail != null && isPhone) {
+            pageRail.setVisibility(View.GONE);
+        }
+        if (supPhoneBar != null) {
+            supPhoneBar.setVisibility(isPhone ? View.VISIBLE : View.GONE);
+        }
+        if (isPhone && fanDeck != null) {
+            if (supBtnPrev != null) {
+                supBtnPrev.setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View v) {
+                        haptic(HapticFeedbackConstants.KEYBOARD_TAP);
+                        fanDeck.stepPage(-1);
+                    }
+                });
+            }
+            if (supBtnNext != null) {
+                supBtnNext.setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View v) {
+                        haptic(HapticFeedbackConstants.KEYBOARD_TAP);
+                        fanDeck.stepPage(1);
+                    }
+                });
+            }
         }
         if (supControl != null) {
             supControl.setLanguageEnglish(AppPrefs.LANG_EN.equals(curLang));
@@ -142,28 +177,9 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
                 }
 
                 @Override
-                public void onDevUnlocked() {
-
-                    if (fanDeck != null && supDevPage != null) {
-                        fanDeck.setPageEnabled(supDevPage, true);
-                        haptic(HapticFeedbackConstants.CONFIRM);
-                        Toast.makeText(MainActivity.this, R.string.dev_unlocked_toast,
-                                Toast.LENGTH_SHORT).show();
-                        fanDeck.focusPage(supDevPage, true);
-                    }
-                }
-
-                @Override
-                public void onJumpToDev() {
-                    if (fanDeck != null && supDevPage != null) {
-                        haptic(HapticFeedbackConstants.KEYBOARD_TAP);
-                        fanDeck.focusPage(supDevPage, true);
-                    }
-                }
-
-                @Override
-                public void onDevTick() {
-                    haptic(HapticFeedbackConstants.CLOCK_TICK);
+                public void onOpenSpatialLab() {
+                    haptic(HapticFeedbackConstants.KEYBOARD_TAP);
+                    startActivity(SpatialLabActivity.intent(MainActivity.this));
                 }
             });
         }
@@ -177,9 +193,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
 
                 @Override
                 public void onReconnectRequested() {
-                    haptic(HapticFeedbackConstants.KEYBOARD_TAP);
-                    clearData();
-                    tryConnect();
+                    onReconnectTapped();
                 }
 
                 @Override
@@ -199,16 +213,32 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
                             : R.string.sup_vol_guard_hint), 2200L);
                 }
             });
+            supDial.setOnNoiseLongPressListener(new Runnable() {
+                @Override public void run() {
+                    if (fanDeck != null && supAcousticPage != null
+                            && supAcousticPage.getVisibility() == View.VISIBLE) {
+                        fanDeck.focusPage(supAcousticPage, true);
+                    }
+                }
+            });
         }
-        if (fanDeck != null && pageRail != null) {
+        if (fanDeck != null) {
             fanDeck.setOnDeckStateListener(new SuprematistFanDeckView.OnDeckStateListener() {
                 @Override
                 public void onDeckMoved(int settledPage, int pageCount, float position,
                                         boolean lightSurface, boolean awake) {
-                    pageRail.setPageCount(pageCount);
-                    pageRail.setPosition(position, lightSurface, awake);
+                    if (pageRail != null && !isPhone) {
+                        pageRail.setPageCount(pageCount);
+                        pageRail.setPosition(position, lightSurface, awake);
+                    }
+                    if (isPhone) {
+                        updatePhoneDeckBar(settledPage, pageCount);
+                    }
                 }
             });
+            if (isPhone) {
+                updatePhoneDeckBar(fanDeck.activePageIndex(), fanDeck.activePageCount());
+            }
         }
 
         dot = (StatusDotView) findViewById(R.id.status_dot);
@@ -238,8 +268,6 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
 
         // 电量区双形态: 新版横向进度条 / 经典压扁圆环, 其余 UI 完全一致
 
-        devSection = findViewById(R.id.dev_section);
-        devHint = findViewById(R.id.dev_hint);
         disclaimerRow = findViewById(R.id.disclaimer_row);
 
         View openSettings = findViewById(R.id.open_settings);
@@ -278,6 +306,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
     }
 
     private void applyPhoneInsets() {
+        DeviceForm.styleScrollContainer(this, scrollView, indicator);
         if (getResources().getConfiguration().isScreenRound()) {
             return;
         }
@@ -286,73 +315,117 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
             return;
         }
         final int phoneSide = (int) dp(24);
-        final View scrollChild = scrollView != null && scrollView.getChildCount() > 0
-                ? scrollView.getChildAt(0) : null;
+        final int maxColPx = DeviceForm.isPhone(this) ? DeviceForm.phoneColumnWidthPx(this) : 0;
+        View neoCol = findViewById(R.id.neo_content_column);
+        if (neoCol == null && scrollView != null && scrollView.getChildCount() > 0) {
+            neoCol = scrollView.getChildAt(0);
+        }
+        final View scrollChild = neoCol;
         final int baseScrollTop = scrollChild != null ? scrollChild.getPaddingTop() : 0;
         final int baseScrollBot = scrollChild != null ? scrollChild.getPaddingBottom() : 0;
+        final View supBar = supPhoneBar;
+        final int baseBarMarginBot = supBar != null && supBar.getLayoutParams() instanceof android.view.ViewGroup.MarginLayoutParams
+                ? ((android.view.ViewGroup.MarginLayoutParams) supBar.getLayoutParams()).bottomMargin : 0;
+        final View rawAcousticBody = parentView(findViewById(R.id.noise_sub_container));
+        final View supAcousticBody = rawAcousticBody != supAcousticPage ? rawAcousticBody : null;
+        final View rawSpatialBody = parentView(findViewById(R.id.local_spatial_card));
+        final View supSpatialBody = rawSpatialBody != supSpatialPage ? rawSpatialBody : null;
+        final View rawExtrasBody = parentView(findViewById(R.id.extras_card));
+        final View supExtrasBody = rawExtrasBody != supExtrasPage ? rawExtrasBody : null;
+        final View supNoticeBox = parentView(disclaimerRow);
+        final int[] lastInsets = new int[4];
+
+        final Runnable syncPadding = new Runnable() {
+            @Override
+            public void run() {
+                int avail = root.getWidth() > 0
+                        ? root.getWidth()
+                        : getResources().getDisplayMetrics().widthPixels;
+                int contentAvail = Math.max(0, avail - lastInsets[2] - lastInsets[3]);
+                int side = maxColPx > 0
+                        ? Math.max(phoneSide, (contentAvail - maxColPx) / 2)
+                        : phoneSide;
+                int padL = lastInsets[2] + side;
+                int padR = lastInsets[3] + side;
+                if (scrollChild != null) {
+                    scrollChild.setPadding(padL, baseScrollTop + lastInsets[0],
+                            padR, baseScrollBot + lastInsets[1]);
+                }
+                if (supreme) {
+                    int supTop = (int) dp(20) + lastInsets[0];
+                    int supBot = (int) dp(supBar != null && supBar.getVisibility() == View.VISIBLE ? 64 : 20)
+                            + lastInsets[1];
+                    if (supSpatialBody != null) supSpatialBody.setPadding(padL, supTop, padR, supBot);
+                    if (supNoticeBox != null) supNoticeBox.setPadding(padL, supTop, padR, supBot);
+                    if (supAcousticBody != null) supAcousticBody.setPadding(padL, supTop, padR, supBot);
+                    if (supExtrasBody != null) supExtrasBody.setPadding(padL, supTop, padR, supBot);
+                    if (supBar != null && supBar.getLayoutParams() instanceof android.view.ViewGroup.MarginLayoutParams) {
+                        android.view.ViewGroup.MarginLayoutParams lp =
+                                (android.view.ViewGroup.MarginLayoutParams) supBar.getLayoutParams();
+                        int targetMargin = baseBarMarginBot + lastInsets[1];
+                        if (lp.bottomMargin != targetMargin) {
+                            lp.bottomMargin = targetMargin;
+                            supBar.setLayoutParams(lp);
+                        }
+                    }
+                }
+            }
+        };
 
         root.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
             @Override
             public WindowInsets onApplyWindowInsets(View v, WindowInsets insets) {
-                int top = insets.getSystemWindowInsetTop();
-                int bot = insets.getSystemWindowInsetBottom();
-                if (scrollChild != null) {
-                    scrollChild.setPadding(phoneSide, baseScrollTop + top,
-                            phoneSide, baseScrollBot + bot);
-                }
-                if (indicator != null) {
-                    indicator.setPadding(0, top, 0, bot);
-                }
-                if (supreme) {
-                    if (devSection != null) {
-                        devSection.setPadding(phoneSide, (int) dp(20) + top,
-                                phoneSide, (int) dp(20) + bot);
-                    }
-                    if (disclaimerRow != null && disclaimerRow.getParent() instanceof View) {
-                        View noticeBox = (View) disclaimerRow.getParent();
-                        noticeBox.setPadding(phoneSide, (int) dp(20) + top,
-                                phoneSide, (int) dp(20) + bot);
-                    }
+                lastInsets[0] = insets.getSystemWindowInsetTop();
+                lastInsets[1] = insets.getSystemWindowInsetBottom();
+                lastInsets[2] = insets.getSystemWindowInsetLeft();
+                lastInsets[3] = insets.getSystemWindowInsetRight();
+                syncPadding.run();
+                if (indicator != null && indicator.getVisibility() == View.VISIBLE) {
+                    indicator.setPadding(0, lastInsets[0], 0, lastInsets[1]);
                 }
                 return insets;
             }
         });
-        root.requestApplyInsets();
-    }
-
-    private void wireListeners() {
-        // 开发者设置: 默认关闭, 连点入口 5 下本会话内显示(不持久化)
-        if (devHint != null) {
-            devHint.setOnClickListener(new View.OnClickListener() {
+        if (maxColPx > 0) {
+            root.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
                 @Override
-                public void onClick(View v) {
-                    long now = SystemClock.elapsedRealtime();
-                    devTaps = (now - lastTapAt > TAP_RESET_MS) ? 1 : devTaps + 1;
-                    lastTapAt = now;
-                    if (devTaps >= 5 && devSection.getVisibility() != View.VISIBLE) {
-                        devSection.setVisibility(View.VISIBLE);
-                        devSection.setAlpha(0f);
-                        devSection.setTranslationY(dp(6));
-                        devSection.animate().alpha(1f).translationY(0f)
-                                .setDuration(220).start();
-                        devHint.setVisibility(View.GONE);
-                        haptic(HapticFeedbackConstants.CONFIRM);
-                        Toast.makeText(MainActivity.this, R.string.dev_unlocked_toast,
-                                Toast.LENGTH_SHORT).show();
-                    } else {
-                        haptic(HapticFeedbackConstants.CLOCK_TICK);
-                    }
+                public void onLayoutChange(View v, int l, int t, int r, int b,
+                                           int oldL, int oldT, int oldR, int oldB) {
+                    if ((r - l) != (oldR - oldL)) syncPadding.run();
                 }
             });
         }
+        root.requestApplyInsets();
+    }
 
+    private static View parentView(View child) {
+        return child != null && child.getParent() instanceof View ? (View) child.getParent() : null;
+    }
+
+    private void updatePhoneDeckBar(int settledPage, int pageCount) {
+        int total = Math.max(1, pageCount);
+        int current = Math.max(0, Math.min(total - 1, settledPage));
+        if (supPhonePageLabel != null) {
+            supPhonePageLabel.setText((current + 1) + " / " + total);
+        }
+        if (supBtnPrev != null) {
+            boolean canPrev = current > 0;
+            supBtnPrev.setEnabled(canPrev);
+            supBtnPrev.setAlpha(canPrev ? 1f : 0.38f);
+        }
+        if (supBtnNext != null) {
+            boolean canNext = current < total - 1;
+            supBtnNext.setEnabled(canNext);
+            supBtnNext.setAlpha(canNext ? 1f : 0.38f);
+        }
+    }
+
+    private void wireListeners() {
         if (ctaReconnect != null) {
             ctaReconnect.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    haptic(HapticFeedbackConstants.KEYBOARD_TAP);
-                    clearData();
-                    tryConnect();
+                    onReconnectTapped();
                 }
             });
         }
@@ -413,10 +486,11 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
         }
         resumed = true;
         if (scrollView != null) scrollView.setActive(true);
-        if (indicator != null) indicator.setActive(true);
+        if (indicator != null && DeviceForm.isWatch(this)) indicator.setActive(true);
         if (fanDeck != null) fanDeck.setActive(true);
-        if (pageRail != null) pageRail.wake();
+        if (pageRail != null && DeviceForm.isWatch(this)) pageRail.wake();
         tryConnect();
+        renderPanels();
         panels.resume();
     }
 
@@ -425,7 +499,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
         super.onPause();
         resumed = false;
         if (scrollView != null) scrollView.setActive(false);
-        if (indicator != null) indicator.setActive(false);
+        if (indicator != null && DeviceForm.isWatch(this)) indicator.setActive(false);
         if (fanDeck != null) fanDeck.setActive(false);
         panels.pause();
         ui.removeCallbacksAndMessages(null);
@@ -482,12 +556,20 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
         if (status != null) {
             status.setText(textRes);
         }
+        if (sub != null) {
+            sub.setTextColor(colDim());
+        }
         setSub(stateSub);
+        boolean connectedVisual = textRes == R.string.status_connected
+                || textRes == R.string.status_parked
+                || (textRes == R.string.status_connecting && client != null && client.isConnected());
         if (ctaReconnect != null) {
-            ctaReconnect.setVisibility(textRes != R.string.status_connecting && textRes != R.string.status_connected
+            ctaReconnect.setVisibility(textRes != R.string.status_connecting
+                    && textRes != R.string.status_connected
+                    && textRes != R.string.status_parked
                     ? View.VISIBLE : View.GONE);
         }
-        lastConnState = (textRes == R.string.status_connected);
+        lastConnState = connectedVisual;
         if (supDial != null) {
             supDial.setConnectionState(getString(textRes), stateSub, color,
                     lastConnState, breathing, !lastConnState && textRes != R.string.status_connecting);
@@ -540,12 +622,16 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
             showDisclaimerDialog(true);
             return;
         }
-        if (!hasPerm() || stateRes == R.string.status_no_perm && !BluetoothAccess.cancelDiscovery(this)) {
+        if (!hasPerm()) {
             setState(R.string.status_no_perm, colDanger(), false, false,
                     getString(R.string.sub_no_perm_action));
-            requestPermissions(new String[]{Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN}, REQ_PERM);
+            if (!permPrompted) {
+                permPrompted = true;
+                requestPermissions(new String[]{Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN}, REQ_PERM);
+            }
             return;
         }
+        permPrompted = false;
         if (!resumed) return;
         ControlHub shared = ControlHub.get(this);
         client = shared;
@@ -553,13 +639,40 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
         shared.connect();
     }
 
+    private void onReconnectTapped() {
+        haptic(HapticFeedbackConstants.KEYBOARD_TAP);
+        permPrompted = false;
+        if (AppPrefs.hasDisclaimer(this) && hasPerm()
+                && stateRes == R.string.status_no_perm && !hasScanPerm()) {
+            permPrompted = true;
+            requestPermissions(new String[]{Manifest.permission.BLUETOOTH_SCAN}, REQ_PERM);
+            return;
+        }
+        clearData();
+        tryConnect();
+    }
+
     @Override
     public void onConnectionState(final int state, final int hint) {
         if (!resumed) return;
         connecting = state == R.string.status_connecting;
-        int color = connecting ? colAccent() : state == R.string.status_bt_off ? colWarn() : colIdle();
-        setState(state, color, !connecting, connecting,
-                hint == 0 ? TileStore.readOrEmpty(this).name : getString(hint));
+        boolean parked = state == R.string.status_parked;
+        boolean contested = state == R.string.status_channel_contested;
+        int color = connecting ? colAccent()
+                : parked ? colOk()
+                : (state == R.string.status_bt_off || contested) ? colWarn()
+                : colIdle();
+        boolean hollow = !connecting && !parked && !contested;
+        String subText;
+        if (parked) {
+            String name = (deviceName != null && !deviceName.isEmpty())
+                    ? deviceName : TileStore.readOrEmpty(this).name;
+            String hintText = getString(R.string.sub_parked_hint);
+            subText = (name != null && !name.isEmpty()) ? name + " · " + hintText : hintText;
+        } else {
+            subText = hint == 0 ? TileStore.readOrEmpty(this).name : getString(hint);
+        }
+        setState(state, color, hollow, connecting, subText);
         showSession();
     }
 
@@ -587,7 +700,13 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
         spinRefreshIcon();
         panels.refreshVolume();
         if (!resumed) return;
+        permPrompted = false;
         if (!AppPrefs.hasDisclaimer(this) || !hasPerm()) { tryConnect(); return; }
+        if (stateRes == R.string.status_no_perm && !hasScanPerm()) {
+            permPrompted = true;
+            requestPermissions(new String[]{Manifest.permission.BLUETOOTH_SCAN}, REQ_PERM);
+            return;
+        }
         // 刷新是一笔跨重连的同步请求，不能在离线时退化成只尝试 connect。
         ControlHub shared = ControlHub.get(this);
         client = shared;
@@ -612,7 +731,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
     private void showDisclaimerDialog(boolean blockOnStart) {
         if (disclaimerDialogUp) return;
         disclaimerDialogUp = true;
-        disclaimerDialog = new AlertDialog.Builder(this)
+        disclaimerDialog = new AlertDialog.Builder(this, NeoStyle.dialogTheme(lightUi))
                 .setTitle(R.string.global_disclaimer_title)
                 .setMessage(R.string.global_disclaimer_msg)
                 .setCancelable(false)
@@ -622,6 +741,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
                         AppPrefs.acceptDisclaimer(MainActivity.this);
                         TileStore.push(MainActivity.this);
                         disclaimerDialogUp = false;
+                        renderPanels();
                         tryConnect();
                     }
                 })
@@ -637,7 +757,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
 
     private void showFullNoticeInfoDialog() {
         if (noticeDialog != null && noticeDialog.isShowing()) return;
-        noticeDialog = new AlertDialog.Builder(this)
+        noticeDialog = new AlertDialog.Builder(this, NeoStyle.dialogTheme(lightUi))
                 .setTitle(R.string.global_disclaimer_title)
                 .setMessage(R.string.disclaimer_page_msg)
                 .setPositiveButton(R.string.dialog_ok, null)
@@ -647,6 +767,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
     @Override protected void onDestroy() {
         if (disclaimerDialog != null) disclaimerDialog.dismiss();
         if (noticeDialog != null) noticeDialog.dismiss();
+        SafetyGates.dismissAll(this);
         super.onDestroy();
     }
 
@@ -660,7 +781,8 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(requestCode, permissions, results);
         if (requestCode == REQ_PERM) {
-            if (hasPerm() && BluetoothAccess.cancelDiscovery(this)) {
+            if (hasPerm()) {
+                permPrompted = false;
                 if (resumed) tryConnect();
             } else {
                 onRefreshPermissionDenied();
@@ -670,8 +792,17 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
 
     // ---------------- 视图渲染 ----------------
 
+    private void syncHostSpatial(DeviceState ds) {
+        boolean hwSpatialOn = ds != null && ds.connected
+                && (Boolean.TRUE.equals(ds.spatial)
+                        || Integer.valueOf(1).equals(ds.featureValue(FeatureId.SPATIAL_AUDIO)));
+        WearEarsSpatialEffect.get(this).sync(this, hwSpatialOn);
+    }
+
     private void renderPanels() {
-        if (panels != null) panels.render(ControlHub.get(this).state(), pendingMode);
+        DeviceState ds = ControlHub.get(this).state();
+        syncHostSpatial(ds);
+        if (panels != null) panels.render(ds, pendingMode);
     }
 
     /** 未连接时清空电量、档位、芯片与临时提示 */
@@ -735,9 +866,33 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
     @Override public void selectEqualizer(int preset) {
         if (client != null && client.isConnected()) client.setEqualizer(preset);
     }
+    @Override public void selectFeature(FeatureId id, int value) {
+        if (client != null && client.isConnected()) client.performFeature(id, value);
+    }
+    @Override public void stopFindBuds() {
+        if (client != null) client.stopFindBuds();
+    }
+    @Override public int pendingFeature(FeatureId id) {
+        return client != null ? client.pendingFeature(id) : -1;
+    }
     @Override public void onSpatial(Boolean state) { renderPanels(); }
     @Override public void onDeepX(Integer mode) { renderPanels(); }
     @Override public void onEqualizer(Integer mode) { renderPanels(); }
+    @Override public void onFeatureSpec(FeatureDescriptor spec) { if (client != null) renderPanels(); }
+    @Override public void onFeatureValue(FeatureId id, int value) { if (client != null) renderPanels(); }
+    @Override public void onFeatureText(FeatureId id, String text) { if (client != null) renderPanels(); }
+
+    @Override public void onFeatureChanged(FeatureId id, int value, boolean active, boolean success) {
+        if (!resumed) return;
+        renderPanels();
+        if (!active && !success) {
+            haptic(HapticFeedbackConstants.REJECT);
+            showTempSub(getString(id == FeatureId.SPATIAL_AUDIO
+                    ? R.string.spatial_unconfirmed : R.string.feature_failed), TEMP_SUB_MS);
+        } else if (!active && success) {
+            haptic(HapticFeedbackConstants.CONFIRM);
+        }
+    }
 
     @Override public void onOperationChanged(int target, boolean active, boolean success) {
         pendingMode = active ? target : -1;
@@ -786,6 +941,12 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
     private boolean hasPerm() {
         return Build.VERSION.SDK_INT < 31
                 || checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private boolean hasScanPerm() {
+        return Build.VERSION.SDK_INT < 31
+                || checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN)
                 == PackageManager.PERMISSION_GRANTED;
     }
 

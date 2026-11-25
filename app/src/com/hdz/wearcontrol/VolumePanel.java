@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.media.AudioManager;
+import android.os.Build;
 import android.os.SystemClock;
 import android.view.HapticFeedbackConstants;
 import android.view.View;
@@ -20,10 +21,9 @@ final class VolumePanel implements MainPanel {
     private final AudioManager audio;
     private final VolumeBarView bar;
     private final TextView value;
-    private final Switch toggle;
     private final View card;
     private final SuprematistDialView dial;
-    private boolean registered, changing;
+    private boolean registered;
     private long lastHaptic;
     private final VolumeGuard guard = new VolumeGuard();
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
@@ -35,10 +35,12 @@ final class VolumePanel implements MainPanel {
         audio = (AudioManager) activity.getSystemService(Context.AUDIO_SERVICE);
         bar = activity.findViewById(R.id.volume_bar);
         value = activity.findViewById(R.id.volume_value);
-        toggle = activity.findViewById(R.id.switch_volume);
         card = activity.findViewById(R.id.volume_card);
         dial = activity.findViewById(R.id.sup_dial);
-        if (dial != null) { dial.enablePanel(0); dial.setVolumeGuard(guard); }
+        if (dial != null) {
+            dial.setVolumeGuard(guard);
+            dial.setVolumeEnabled(AppPrefs.showVolume(activity));
+        }
         if (bar != null) {
             bar.setVolumeGuard(guard);
             int uiStyle = AppPrefs.uiStyle(activity);
@@ -54,14 +56,11 @@ final class VolumePanel implements MainPanel {
                 @Override public void onLockedIncrease() {
                     Toast.makeText(activity, R.string.volume_locked, Toast.LENGTH_SHORT).show();
                 }
+                @Override public void onHighGuardConfirmNeeded() {
+                    Toast.makeText(activity, R.string.volume_high_guard, Toast.LENGTH_LONG).show();
+                }
             });
         }
-        if (toggle != null) toggle.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override public void onCheckedChanged(CompoundButton button, boolean checked) {
-                if (!changing) AppPrefs.setShowVolume(VolumePanel.this.activity, checked);
-                if (card != null) card.setVisibility(checked ? View.VISIBLE : View.GONE);
-            }
-        });
     }
 
     @Override public void render(DeviceState state, int pendingMode) { }
@@ -69,11 +68,16 @@ final class VolumePanel implements MainPanel {
         guard.lock();
         boolean show = AppPrefs.showVolume(activity);
         if (card != null) card.setVisibility(show ? View.VISIBLE : View.GONE);
-        if (toggle != null) { changing = true; toggle.setChecked(show); changing = false; }
+        if (dial != null) dial.setVolumeEnabled(show);
         refreshVolume();
         if (!registered) {
             try {
-                activity.registerReceiver(receiver, new IntentFilter("android.media.VOLUME_CHANGED_ACTION"));
+                IntentFilter filter = new IntentFilter("android.media.VOLUME_CHANGED_ACTION");
+                if (Build.VERSION.SDK_INT >= 33) {
+                    activity.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED);
+                } else {
+                    activity.registerReceiver(receiver, filter);
+                }
                 registered = true;
             } catch (RuntimeException ignored) { }
         }
@@ -89,14 +93,16 @@ final class VolumePanel implements MainPanel {
     @Override public void volume(int level, int max) {
         if (audio == null || !AppPrefs.hasDisclaimer(activity)) return;
         boolean wasUnlocked = guard.isUnlocked();
+        boolean hitHighGuard;
         try {
             int current = audio.getStreamVolume(AudioManager.STREAM_MUSIC);
             int safe = guard.limit(current, level, audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
             if (safe != current) audio.setStreamVolume(AudioManager.STREAM_MUSIC, safe, 0);
+            hitHighGuard = wasUnlocked && guard.needsHighConfirmation();
         }
         catch (RuntimeException ignored) { refreshVolume(); return; }
         refreshVolume();
-        if (wasUnlocked && guard.needsHighConfirmation()) {
+        if (hitHighGuard) {
             Toast.makeText(activity, R.string.volume_high_guard, Toast.LENGTH_LONG).show();
             haptic(HapticFeedbackConstants.REJECT);
             return;
@@ -113,6 +119,7 @@ final class VolumePanel implements MainPanel {
         try {
             int max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
             int current = audio.getStreamVolume(AudioManager.STREAM_MUSIC);
+            guard.observe(current, max);
             if (bar != null) { bar.setLevel(current, max); bar.invalidate(); }
             if (dial != null) { dial.setVolume(current, max); dial.invalidate(); }
             if (value != null) value.setText((max > 0 ? Math.round(current * 100f / max) : 0) + "%");

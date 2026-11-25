@@ -23,6 +23,7 @@ public class StatusDotView extends View {
     private boolean diamond;
     private ValueAnimator breath;
     private ObjectAnimator pop;
+    private ObjectAnimator popY;
 
     public StatusDotView(Context context) {
         this(context, null);
@@ -70,19 +71,30 @@ public class StatusDotView extends View {
         }
     }
 
-    /** 一次 1.0 -> 1.28 -> 1.0 的确认 pop(300ms 内结束, 只给"刚连上"用) */
-    public void pop() {
+    private void cancelPop() {
         if (pop != null) {
             pop.cancel();
+            pop = null;
         }
+        if (popY != null) {
+            popY.cancel();
+            popY = null;
+        }
+    }
+
+    /** 一次 1.0 -> 1.28 -> 1.0 的确认 pop(300ms 内结束, 只给"刚连上"用) */
+    public void pop() {
+        cancelPop();
+        setScaleX(1f);
+        setScaleY(1f);
         pop = ObjectAnimator.ofFloat(this, "scaleX", 1f, 1.28f, 1f);
         pop.setDuration(220);
         pop.setInterpolator(new android.view.animation.OvershootInterpolator(1.5f));
-        ObjectAnimator y = ObjectAnimator.ofFloat(this, "scaleY", 1f, 1.28f, 1f);
-        y.setDuration(220);
-        y.setInterpolator(new android.view.animation.OvershootInterpolator(1.5f));
+        popY = ObjectAnimator.ofFloat(this, "scaleY", 1f, 1.28f, 1f);
+        popY.setDuration(220);
+        popY.setInterpolator(new android.view.animation.OvershootInterpolator(1.5f));
         pop.start();
-        y.start();
+        popY.start();
     }
 
     @Override
@@ -128,10 +140,9 @@ public class StatusDotView extends View {
     @Override
     protected void onDetachedFromWindow() {
         setBreathing(false);
-        if (pop != null) {
-            pop.cancel();
-            pop = null;
-        }
+        cancelPop();
+        setScaleX(1f);
+        setScaleY(1f);
         super.onDetachedFromWindow();
     }
 }

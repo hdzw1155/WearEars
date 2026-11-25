@@ -44,16 +44,67 @@ final class TechnicsProtocol {
         return -1;
     }
 
+    static int ancLevel(byte[] frame) {
+        return mode(frame) >= 0 ? frame[8] & 255 : 100;
+    }
+
+    static int ambientLevel(byte[] frame) {
+        return mode(frame) >= 0 ? frame[9] & 255 : 50;
+    }
+
+    static int snapLevel(int level) {
+        if (level <= 37) return 25;
+        if (level <= 62) return 50;
+        if (level <= 87) return 75;
+        return 100;
+    }
+
+    /** 解析 0x0067 自适应降噪回报: 05 [5B|5D] 04 00 67 00 00 <0|1>。 */
+    static Boolean adaptiveAnc(byte[] frame) {
+        if (frame == null || frame.length != 8) return null;
+        int type = frame[1] & 255;
+        if (type != 0x5B && type != 0x5D) return null;
+        if ((frame[4] & 255) != 0x67 || frame[5] != 0 || frame[6] != 0) return null;
+        if (frame[7] == 0) return Boolean.FALSE;
+        if (frame[7] == 1) return Boolean.TRUE;
+        return null;
+    }
+
+    static byte[] adaptiveQuery() {
+        return command(0x0067);
+    }
+
+    static byte[][] adaptiveAncCommands(boolean enable, int ancLevel, int ambientLevel) {
+        int anc = ancLevel >= 0 && ancLevel <= 100 ? ancLevel : 100;
+        int amb = ambientLevel >= 0 && ambientLevel <= 100 ? ambientLevel : 50;
+        if (enable) {
+            return new byte[][]{
+                command(0x000B, (byte) 1, (byte) anc, (byte) amb),
+                command(0x0068, (byte) 1)
+            };
+        }
+        return new byte[][]{
+            command(0x0068, (byte) 0),
+            command(0x000B, (byte) 1, (byte) anc, (byte) amb)
+        };
+    }
+
     static byte[][] noiseCommands(int mode) {
+        return noiseCommands(mode, 100, 50);
+    }
+
+    static byte[][] noiseCommands(int mode, int ancLevel, int ambientLevel) {
+        int anc = ancLevel >= 0 && ancLevel <= 100 ? ancLevel : 100;
+        int amb = ambientLevel >= 0 && ambientLevel <= 100 ? ambientLevel : 50;
         byte[] adaptiveOff = command(0x0068, (byte) 0);
         if (mode == Controls.MODE_OFF) return new byte[][]{
-            adaptiveOff, command(0x000B, (byte) 0, (byte) 100, (byte) 50)};
+            adaptiveOff, command(0x000B, (byte) 0, (byte) anc, (byte) amb)};
         if (mode == Controls.MODE_ANC) return new byte[][]{
-            adaptiveOff, command(0x000B, (byte) 1, (byte) 100, (byte) 50),
+            adaptiveOff, command(0x000B, (byte) 1, (byte) anc, (byte) amb),
             command(0x0039, (byte) 32, (byte) 2)};
         if (mode == Controls.MODE_TRANS) return new byte[][]{
             adaptiveOff, command(0x0022, (byte) 0, (byte) 0),
-            command(0x000B, (byte) 2, (byte) 100, (byte) 50)};
+            command(0x000B, (byte) 2, (byte) anc, (byte) amb)};
         return null;
     }
 

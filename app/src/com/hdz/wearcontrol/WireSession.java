@@ -4,6 +4,8 @@ import android.bluetooth.*;
 import android.content.Context;
 import android.os.*;
 import android.util.Log;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /** Android lifetime of one wire protocol. The owner creates a new instance on every attempt. */
@@ -14,12 +16,65 @@ final class WireSession implements TwsClient, WireDriver.Port {
     private BluetoothDevice peer;
     private HandlerThread thread;
     private Handler actor;
-    private volatile boolean closed, ending;
+    private volatile boolean closed, ending, driverBound, released;
     private volatile RfcommLink rfcomm;
     private GattLink ble;
     private volatile Listener listener;
+    private final Listener driverEvents = new Listener() {
+        @Override public void onConnected(String deviceName) {
+            Listener l = listener;
+            if (!closed && l != null) l.onConnected(deviceName);
+        }
+        @Override public void onDisconnected(String reason) {
+            Listener l = listener;
+            if (!closed && l != null) l.onDisconnected(reason);
+        }
+        @Override public void onError(String msg) {
+            Listener l = listener;
+            if (!closed && l != null) l.onError(msg);
+        }
+        @Override public void onBattery(int left, int right, int box, int chargeFlags) {
+            Listener l = listener;
+            if (!closed && l != null) l.onBattery(left, right, box, chargeFlags);
+        }
+        @Override public void onNoiseMode(int mode) {
+            Listener l = listener;
+            if (!closed && l != null) l.onNoiseMode(mode);
+        }
+        @Override public void onSpatial(Boolean state) {
+            Listener l = listener;
+            if (!closed && l != null) l.onSpatial(state);
+        }
+        @Override public void onDeepX(Integer mode) {
+            Listener l = listener;
+            if (!closed && l != null) l.onDeepX(mode);
+        }
+        @Override public void onEqualizer(Integer mode) {
+            Listener l = listener;
+            if (!closed && l != null) l.onEqualizer(mode);
+        }
+        @Override public void onFeatureSpec(FeatureDescriptor spec) {
+            Listener l = listener;
+            if (!closed && l != null) l.onFeatureSpec(spec);
+        }
+        @Override public void onFeatureValue(FeatureId id, int value) {
+            Listener l = listener;
+            if (!closed && l != null) l.onFeatureValue(id, value);
+        }
+        @Override public void onFeatureText(FeatureId id, String text) {
+            Listener l = listener;
+            if (!closed && l != null) l.onFeatureText(id, text);
+        }
+    };
 
     WireSession(WireDriver driver) { this.driver = driver; }
+    void prebind(String name) { bindDriver(name); }
+    private synchronized void bindDriver(String name) {
+        if (!driverBound) {
+            driver.bind(name, this, driverEvents);
+            driverBound = true;
+        }
+    }
     public void init(Context context) { app = context.getApplicationContext(); }
     public void addListener(Listener l) { listener = l; }
     public void removeListener(Listener l) { if (listener == l) listener = null; }
@@ -29,17 +84,23 @@ final class WireSession implements TwsClient, WireDriver.Port {
         thread = new HandlerThread("WearEars-" + driver.brandName());
         thread.start();
         actor = new Handler(thread.getLooper());
-        final Listener events = listener;
         execute(() -> {
-            driver.bind(device.getName(), this, events);
+            bindDriver(device.getName());
             if (!active()) return;
             if (driver.cancelDiscovery()) {
-                BluetoothManager manager = app.getSystemService(BluetoothManager.class);
-                if (manager != null && manager.getAdapter() != null) manager.getAdapter().cancelDiscovery();
+                try {
+                    BluetoothManager manager = app.getSystemService(BluetoothManager.class);
+                    if (manager != null && manager.getAdapter() != null) manager.getAdapter().cancelDiscovery();
+                } catch (SecurityException ignored) { }
             }
             ParcelUuid[] advertised = device.getUuids();
-            UUID[] ids = new UUID[advertised == null ? 0 : advertised.length];
-            for (int i = 0; i < ids.length; i++) ids[i] = advertised[i].getUuid();
+            List<UUID> validIds = new ArrayList<>();
+            if (advertised != null) {
+                for (ParcelUuid pu : advertised) {
+                    if (pu != null && pu.getUuid() != null) validIds.add(pu.getUuid());
+                }
+            }
+            UUID[] ids = validIds.toArray(new UUID[0]);
             RfcommLink link = new RfcommLink(new AndroidSockets(device), new RfcommLink.Events() {
                 public boolean post(Runnable r) { return enqueue(r); }
                 public void after(Runnable r, long ms) { WireSession.this.after(r, ms); }
@@ -56,7 +117,8 @@ final class WireSession implements TwsClient, WireDriver.Port {
     }
     @Override public void useBle(UUID service, UUID notify, UUID write, long delay, long timeout) {
         if (!active() || ble != null) return;
-        rfcomm.close();
+        RfcommLink link = rfcomm;
+        if (link != null) link.close();
         ble = new GattLink(actor, new GattLink.Events() {
             public void opened() { if (active()) driver.onOpen(); }
             public void receive(byte[] data) { if (active()) driver.received(data); }
@@ -73,7 +135,9 @@ final class WireSession implements TwsClient, WireDriver.Port {
     public int verifLevel() { return driver.verifLevel(); }
     public String brandName() { return driver.brandName(); }
     public SoundPreset[] equalizerPresets() { return driver.equalizerPresets(); }
+    public FeatureDescriptor[] featureDescriptors() { return driver.featureDescriptors(); }
 
+    boolean tryExecute(Runnable work) { return enqueue(work); }
     public void execute(Runnable work) { enqueue(work); }
     private boolean enqueue(Runnable work) {
         return active() && actor != null && actor.post(() -> guarded(work));
@@ -83,9 +147,11 @@ final class WireSession implements TwsClient, WireDriver.Port {
         try { work.run(); } catch (RuntimeException error) { fail(error.toString()); }
     }
     public void after(Runnable work, long ms) {
-        if (active()) actor.postAtTime(() -> guarded(work), work, SystemClock.uptimeMillis() + ms);
+        if (active() && actor != null) actor.postAtTime(() -> guarded(work), work, SystemClock.uptimeMillis() + ms);
     }
-    public void cancel(Runnable work) { actor.removeCallbacksAndMessages(work); }
+    public void cancel(Runnable work) {
+        if (actor != null) actor.removeCallbacksAndMessages(work);
+    }
     public long millis() { return SystemClock.elapsedRealtime(); }
     public void trace(String tag, String message) { if (Log.isLoggable(tag, Log.DEBUG)) Log.d(tag, message); }
     public void send(byte[] data, Runnable flushed) {
@@ -109,13 +175,16 @@ final class WireSession implements TwsClient, WireDriver.Port {
         RfcommLink link = rfcomm;
         if (link != null) link.close();
         if (actor != null) actor.postAtFrontOfQueue(this::release);
+        else release();
     }
-    private void release() {
+    private synchronized void release() {
+        if (released) return;
+        released = true;
         if (rfcomm != null) rfcomm.close();
         if (ble != null) ble.close();
-        driver.onClose();
-        actor.removeCallbacksAndMessages(null);
-        thread.quitSafely();
+        if (driverBound) driver.onClose();
+        if (actor != null) actor.removeCallbacksAndMessages(null);
+        if (thread != null) thread.quitSafely();
     }
     public void queryBattery() { driver.queryBattery(); }
     public void queryNoise() { driver.queryNoise(); }
@@ -132,5 +201,11 @@ final class WireSession implements TwsClient, WireDriver.Port {
     public void setDeepX(int mode) { setEqualizer(mode); }
     public void setEqualizer(int mode) {
         if (isConnected() && (caps() & (CAP_EQUALIZER | CAP_DEEPX)) != 0) driver.setEqualizer(mode);
+    }
+    public void queryFeature(FeatureId id) {
+        if (id != null) driver.queryFeature(id);
+    }
+    public void writeFeature(FeatureId id, int value, Runnable flushed) {
+        if (id != null && isConnected()) driver.writeFeature(id, value, flushed);
     }
 }

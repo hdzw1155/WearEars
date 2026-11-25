@@ -129,7 +129,7 @@ final class GattLink extends BluetoothGattCallback {
         });
     }
     @Override public void onCharacteristicChanged(BluetoothGatt source, BluetoothGattCharacteristic c) {
-        notification(source, c, c.getValue());
+        if (Build.VERSION.SDK_INT < 33 && c != null) notification(source, c, c.getValue());
     }
     @Override public void onCharacteristicChanged(BluetoothGatt source, BluetoothGattCharacteristic c, byte[] value) {
         notification(source, c, value);

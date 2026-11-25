@@ -1,6 +1,8 @@
 package com.hdz.wearcontrol;
 
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -10,9 +12,10 @@ import java.util.UUID;
  * V2 帧: AA | EC | CMD | LEN_H | LEN_L | PAYLOAD | CRC8 ; payload 默认 XOR 0xA5; CRC8=sum(前序线上字节)&FF
  * V1 帧: AA | LEN | CMD | DATA | CRC16_H | CRC16_L ; LEN=len(DATA)+1; CRC16=(0x2019+sum)&FFFF
  * 电量: D0 单值；F2 只发布已证实的左右耳字段，盒与充电标志保持未知。
- * 降噪: CC 查询拿 [group][mode] → C1 设置; 每个 group 的 mode 含义不同, 不猜 group.
+ * 降噪: CC 查询拿 [group][mode] → C1 设置; 支持 0x10/0x1B 降噪深度与抗风噪; 每个 group 的 mode 含义不同, 不猜 group.
+ * 游戏模式: 仅在显式 queryFeature/writeFeature(LOW_LATENCY) 时发 0x08/0x09(绝不在初始探测或切三态中发出).
+ * 严禁发送 0x49 LDAC 切换指令(触发蓝牙重连).
  * 传输: SPP(EDF00000-...) 优先, 失败走 BLE GATT(特征 48090001/48090002, 按 UUID 找, 不强绑服务).
- * 只发 D0/F2/CC/C1, 其余命令一律不发.
  */
 public class EdifierClient extends WireDriver {
 
@@ -25,13 +28,38 @@ public class EdifierClient extends WireDriver {
     private static final int CMD_BATT_F2 = 0xF2;
     private static final int CMD_ANC_QUERY = 0xCC;
     private static final int CMD_ANC_SET = 0xC1;
+    private static final int CMD_GAME_QUERY = 0x08;
+    private static final int CMD_GAME_SET = 0x09;
+
+    private static final OptionItem[] ANC_OPTIONS_10 = {
+            new OptionItem(1, "深度降噪", "Deep", OptionItem.ROLE_DEFAULT),
+            new OptionItem(2, "舒适降噪", "Comfort", OptionItem.ROLE_DEFAULT),
+            new OptionItem(3, "抗风噪", "Wind", OptionItem.ROLE_WIND)
+    };
+    private static final OptionItem[] ANC_OPTIONS_1B = {
+            new OptionItem(1, "深度降噪", "Deep", OptionItem.ROLE_DEFAULT),
+            new OptionItem(2, "舒适降噪", "Comfort", OptionItem.ROLE_DEFAULT),
+            new OptionItem(3, "轻度降噪", "Mild", OptionItem.ROLE_DEFAULT),
+            new OptionItem(4, "抗风噪", "Wind", OptionItem.ROLE_WIND)
+    };
+    private static final FeatureDescriptor ANC_SPEC_10 = FeatureDescriptor.choice(
+            FeatureId.ANC_LEVEL, VERIF_UNTESTED, FeatureDescriptor.SAFETY_NONE,
+            1 << MODE_ANC, false, ANC_OPTIONS_10);
+    private static final FeatureDescriptor ANC_SPEC_1B = FeatureDescriptor.choice(
+            FeatureId.ANC_LEVEL, VERIF_UNTESTED, FeatureDescriptor.SAFETY_NONE,
+            1 << MODE_ANC, false, ANC_OPTIONS_1B);
+    private static final FeatureDescriptor LOW_LATENCY_SPEC = FeatureDescriptor.toggle(
+            FeatureId.LOW_LATENCY, VERIF_UNTESTED, false);
 
     private final EdifierProtocol.Decoder decoder = new EdifierProtocol.Decoder();
-    private boolean v2, xor, preferredXor;
+    private boolean v2, xor, preferredXor, d0Allowed;
     private int probeDialect;
     private volatile int batteryCmd = -1;        // 0=D0 单值, 1=F2 三段
     private int group;
     private volatile boolean noiseConfirmed;
+    private volatile boolean lowLatencyConfirmed;
+    private volatile FeatureDescriptor ancLevelSpec;
+    private Runnable d0Timer, probeTimer;
 
     @Override protected String logTag() { return TAG; }
     @Override protected String unnamedDevice() { return "漫步者耳机"; }
@@ -46,27 +74,46 @@ public class EdifierClient extends WireDriver {
         preferredXor = !("edifierfitbudsturbo".equals(name) || "fitbudsturbo".equals(name));
         v2 = true;
         xor = preferredXor;
-        noiseConfirmed = false;
+        noiseConfirmed = d0Allowed = lowLatencyConfirmed = false;
         batteryCmd = group = probeDialect = -1;
+        ancLevelSpec = null;
+        d0Timer = probeTimer = null;
         decoder.reset();
     }
     @Override protected void opened() { probe(0); }
+    @Override protected void closed() {
+        cancel(d0Timer);
+        cancel(probeTimer);
+        d0Timer = probeTimer = null;
+    }
 
     private void probe(final int dialect) {
+        cancel(d0Timer);
+        cancel(probeTimer);
+        d0Timer = probeTimer = null;
         if (dialect == 3) {
             fail("漫步者耳机没回应控制帧(可能型号/固件不支持)");
             return;
         }
-        // 三种只读方言，明确的明文型号先试明文。
+        // 三种只读方言，明确的明文型号先试明文；先探 F2 避免 D0 抢答导致误锁定单电池。
         probeDialect = dialect;
+        d0Allowed = false;
         v2 = dialect != 2;
         xor = dialect == 0 ? preferredXor : !preferredXor;
         sendFrame(CMD_BATT_F2, new byte[0]);
-        sendFrame(CMD_BATT_D0, new byte[0]);
         sendAncQuery();
-        schedule(new Runnable() { @Override public void run() {
+        final boolean expectV2 = v2;
+        final boolean expectXor = xor;
+        d0Timer = new Runnable() { @Override public void run() {
+            if (!transportOpen() || batteryCmd == 1 || v2 != expectV2 || xor != expectXor) return;
+            d0Allowed = true;
+            sendFrame(CMD_BATT_D0, new byte[0]);
+        }};
+        schedule(d0Timer, 300);
+        probeTimer = new Runnable() { @Override public void run() {
             if (probeDialect == dialect) probe(dialect + 1);
-        }}, 1500);
+        }};
+        schedule(probeTimer, 1500);
     }
 
     // ---- 发送 ----
@@ -86,8 +133,10 @@ public class EdifierClient extends WireDriver {
             int[] battery = EdifierProtocol.battery(frame.command, payload);
             if (battery != null) {
                 // F2 优先；稍后到达的 D0 聚合电量不能把 TWS 切成单电池。
+                if (frame.command == CMD_BATT_D0) d0Allowed = true;
                 if (frame.command == CMD_BATT_F2 || batteryCmd != 1) {
                     batteryCmd = frame.command == CMD_BATT_F2 ? 1 : 0;
+                    if (batteryCmd == 1) cancel(d0Timer);
                     confirmReady();
                     deliverBattery(battery[0], battery[1], battery[2], battery[3]);
                 }
@@ -96,12 +145,32 @@ public class EdifierClient extends WireDriver {
                 int returnedGroup = v2 ? payload[0] & 255 : 0;
                 int value = payload[v2 ? 1 : 0] & 255;
                 int mode = EdifierProtocol.mode(returnedGroup, value);
-                boolean wind = returnedGroup == 0x10 && value == 3 || returnedGroup == 0x1B && value == 4;
+                boolean wind = EdifierProtocol.isWind(returnedGroup, value);
                 if (mode >= 0 || wind) {
                     group = returnedGroup; noiseConfirmed = true; recognized = true;
                     confirmReady();
-                    deliverMode(mode);
+                    deliverMode(wind ? MODE_ANC : mode);
+                    FeatureDescriptor levelSpec = v2 && returnedGroup == 0x10 ? ANC_SPEC_10
+                            : v2 && returnedGroup == 0x1B ? ANC_SPEC_1B : null;
+                    if (levelSpec != null) {
+                        ancLevelSpec = levelSpec;
+                        if (EdifierProtocol.isAncLevel(returnedGroup, value)) {
+                            confirmFeature(levelSpec, value);
+                        } else {
+                            confirmFeature(levelSpec);
+                        }
+                    }
                 }
+            } else if (frame.command == CMD_GAME_QUERY && payload.length == 1
+                    && (payload[0] == 0 || payload[0] == 1)) {
+                lowLatencyConfirmed = true;
+                recognized = true;
+                confirmReady();
+                confirmFeature(LOW_LATENCY_SPEC, payload[0] & 0xFF);
+            } else if (frame.command == CMD_GAME_SET && lowLatencyConfirmed && payload.length == 1
+                    && (payload[0] == 0 || payload[0] == 1)) {
+                recognized = true;
+                reportFeature(FeatureId.LOW_LATENCY, payload[0] & 0xFF);
             }
             if (!recognized) {
                 trace(TAG, "rx unsupported cmd=" + Integer.toHexString(frame.command) + " payload=" + hex(payload));
@@ -116,6 +185,7 @@ public class EdifierClient extends WireDriver {
     private void confirmReady() {
         if (probeDialect < 0) return;
         probeDialect = -1;
+        cancel(probeTimer);
         ready();
     }
 
@@ -144,8 +214,8 @@ public class EdifierClient extends WireDriver {
 
     @Override public synchronized void queryBattery() {
         if (!isConnected()) return;
-        if (batteryCmd != 0) sendFrame(CMD_BATT_F2, new byte[0]);
-        if (batteryCmd != 1) sendFrame(CMD_BATT_D0, new byte[0]);
+        if (batteryCmd != 1) sendFrame(CMD_BATT_F2, new byte[0]);
+        if (batteryCmd != 1 && d0Allowed) sendFrame(CMD_BATT_D0, new byte[0]);
     }
 
     @Override public synchronized void queryNoise() {
@@ -157,9 +227,47 @@ public class EdifierClient extends WireDriver {
         byte[] target = noiseConfirmed ? EdifierProtocol.modeCommand(v2, group, mode) : null;
         if (target == null) { reportError("该耳机尚未确认降噪控制协议"); return; }
         writeThen(EdifierProtocol.encode(CMD_ANC_SET, target, v2, xor), () -> {
-            flushed.run();
+            if (flushed != null) flushed.run();
             schedule(this::sendAncQuery, 350);
         });
+    }
+
+    @Override public FeatureDescriptor[] featureDescriptors() {
+        List<FeatureDescriptor> list = new ArrayList<>();
+        if (ancLevelSpec != null) list.add(ancLevelSpec);
+        if (isConnected()) list.add(LOW_LATENCY_SPEC);
+        return list.toArray(new FeatureDescriptor[0]);
+    }
+
+    @Override public synchronized void queryFeature(FeatureId id) {
+        if (!isConnected() || id == null) return;
+        if (id == FeatureId.NOISE_MODE || id == FeatureId.ANC_LEVEL) {
+            sendAncQuery();
+        } else if (id == FeatureId.LOW_LATENCY) {
+            sendFrame(CMD_GAME_QUERY, new byte[0]);
+        }
+    }
+
+    @Override public synchronized void writeFeature(FeatureId id, int value, Runnable flushed) {
+        if (!isConnected() || id == null) return;
+        if (id == FeatureId.NOISE_MODE) {
+            changeNoise(value, flushed);
+        } else if (id == FeatureId.ANC_LEVEL) {
+            FeatureDescriptor spec = ancLevelSpec;
+            byte[] target = (noiseConfirmed && spec != null && spec.isValidValue(value))
+                    ? EdifierProtocol.ancLevelCommand(v2, group, value) : null;
+            if (target == null) return;
+            writeThen(EdifierProtocol.encode(CMD_ANC_SET, target, v2, xor), () -> {
+                if (flushed != null) flushed.run();
+                schedule(this::sendAncQuery, 350);
+            });
+        } else if (id == FeatureId.LOW_LATENCY) {
+            if (!lowLatencyConfirmed || (value != 0 && value != 1)) return;
+            writeThen(EdifierProtocol.encode(CMD_GAME_SET, new byte[]{(byte) value}, v2, xor), () -> {
+                if (flushed != null) flushed.run();
+                schedule(() -> queryFeature(FeatureId.LOW_LATENCY), 350);
+            });
+        }
     }
 
     @Override public int caps() {
@@ -179,8 +287,9 @@ public class EdifierClient extends WireDriver {
     /** 可选模块的唯一注册入口，匹配规则与协议实现一起增删。 */
     public static final class Module implements com.hdz.wearcontrol.DriverModule {
         @Override public boolean matches(String name) {
+            if (name == null) return false;
             String n = name.toLowerCase(java.util.Locale.ROOT);
-            return n.matches(".*(edifier|漫步者|neobuds|lollipods|fitbuds|fitclip|w820|w860|w260).*");
+            return n.matches("(?s).*(edifier|漫步者|neobuds|lollipods|fitbuds|fitclip|w820|w860|w260).*");
         }
         @Override public WireDriver create() { return new EdifierClient(); }
     }

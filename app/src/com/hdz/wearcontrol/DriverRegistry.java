@@ -18,10 +18,17 @@ final class DriverRegistry {
     }
     static boolean known(String name) { return match(name) != null; }
     static TwsClient create(Context app, BluetoothDevice device) {
-        DriverModule module = match(device.getName());
-        TwsClient client = module == null ? new StandardClient() : new WireSession(module.create());
-        client.init(app);
-        return client;
+        String name = device == null ? null : device.getName();
+        DriverModule module = match(name);
+        if (module == null) {
+            TwsClient client = new StandardClient();
+            client.init(app);
+            return client;
+        }
+        WireSession session = new WireSession(module.create());
+        session.init(app);
+        session.prebind(name);
+        return session;
     }
     private DriverRegistry() { }
 }

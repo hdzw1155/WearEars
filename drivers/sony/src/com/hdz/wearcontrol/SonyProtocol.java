@@ -1,13 +1,44 @@
 package com.hdz.wearcontrol;
 
 import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 
-/** Sony MDR V1/V2 的帧与已确认三态格式，未知子类型只读不写。 */
+/** Sony MDR V1/V2 的帧、能力探测与扩展协议格式，未知子类型只读不写，绝不发 COMMAND_2 解绑指令。 */
 final class SonyProtocol {
+    static final int FUNC_EQ_PRESET = 0x51;
+    static final int FUNC_EQ_EBB = 0x52;
+    static final int FUNC_EQ_NONCUSTOM = 0x53;
+    static final int FUNC_EQ_ERR = 0x54;
+    static final int FUNC_EQ_10BAND = 0x58;
+    static final int FUNC_EQ_10BAND_ALT = 0x59;
+    static final int FUNC_ASM_15 = 0x68;
+    static final int FUNC_ASM_17 = 0x6B;
+    static final int FUNC_ASM_19 = 0x6D;
+    static final int FUNC_UPSCALING_DSEE = 0xE2;
+    static final int FUNC_PAUSE_ON_REMOVE = 0xF1;
+    static final int FUNC_SPEAK_TO_CHAT_1 = 0xF2;
+    static final int FUNC_SPEAK_TO_CHAT_2 = 0xFC;
+
+    static final int TRANS_CHOICE_VOICE = 120;
+
+    static final SoundPreset[] EQ_PRESETS = {
+            new SoundPreset(0x00, "关闭", "Off"),
+            new SoundPreset(0x10, "欢快", "Bright"),
+            new SoundPreset(0x11, "激昂", "Excited"),
+            new SoundPreset(0x12, "醇美", "Mellow"),
+            new SoundPreset(0x13, "放松", "Relaxed"),
+            new SoundPreset(0x14, "人声", "Vocal"),
+            new SoundPreset(0x15, "高音增强", "Treble+"),
+            new SoundPreset(0x16, "重低音", "Bass+"),
+            new SoundPreset(0x17, "语音", "Speech"),
+            new SoundPreset(0xA0, "手动", "Manual"),
+            new SoundPreset(0xA1, "自定义 1", "Custom 1"),
+            new SoundPreset(0xA2, "自定义 2", "Custom 2")
+    };
     private static String normalizeName(String name) {
         return name == null ? "" : name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
     }
@@ -126,7 +157,10 @@ final class SonyProtocol {
                 || (p[4] & 255) > 1) return -1;
         int focus = type == 0x15 ? 6 : 5;
         if ((p[focus] & 255) > 1 || (p[focus + 1] & 255) > 20) return -1;
-        if (type == 0x15 && (p[5] & 255) > 2) return -1;
+        if (type == 0x15) {
+            int nc = p[5] & 255;
+            if (nc > 2 && nc != 3 && nc != 5) return -1;
+        }
         if (type == 0x19 && ((p[7] & 255) > 1 || (p[8] & 255) > 2)) return -1;
         return p[3] == 0 ? Controls.MODE_OFF : p[4] == 0 ? Controls.MODE_ANC : Controls.MODE_TRANS;
     }
@@ -146,5 +180,253 @@ final class SonyProtocol {
             p[4] = (byte) (target == Controls.MODE_TRANS ? 1 : 0);
         }
         return p;
+    }
+
+    static byte[] capabilityQuery() {
+        return new byte[]{0x06, 0x00};
+    }
+
+    /** 解析 07 00 <cnt> [<funcId> <prio>]... 能力列表。 */
+    static int[] capabilities(byte[] p) {
+        if (p == null || p.length < 3 || p[0] != 0x07 || p[1] != 0x00) return null;
+        int count = p[2] & 255;
+        if (p.length < 3 + count * 2) return null;
+        int[] funcs = new int[count];
+        for (int i = 0; i < count; i++) funcs[i] = p[3 + i * 2] & 255;
+        return funcs;
+    }
+
+    static int eqInquiryForCapabilities(int generation, boolean[] supported) {
+        if (supported == null) return -1;
+        if (generation == 1) {
+            return (supported[FUNC_EQ_PRESET] || supported[FUNC_EQ_EBB] || supported[FUNC_EQ_NONCUSTOM]) ? 0x01 : -1;
+        }
+        if (supported[FUNC_EQ_PRESET]) return 0x00;
+        if (supported[FUNC_EQ_NONCUSTOM]) return 0x02;
+        if (supported[FUNC_EQ_ERR]) return 0x04;
+        if (supported[FUNC_EQ_10BAND] || supported[FUNC_EQ_10BAND_ALT]) return 0x31;
+        if (supported[FUNC_EQ_EBB]) return 0x01;
+        return -1;
+    }
+
+    static int ambientLevel(int generation, byte[] p) {
+        if (mode(generation, p) < 0) return -1;
+        if (generation == 1) return p[7] & 255;
+        int focus = (p[1] & 255) == 0x15 ? 6 : 5;
+        return p[focus + 1] & 255;
+    }
+
+    static boolean focusOnVoice(int generation, byte[] p) {
+        if (mode(generation, p) < 0) return false;
+        if (generation == 1) return (p[6] & 255) == 1;
+        int focus = (p[1] & 255) == 0x15 ? 6 : 5;
+        return (p[focus] & 255) == 1;
+    }
+
+    static int transChoice(int generation, byte[] p) {
+        int lvl = ambientLevel(generation, p);
+        if (lvl < 0) return -1;
+        if (focusOnVoice(generation, p)) return TRANS_CHOICE_VOICE;
+        if (lvl <= 7) return 5;
+        if (lvl <= 12) return 10;
+        if (lvl <= 17) return 15;
+        return 20;
+    }
+
+    static byte[] ambientCommand(int generation, byte[] confirmed, int level, boolean voice) {
+        if (confirmed == null || mode(generation, confirmed) < 0 || level < 1 || level > 20) return null;
+        byte[] p = confirmed.clone();
+        p[0] = 0x68;
+        if (generation == 1) {
+            p[2] = 1;
+            p[4] = 0;
+            p[6] = (byte) (voice ? 1 : 0);
+            p[7] = (byte) level;
+        } else {
+            int focus = (p[1] & 255) == 0x15 ? 6 : 5;
+            p[2] = 1;
+            p[3] = 1;
+            p[4] = 1;
+            p[focus] = (byte) (voice ? 1 : 0);
+            p[focus + 1] = (byte) level;
+        }
+        return p;
+    }
+
+    static byte[] transChoiceCommand(int generation, byte[] confirmed, int choice) {
+        if (confirmed == null || mode(generation, confirmed) < 0) return null;
+        if (choice == TRANS_CHOICE_VOICE) {
+            int cur = ambientLevel(generation, confirmed);
+            int level = (cur >= 5 && cur <= 20) ? cur : 20;
+            return ambientCommand(generation, confirmed, level, true);
+        }
+        if (choice == 5 || choice == 10 || choice == 15 || choice == 20) {
+            return ambientCommand(generation, confirmed, choice, false);
+        }
+        return null;
+    }
+
+    static boolean supportsWind(int generation, byte[] p) {
+        if (mode(generation, p) < 0) return false;
+        if (generation == 1) return p.length == 8 && (p[1] & 255) == 0x02 && (p[3] & 255) == 0x02;
+        return p.length == 8 && (p[1] & 255) == 0x15;
+    }
+
+    static boolean isWindActive(int generation, byte[] p) {
+        if (!supportsWind(generation, p) || mode(generation, p) != Controls.MODE_ANC) return false;
+        if (generation == 1) return (p[4] & 255) == 1;
+        int nc = p[5] & 255;
+        return nc == 3 || nc == 5;
+    }
+
+    static int ancLevelValue(int generation, byte[] p) {
+        if (!supportsWind(generation, p)) return -1;
+        boolean wind = isWindActive(generation, p);
+        if (generation == 1) return wind ? 1 : 2;
+        return wind ? 3 : 2;
+    }
+
+    static byte[] windCommand(int generation, byte[] confirmed, boolean wind) {
+        if (!supportsWind(generation, confirmed)) return null;
+        byte[] p = confirmed.clone();
+        p[0] = 0x68;
+        if (generation == 1) {
+            p[2] = 1;
+            p[4] = (byte) (wind ? 1 : 2);
+            p[7] = 0;
+        } else {
+            p[2] = 1;
+            p[3] = 1;
+            p[4] = 0;
+            p[5] = (byte) (wind ? 3 : 2);
+        }
+        return p;
+    }
+
+    static byte[] dseeQuery(int generation) {
+        return generation == 1 ? new byte[]{(byte) 0xE6, 0x02} : new byte[]{(byte) 0xE6, 0x01};
+    }
+
+    static byte[] dseeCommand(int generation, boolean on) {
+        if (generation == 1) return new byte[]{(byte) 0xE8, 0x02, 0x00, (byte) (on ? 1 : 0)};
+        return new byte[]{(byte) 0xE8, 0x01, (byte) (on ? 1 : 0)};
+    }
+
+    static Boolean dsee(int generation, byte[] p) {
+        if (p == null || p.length < 3) return null;
+        int cmd = p[0] & 255;
+        if (cmd != 0xE7 && cmd != 0xE9) return null;
+        if (generation == 1) {
+            if (p.length >= 4 && p[1] == 0x02 && p[2] == 0x00 && (p[3] == 0 || p[3] == 1)) {
+                return p[3] != 0;
+            }
+            return null;
+        }
+        if (p[1] == 0x01 && (p[2] == 0 || p[2] == 1)) return p[2] != 0;
+        return null;
+    }
+
+    static boolean isKnownEqPreset(int preset) {
+        for (SoundPreset sp : EQ_PRESETS) if (sp.id == preset) return true;
+        return false;
+    }
+
+    static byte[] eqQuery(int inquiryType) {
+        return new byte[]{0x56, (byte) inquiryType};
+    }
+
+    static byte[] eqCommand(int inquiryType, int preset) {
+        if (!isKnownEqPreset(preset)) return null;
+        return new byte[]{0x58, (byte) inquiryType, (byte) preset, 0x00};
+    }
+
+    /** 返回 {inquiryType, presetId} 或 null。 */
+    static int[] eqState(byte[] p) {
+        if (p == null || p.length < 3) return null;
+        int cmd = p[0] & 255;
+        if (cmd != 0x57 && cmd != 0x59) return null;
+        int inq = p[1] & 255;
+        int preset = p[2] & 255;
+        if (!isKnownEqPreset(preset)) return null;
+        return new int[]{inq, preset};
+    }
+
+    static byte[] speakToChatQuery(int generation) {
+        return generation == 1 ? new byte[]{(byte) 0xF6, 0x05} : new byte[]{(byte) 0xF6, 0x0C};
+    }
+
+    /** V2 Speak-to-Chat 极性反转: 0=ON, 1=OFF; V1 正常: 1=ON, 0=OFF。 */
+    static byte[] speakToChatCommand(int generation, boolean on) {
+        if (generation == 1) return new byte[]{(byte) 0xF8, 0x05, 0x01, (byte) (on ? 1 : 0)};
+        return new byte[]{(byte) 0xF8, 0x0C, (byte) (on ? 0 : 1), 0x01};
+    }
+
+    static Boolean speakToChat(int generation, byte[] p) {
+        if (p == null || p.length < 3) return null;
+        int cmd = p[0] & 255;
+        if (cmd != 0xF7 && cmd != 0xF9) return null;
+        if (generation == 1) {
+            if (p.length >= 4 && p[1] == 0x05 && p[2] == 0x01 && (p[3] == 0 || p[3] == 1)) {
+                return p[3] == 1;
+            }
+            return null;
+        }
+        if (p[1] == 0x0C && (p[2] == 0 || p[2] == 1)) return p[2] == 0;
+        return null;
+    }
+
+    static byte[] wearDetectQuery(int generation) {
+        return generation == 1 ? new byte[]{(byte) 0xF6, 0x03} : new byte[]{(byte) 0xF6, 0x01};
+    }
+
+    /** V2 Pause-on-Remove 极性反转: 0=ON, 1=OFF; V1 正常: 1=ON, 0=OFF。 */
+    static byte[] wearDetectCommand(int generation, boolean on) {
+        if (generation == 1) return new byte[]{(byte) 0xF8, 0x03, 0x00, (byte) (on ? 1 : 0)};
+        return new byte[]{(byte) 0xF8, 0x01, (byte) (on ? 0 : 1)};
+    }
+
+    static Boolean wearDetect(int generation, byte[] p) {
+        if (p == null || p.length < 3) return null;
+        int cmd = p[0] & 255;
+        if (cmd != 0xF7 && cmd != 0xF9) return null;
+        if (generation == 1) {
+            if (p.length >= 4 && p[1] == 0x03 && p[2] == 0x00 && (p[3] == 0 || p[3] == 1)) {
+                return p[3] == 1;
+            }
+            return null;
+        }
+        if (p[1] == 0x01 && (p[2] == 0 || p[2] == 1)) return p[2] == 0;
+        return null;
+    }
+
+    static byte[] codecQuery(int generation) {
+        return generation == 1 ? new byte[]{0x18, 0x00} : new byte[]{0x12, 0x02};
+    }
+
+    static String codec(int generation, byte[] p) {
+        if (p == null || p.length < 3) return null;
+        int cmd = p[0] & 255;
+        int inq = p[1] & 255;
+        boolean match = generation == 1
+                ? ((cmd == 0x19 || cmd == 0x1B) && inq == 0x00)
+                : ((cmd == 0x13 || cmd == 0x15) && inq == 0x02);
+        if (!match) return null;
+        switch (p[2] & 255) {
+            case 0x01: return "SBC";
+            case 0x02: return "AAC";
+            case 0x10: return "LDAC";
+            case 0x20: return "aptX";
+            case 0x21: return "aptX HD";
+            case 0x30: return "LC3";
+            default: return null;
+        }
+    }
+
+    static String firmware(byte[] p) {
+        if (p == null || p.length < 4 || p[0] != 0x05 || p[1] != 0x02) return null;
+        int len = p[2] & 255;
+        if (len == 0 || p.length < 3 + len) return null;
+        String text = new String(p, 3, len, StandardCharsets.US_ASCII).replace("\0", "").trim();
+        return text.isEmpty() ? null : text;
     }
 }

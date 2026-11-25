@@ -39,6 +39,9 @@ public interface Controls {
         /** DeepX 音效模式; null = 未知/未确认 */
         void onDeepX(Integer mode);
         default void onEqualizer(Integer mode) { }
+        default void onFeatureSpec(FeatureDescriptor spec) { }
+        default void onFeatureValue(FeatureId id, int value) { }
+        default void onFeatureText(FeatureId id, String text) { }
     }
 
     void queryBattery();
@@ -61,6 +64,10 @@ public interface Controls {
     default SoundPreset[] equalizerPresets() { return new SoundPreset[0]; }
     default void queryEqualizer() { }
     default void setEqualizer(int preset) { }
+
+    default FeatureDescriptor[] featureDescriptors() { return new FeatureDescriptor[0]; }
+    default void queryFeature(FeatureId id) { }
+    default void writeFeature(FeatureId id, int value, Runnable flushed) { }
 
     /** 能力位组合 */
     int caps();

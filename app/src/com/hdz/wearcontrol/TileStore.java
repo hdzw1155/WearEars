@@ -208,6 +208,7 @@ final class TileStore {
 
     /** 数据变更合并通知宿主重画磁贴。 */
     static synchronized void push(Context ctx) {
+        if (!DeviceForm.isWatch(ctx)) return;
         if (updateQueued) return;
         updateQueued = true;
         final Context app = ctx.getApplicationContext();
@@ -218,6 +219,7 @@ final class TileStore {
     }
 
     static void pushNow(Context ctx) {
+        if (!DeviceForm.isWatch(ctx)) return;
         try { TwsTileService.requestUpdate(ctx); }
         catch (RuntimeException e) {
             android.util.Log.w("TileStore", "Cannot request tile update", e);

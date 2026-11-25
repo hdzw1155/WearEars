@@ -97,22 +97,28 @@ public class TwsTileService extends TileService {
     }
 
     private TileBuilders.Tile render(Context lc, TileSnapshot snapshot) {
+        long now = System.currentTimeMillis();
+        long end = snapshot.pendingExpiresAt();
+        boolean hasActivePending = snapshot.pendingMode >= 0 && end > now;
+        TileSnapshot effective = (snapshot.pendingMode >= 0 && !hasActivePending)
+                ? snapshot.withoutPending() : snapshot;
         final int tileStyle = AppPrefs.tileStyle(lc);
-        final String version = TileRenderSpec.version(snapshot, tileStyle, AppPrefs.lang(lc));
+        final String version = TileRenderSpec.version(effective, tileStyle, AppPrefs.lang(lc));
         try {
             TileActions actions = new TileActions(lc);
-            LayoutElementBuilders.Layout layout = layout(lc, snapshot, tileStyle, actions);
-            if (snapshot.pendingMode < 0) return tile(layout, version);
+            LayoutElementBuilders.Layout layout = layout(lc, effective, tileStyle, actions);
+            if (!hasActivePending) return tile(layout, version);
             // 即使进程在切换中被杀，宿主也能在目标过期后恢复已确认的档位。
+            TileActions fallbackActions = new TileActions(lc);
             return new TileBuilders.Tile.Builder().setResourcesVersion(version)
                     .setFreshnessIntervalMillis(REFRESH_MS)
                     .setTimeline(new TimelineBuilders.Timeline.Builder()
                             .addTimelineEntry(new TimelineBuilders.TimelineEntry.Builder().setLayout(layout)
                                     .setValidity(new TimelineBuilders.TimeInterval.Builder()
-                                            .setStartMillis(System.currentTimeMillis())
-                                            .setEndMillis(snapshot.pendingExpiresAt()).build()).build())
+                                            .setStartMillis(now)
+                                            .setEndMillis(end).build()).build())
                             .addTimelineEntry(new TimelineBuilders.TimelineEntry.Builder()
-                                    .setLayout(layout(lc, snapshot.withoutPending(), tileStyle, actions)).build())
+                                    .setLayout(layout(lc, snapshot.withoutPending(), tileStyle, fallbackActions)).build())
                             .build()).build();
         } catch (RuntimeException e) {
             // 布局构建出任何意外都不能让整块磁贴变红: 先给能点进来的兜底布局
@@ -134,7 +140,8 @@ public class TwsTileService extends TileService {
     @Override
     public ListenableFuture<ResourceBuilders.Resources> onResourcesRequest(
             RequestBuilders.ResourcesRequest requestParams) {
-        final String version = requestParams.getVersion();
+        String reqVersion = requestParams == null ? null : requestParams.getVersion();
+        final String version = reqVersion != null ? reqVersion : FALLBACK_VERSION;
         return TileFutures.submit(new Callable<ResourceBuilders.Resources>() {
             @Override public ResourceBuilders.Resources call() {
                 try { return TileRenderSpec.resources(TwsTileService.this, version); }

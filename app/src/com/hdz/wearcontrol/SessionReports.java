@@ -26,8 +26,12 @@ final class SessionReports implements Controls.Listener {
     public void onDisconnected(String reason) { deliver(() -> hub.links.failed(reason)); }
     public void onError(String msg) {
         deliver(() -> {
-            if (!source.isConnected()) hub.links.failed(msg);
-            else if (!hub.transactions.busy()) for (ControlHub.UiListener l : hub.views()) l.onError(msg);
+            if (!source.isConnected()) {
+                hub.links.failed(msg);
+            } else {
+                if (hub.transactions.busy()) hub.transactions.finish(false);
+                for (ControlHub.UiListener l : hub.views()) l.onError(msg);
+            }
         });
     }
     public void onBattery(int left, int right, int box, int flags) {
@@ -58,14 +62,74 @@ final class SessionReports implements Controls.Listener {
         });
     }
     public void onSpatial(Boolean value) {
-        data(() -> { hub.state.spatial = value; hub.state.spatialRevision++;
-            for (ControlHub.UiListener l : hub.views()) l.onSpatial(value);
+        FeatureTransactions.Request request = hub.featureTx.receipt(FeatureId.SPATIAL_AUDIO);
+        boolean dispatched = FeatureTransactions.dispatched(request);
+        data(() -> {
+            if (value == null) {
+                hub.state.spatial = null;
+                hub.state.spatialRevision++;
+                hub.state.clearFeatureValue(FeatureId.SPATIAL_AUDIO);
+            } else {
+                hub.state.featureValue(FeatureId.SPATIAL_AUDIO, value ? 1 : 0);
+            }
+            for (ControlHub.UiListener l : hub.views()) {
+                l.onSpatial(value);
+                if (value != null) l.onFeatureValue(FeatureId.SPATIAL_AUDIO, value ? 1 : 0);
+            }
+            if (value != null) {
+                hub.featureTx.report(request, FeatureId.SPATIAL_AUDIO, value ? 1 : 0, dispatched);
+            }
         });
     }
     public void onDeepX(Integer value) { onEqualizer(value); }
     public void onEqualizer(Integer value) {
-        data(() -> { hub.state.equalizer = value; hub.state.equalizerRevision++;
-            for (ControlHub.UiListener l : hub.views()) l.onEqualizer(value);
+        FeatureTransactions.Request request = hub.featureTx.receipt(FeatureId.EQUALIZER);
+        boolean dispatched = FeatureTransactions.dispatched(request);
+        data(() -> {
+            if (value == null) {
+                hub.state.equalizer = null;
+                hub.state.equalizerRevision++;
+                hub.state.clearFeatureValue(FeatureId.EQUALIZER);
+            } else {
+                hub.state.featureValue(FeatureId.EQUALIZER, value);
+            }
+            for (ControlHub.UiListener l : hub.views()) {
+                l.onEqualizer(value);
+                if (value != null) l.onFeatureValue(FeatureId.EQUALIZER, value);
+            }
+            if (value != null) {
+                hub.featureTx.report(request, FeatureId.EQUALIZER, value, dispatched);
+            }
+        });
+    }
+    public void onFeatureSpec(FeatureDescriptor spec) {
+        if (spec == null) return;
+        data(() -> {
+            hub.state.featureSpec(spec);
+            for (ControlHub.UiListener l : hub.views()) l.onFeatureSpec(spec);
+        });
+    }
+    public void onFeatureValue(FeatureId id, int value) {
+        if (id == null) return;
+        FeatureTransactions.Request request = hub.featureTx.receipt(id);
+        boolean dispatched = FeatureTransactions.dispatched(request);
+        data(() -> {
+            hub.state.featureValue(id, value);
+            hub.onFeatureValueReported(id, value);
+            for (ControlHub.UiListener l : hub.views()) {
+                l.onFeatureValue(id, value);
+                if (id == FeatureId.SPATIAL_AUDIO) l.onSpatial(value != 0);
+                else if (id == FeatureId.EQUALIZER) l.onEqualizer(value);
+            }
+            hub.featureTx.report(request, id, value, dispatched);
+        });
+    }
+    public void onFeatureText(FeatureId id, String text) {
+        if (id == null) return;
+        String safe = text == null ? "" : text;
+        data(() -> {
+            hub.state.featureText(id, safe);
+            for (ControlHub.UiListener l : hub.views()) l.onFeatureText(id, safe);
         });
     }
 }

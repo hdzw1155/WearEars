@@ -62,22 +62,64 @@ final class RoseProtocol {
     static int[] battery(int family, byte[] value) {
         if (value == null || value.length != 3) return null;
         int[] result = {255, 255, 255, 0};
+        boolean anyValid = false;
         for (int i = 0; i < 3; i++) {
             int raw = value[i] & 255;
             boolean hasFlag = family == V2 || i < 2;
             int level = hasFlag ? raw & 127 : raw;
             if (level > 100) continue;
             result[i] = level;
+            anyValid = true;
             if (hasFlag && (raw & 128) != 0) result[3] |= 1 << i;
         }
-        return result;
+        return anyValid ? result : null;
     }
+
+    static final int ITEM_IN_EAR = 0x08;
+    static final int ITEM_NOISE = 0x09;
+    static final int ITEM_BATTERY = 0x0C;
+    static final int ITEM_GAME = 0x0E;
+    static final int ITEM_EQ = 0x2A;
+    static final int ITEM_ANC_DEPTH = 0x2C;
+
+    static final int WIND_WIRE = 4;
+
+    static final SoundPreset[] EQ_PRESETS = {
+            new SoundPreset(0, "HiFi 原声", "HiFi"),
+            new SoundPreset(1, "流行", "Pop"),
+            new SoundPreset(2, "摇滚", "Rock"),
+            new SoundPreset(3, "古典轻柔", "Classic"),
+            new SoundPreset(4, "自定义", "Custom")
+    };
 
     static int mode(int value) {
         if (value == 1) return Controls.MODE_ANC;
         if (value == 2) return Controls.MODE_OFF;
         if (value == 3) return Controls.MODE_TRANS;
         return -1;
+    }
+
+    static boolean isWind(int value) {
+        return value == WIND_WIRE;
+    }
+
+    static boolean isAncDepth(int value) {
+        return value == 1 || value == 3 || value == 5;
+    }
+
+    static boolean isEqPreset(int value) {
+        return value >= 0 && value < EQ_PRESETS.length;
+    }
+
+    /** RoseLink RS/V2 佩戴检测(08)极性反转: 0x00=ON, 0x01=OFF。 */
+    static Boolean inEarFromWire(int raw) {
+        if (raw == 0) return Boolean.TRUE;
+        if (raw == 1) return Boolean.FALSE;
+        return null;
+    }
+
+    static byte inEarToWire(boolean on) {
+        return (byte) (on ? 0 : 1);
     }
 
     static final class Item {
@@ -120,18 +162,34 @@ final class RoseProtocol {
                     continue;
                 }
                 int end = v2End(0);
-                if (end == 0) return;
-                if (end < 0) {
-                    int discard = -end;
-                    // 校验错误的包里可能藏着完整真帧；只在校验成立后重新定界。
-                    // 不能盲目 drop(1)，否则电量 0xFF 又会被误认成帧头，阻塞后续包。
-                    for (int start = 1; start < discard; start++) {
+                if (end == 0) {
+                    for (int start = 1; start + 5 < size; start++) {
                         int candidate = buffer[start] & 255;
                         if ((candidate == 0xDD || candidate == 0xFF) && v2End(start) > 0) {
-                            discard = start;
+                            drop(start);
+                            end = -1;
                             break;
                         }
                     }
+                    if (end == 0) return;
+                    continue;
+                }
+                if (end < 0) {
+                    int discard = -end;
+                    int incomplete = -1;
+                    // 校验错误的包里可能藏着完整或尚在分片的真帧；先找完整帧，否则保留最早的未完帧头。
+                    for (int start = 1; start < discard; start++) {
+                        int candidate = buffer[start] & 255;
+                        if (candidate != 0xDD && candidate != 0xFF) continue;
+                        int candidateEnd = v2End(start);
+                        if (candidateEnd > 0) {
+                            discard = start;
+                            incomplete = -1;
+                            break;
+                        }
+                        if (candidateEnd == 0 && incomplete < 0) incomplete = start;
+                    }
+                    if (incomplete > 0) discard = incomplete;
                     drop(discard);
                     continue;
                 }
@@ -146,14 +204,19 @@ final class RoseProtocol {
         /** 正数为帧尾，0 为半包；负数为已确认无效的长度（只用于起点 0）。 */
         private int v2End(int start) {
             int offset = start + 2;
+            int firstBadEnd = 0;
             while (offset + 1 < size) {
                 if (offset > start + 2 && (buffer[offset + 1] & 255) == 0xAA) {
                     int check = buffer[offset] & 255;
-                    return sum(buffer, start, offset) == check || sum(buffer, start + 2, offset) == check
-                            ? offset + 2 : -(offset + 2);
+                    if (sum(buffer, start, offset) == check || sum(buffer, start + 2, offset) == check) {
+                        return offset + 2;
+                    }
+                    if (firstBadEnd == 0) firstBadEnd = -(offset + 2);
                 }
                 int length = buffer[offset] & 255;
-                if (length == 0 || offset + 1 + length > buffer.length - 2) return -1;
+                if (length == 0 || offset + 1 + length > buffer.length - 2) {
+                    return firstBadEnd != 0 ? firstBadEnd : -1;
+                }
                 if (offset + 1 + length > size) return 0;
                 offset += 1 + length;
             }

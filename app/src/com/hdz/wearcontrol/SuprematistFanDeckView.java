@@ -204,6 +204,33 @@ public class SuprematistFanDeckView extends FrameLayout {
         return activePages.size();
     }
 
+    public int activePageCount() {
+        return activePages.size();
+    }
+
+    public int activePageIndex() {
+        if (activePages.isEmpty()) {
+            return 0;
+        }
+        return Math.max(0, Math.min(activePages.size() - 1, currentPage));
+    }
+
+    public boolean stepPage(int delta) {
+        if (!active || activePages.size() <= 1 || delta == 0) {
+            return false;
+        }
+        int cur = activePageIndex();
+        int maxIdx = activePages.size() - 1;
+        int target = Math.max(0, Math.min(maxIdx, cur + delta));
+        if (target == cur) {
+            playWallFeedback(delta < 0 ? -1 : 1);
+            nudgeOverscroll(delta < 0 ? -0.65f : 0.65f);
+            return false;
+        }
+        setCurrentPage(target, true);
+        return true;
+    }
+
     public void setCurrentPage(int index, boolean animate) {
         if (activePages.isEmpty()) {
             return;
@@ -480,9 +507,21 @@ public class SuprematistFanDeckView extends FrameLayout {
             }
         });
         settleAnim.addListener(new AnimatorListenerAdapter() {
+            private boolean cancelled;
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+                cancelled = true;
+            }
+
             @Override
             public void onAnimationEnd(Animator animation) {
-                settleAnim = null;
+                if (settleAnim == animation) {
+                    settleAnim = null;
+                }
+                if (cancelled) {
+                    return;
+                }
                 deckPos = target;
                 currentPage = target;
                 applyDeckTransforms();
@@ -517,10 +556,22 @@ public class SuprematistFanDeckView extends FrameLayout {
             }
         });
         overscrollAnim.addListener(new AnimatorListenerAdapter() {
+            private boolean cancelled;
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+                cancelled = true;
+            }
+
             @Override
             public void onAnimationEnd(Animator animation) {
+                if (overscrollAnim == animation) {
+                    overscrollAnim = null;
+                }
+                if (cancelled) {
+                    return;
+                }
                 overscroll = 0f;
-                overscrollAnim = null;
                 applyDeckTransforms();
             }
         });

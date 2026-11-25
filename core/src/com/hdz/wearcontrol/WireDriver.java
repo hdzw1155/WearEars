@@ -19,6 +19,8 @@ public abstract class WireDriver implements Controls {
     private String name = "";
     private boolean open;
     private volatile boolean ready;
+    private Runnable legacyBridgeFlushed;
+    private boolean legacyBridgeDispatched;
 
     public final void bind(String name, Port port, Listener listener) {
         if (this.port != null) throw new IllegalStateException("Protocol already bound");
@@ -62,18 +64,59 @@ public abstract class WireDriver implements Controls {
         if (trace != null) port.trace(logTag(), trace);
         write(frame);
     }
-    protected final void writeThen(byte[] frame, Runnable flushed) { if (open) port.send(frame, flushed); }
+    protected final void writeThen(byte[] frame, Runnable flushed) {
+        Runnable callback = flushed;
+        if (callback == null && legacyBridgeFlushed != null) {
+            callback = legacyBridgeFlushed;
+            legacyBridgeFlushed = null;
+            legacyBridgeDispatched = true;
+        }
+        if (open) port.send(frame, callback);
+    }
     protected final void schedule(Runnable work, long delay) { port.after(work, delay); }
     protected final void cancel(Runnable work) { port.cancel(work); }
     protected final long clockMillis() { return port.millis(); }
     protected final void trace(String tag, String message) { port.trace(tag, message); }
     protected final void fail(String message) { port.fail(message); }
     protected final void reportError(String message) { listener.onError(message); }
+    protected final void confirmFeature(FeatureDescriptor spec, int initialValue) {
+        if (spec == null || listener == null) return;
+        listener.onFeatureSpec(spec);
+        listener.onFeatureValue(spec.id, initialValue);
+    }
+    protected final void confirmFeature(FeatureDescriptor spec) {
+        if (spec != null && listener != null) listener.onFeatureSpec(spec);
+    }
+    protected final void reportFeature(FeatureId id, int value) {
+        if (id != null && listener != null) listener.onFeatureValue(id, value);
+    }
+    protected final void reportFeatureText(FeatureId id, String text) {
+        if (id != null && listener != null) listener.onFeatureText(id, text == null ? "" : text);
+    }
     public abstract void changeNoise(int mode, Runnable flushed);
     @Override public final void setNoiseMode(int mode) { changeNoise(mode, () -> { }); }
     @Override public void querySpatial() { }
     @Override public void setSpatial(boolean enabled) { }
     @Override public void queryDeepX() { }
     @Override public void setDeepX(int mode) { }
+    @Override public FeatureDescriptor[] featureDescriptors() { return new FeatureDescriptor[0]; }
+    @Override public void queryFeature(FeatureId id) {
+        if (id == FeatureId.SPATIAL_AUDIO) querySpatial();
+        else if (id == FeatureId.EQUALIZER) queryEqualizer();
+    }
+    @Override public void writeFeature(FeatureId id, int value, Runnable flushed) {
+        if (id == FeatureId.SPATIAL_AUDIO || id == FeatureId.EQUALIZER) {
+            legacyBridgeFlushed = flushed;
+            legacyBridgeDispatched = false;
+            try {
+                if (id == FeatureId.SPATIAL_AUDIO) setSpatial(value != 0);
+                else setEqualizer(value);
+                if (!legacyBridgeDispatched && flushed != null && open) flushed.run();
+            } finally {
+                legacyBridgeFlushed = null;
+                legacyBridgeDispatched = false;
+            }
+        }
+    }
     @Override public int verifLevel() { return VERIF_UNTESTED; }
 }

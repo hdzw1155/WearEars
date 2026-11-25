@@ -33,6 +33,7 @@ public class SuprematistPageRailView extends View {
     private float position = 0f;
     private boolean lightSurface = true;
     private float railAlpha = REST_ALPHA;
+    private boolean phoneMode;
     private ValueAnimator fadeAnim;
 
     private final Runnable fadeOutTask = new Runnable() {
@@ -54,6 +55,22 @@ public class SuprematistPageRailView extends View {
         trackPaint.setStrokeCap(Paint.Cap.ROUND);
         setClickable(false);
         setFocusable(false);
+        setPhoneMode(DeviceForm.isPhone(context));
+    }
+
+    public void setPhoneMode(boolean phone) {
+        if (phoneMode != phone || getVisibility() != (phone ? View.GONE : View.VISIBLE)) {
+            phoneMode = phone;
+            setVisibility(phone ? View.GONE : View.VISIBLE);
+            if (phone) {
+                ui.removeCallbacks(fadeOutTask);
+                if (fadeAnim != null) {
+                    fadeAnim.cancel();
+                    fadeAnim = null;
+                }
+            }
+            invalidate();
+        }
     }
 
     public void setPageCount(int count) {
@@ -81,6 +98,9 @@ public class SuprematistPageRailView extends View {
     }
 
     public void wake() {
+        if (phoneMode || getVisibility() != View.VISIBLE) {
+            return;
+        }
         ui.removeCallbacks(fadeOutTask);
         if (fadeAnim != null) {
             fadeAnim.cancel();
@@ -112,7 +132,7 @@ public class SuprematistPageRailView extends View {
 
     @Override
     protected void onDraw(Canvas canvas) {
-        if (pageCount <= 1) {
+        if (phoneMode || pageCount <= 1) {
             return;
         }
         int w = getWidth();

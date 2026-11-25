@@ -20,7 +20,9 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.widget.CursorAdapter;
+import android.widget.HeaderViewListAdapter;
 import android.widget.LinearLayout;
+import android.widget.ListAdapter;
 import android.widget.TextView;
 import java.util.List;
 
@@ -49,10 +51,19 @@ public class SettingsActivity extends Activity {
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if (!AppPrefs.hasDisclaimer(this)) {
+            startActivity(new Intent(this, MainActivity.class));
+            finish();
+            return;
+        }
         setContentView(R.layout.activity_settings);
+        applyPhoneWindowChrome();
         scroll = (AppScrollView) findViewById(R.id.settings_scroll);
         indicator = (ArcIndicatorView) findViewById(R.id.settings_indicator);
-        indicator.attachTo(scroll);
+        DeviceForm.styleScrollContainer(this, scroll, indicator);
+        if (indicator != null && DeviceForm.isWatch(this)) {
+            indicator.attachTo(scroll);
+        }
         for (int style = 0; style < UI_IDS.length; style++) {
             bindStyle(UI_IDS[style], style + StyleChoice.SUPREME, false);
             bindStyle(TILE_IDS[style], style + StyleChoice.SUPREME, true);
@@ -68,6 +79,12 @@ public class SettingsActivity extends Activity {
         findViewById(R.id.device_choice).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View view) { chooseDevice(); }
         });
+        View phoneConnCard = findViewById(R.id.phone_conn_card);
+        if (phoneConnCard != null) {
+            phoneConnCard.setVisibility(DeviceForm.isPhone(this) ? View.VISIBLE : View.GONE);
+        }
+        bindPhoneConnMode(R.id.conn_mode_burst, true);
+        bindPhoneConnMode(R.id.conn_mode_keep, false);
         findViewById(R.id.volume_choice).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View view) {
                 AppPrefs.setShowVolume(SettingsActivity.this, !AppPrefs.showVolume(SettingsActivity.this));
@@ -78,7 +95,30 @@ public class SettingsActivity extends Activity {
         applyPhoneInsets();
     }
 
+    private boolean isLightSurface() {
+        return AppPrefs.settingsDayMode(this) || AppPrefs.uiStyle(this) == AppPrefs.STYLE_SUPREME;
+    }
+
+    private void applyPhoneWindowChrome() {
+        if (getResources().getConfiguration().isScreenRound()) {
+            return;
+        }
+        boolean light = isLightSurface();
+        int barCol = light ? 0xFFF4F3EE : 0xFF000000;
+        getWindow().setStatusBarColor(barCol);
+        getWindow().setNavigationBarColor(barCol);
+        View decor = getWindow().getDecorView();
+        int flags = decor.getSystemUiVisibility();
+        if (light) {
+            flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+        } else {
+            flags &= ~(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+        }
+        decor.setSystemUiVisibility(flags);
+    }
+
     private void applyPhoneInsets() {
+        DeviceForm.styleScrollContainer(this, scroll, indicator);
         if (getResources().getConfiguration().isScreenRound()) {
             return;
         }
@@ -90,31 +130,66 @@ public class SettingsActivity extends Activity {
         final int baseTop = list.getPaddingTop();
         final int baseBot = list.getPaddingBottom();
         final int phoneSide = Math.round(24f * getResources().getDisplayMetrics().density);
+        final int maxColPx = DeviceForm.isPhone(this) ? DeviceForm.phoneColumnWidthPx(this) : 0;
+        final int[] lastInsets = new int[4];
+        final Runnable syncPadding = new Runnable() {
+            @Override
+            public void run() {
+                int avail = root.getWidth() > 0
+                        ? root.getWidth()
+                        : getResources().getDisplayMetrics().widthPixels;
+                int contentAvail = Math.max(0, avail - lastInsets[2] - lastInsets[3]);
+                int side = maxColPx > 0
+                        ? Math.max(phoneSide, (contentAvail - maxColPx) / 2)
+                        : phoneSide;
+                int padL = lastInsets[2] + side;
+                int padT = baseTop + lastInsets[0];
+                int padR = lastInsets[3] + side;
+                int padB = baseBot + lastInsets[1];
+                if (list.getPaddingLeft() != padL || list.getPaddingTop() != padT
+                        || list.getPaddingRight() != padR || list.getPaddingBottom() != padB) {
+                    list.setPadding(padL, padT, padR, padB);
+                }
+            }
+        };
         root.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
             @Override
             public WindowInsets onApplyWindowInsets(View v, WindowInsets insets) {
-                int top = insets.getSystemWindowInsetTop();
-                int bot = insets.getSystemWindowInsetBottom();
-                list.setPadding(phoneSide, baseTop + top, phoneSide, baseBot + bot);
-                if (indicator != null) {
-                    indicator.setPadding(0, top, 0, bot);
+                lastInsets[0] = insets.getSystemWindowInsetTop();
+                lastInsets[1] = insets.getSystemWindowInsetBottom();
+                lastInsets[2] = insets.getSystemWindowInsetLeft();
+                lastInsets[3] = insets.getSystemWindowInsetRight();
+                syncPadding.run();
+                if (indicator != null && indicator.getVisibility() == View.VISIBLE) {
+                    indicator.setPadding(0, lastInsets[0], 0, lastInsets[1]);
                 }
                 return insets;
             }
         });
+        if (maxColPx > 0) {
+            root.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+                @Override
+                public void onLayoutChange(View v, int l, int t, int r, int b,
+                                           int oldL, int oldT, int oldR, int oldB) {
+                    if ((r - l) != (oldR - oldL)) {
+                        syncPadding.run();
+                    }
+                }
+            });
+        }
         root.requestApplyInsets();
     }
 
     @Override protected void onResume() {
         super.onResume();
-        scroll.setActive(true);
-        indicator.setActive(true);
+        if (scroll != null) scroll.setActive(true);
+        if (indicator != null && DeviceForm.isWatch(this)) indicator.setActive(true);
     }
 
     @Override protected void onPause() {
         super.onPause();
-        scroll.setActive(false);
-        indicator.setActive(false);
+        if (scroll != null) scroll.setActive(false);
+        if (indicator != null && DeviceForm.isWatch(this)) indicator.setActive(false);
     }
 
     private void bindStyle(int id, final int style, final boolean tile) {
@@ -143,7 +218,9 @@ public class SettingsActivity extends Activity {
         findViewById(id).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View view) {
                 AppPrefs.setScrollColorStyle(SettingsActivity.this, colorStyle);
-                if (indicator != null) indicator.refreshColorStyle();
+                if (indicator != null && DeviceForm.isWatch(SettingsActivity.this)) {
+                    indicator.refreshColorStyle();
+                }
                 refreshChoices();
             }
         });
@@ -158,28 +235,45 @@ public class SettingsActivity extends Activity {
         });
     }
 
+    private void bindPhoneConnMode(int id, final boolean burst) {
+        View btn = findViewById(id);
+        if (btn == null) return;
+        btn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View view) {
+                if (AppPrefs.phoneBurstMode(SettingsActivity.this) == burst) return;
+                AppPrefs.setPhoneBurstMode(SettingsActivity.this, burst);
+                ControlHub.get(SettingsActivity.this).connectionModeChanged();
+                refreshChoices();
+            }
+        });
+    }
+
     private void refreshChoices() {
         boolean day = AppPrefs.settingsDayMode(this);
-        applySettingsTheme(day);
         int style = AppPrefs.uiStyle(this), tile = AppPrefs.tileStyleChoice(this);
-        setChoice(R.id.theme_night, !day, day);
-        setChoice(R.id.theme_day, day, day);
+        applySettingsTheme(day, style);
+        setChoice(R.id.theme_night, !day, day, style);
+        setChoice(R.id.theme_day, day, day, style);
         for (int i = 0; i < UI_IDS.length; i++) {
-            setChoice(UI_IDS[i], style == i + StyleChoice.SUPREME, day);
-            setChoice(TILE_IDS[i], tile == i + StyleChoice.SUPREME, day);
+            setChoice(UI_IDS[i], style == i + StyleChoice.SUPREME, day, style);
+            setChoice(TILE_IDS[i], tile == i + StyleChoice.SUPREME, day, style);
         }
-        setChoice(R.id.tile_follow, tile == AppPrefs.STYLE_FOLLOW, day);
+        setChoice(R.id.tile_follow, tile == AppPrefs.STYLE_FOLLOW, day, style);
         String language = AppPrefs.langChoice(this);
-        setChoice(R.id.lang_zh, AppPrefs.LANG_ZH.equals(language), day);
-        setChoice(R.id.lang_en, AppPrefs.LANG_EN.equals(language), day);
-        setChoice(R.id.lang_system, "system".equals(language), day);
+        setChoice(R.id.lang_zh, AppPrefs.LANG_ZH.equals(language), day, style);
+        setChoice(R.id.lang_en, AppPrefs.LANG_EN.equals(language), day, style);
+        setChoice(R.id.lang_system, "system".equals(language), day, style);
         int scrollColor = AppPrefs.scrollColorStyle(this);
-        setChoice(R.id.scroll_color_dynamic, scrollColor == AppPrefs.SCROLL_COLOR_DYNAMIC, day);
-        setChoice(R.id.scroll_color_classic, scrollColor == AppPrefs.SCROLL_COLOR_CLASSIC, day);
+        setChoice(R.id.scroll_color_dynamic, scrollColor == AppPrefs.SCROLL_COLOR_DYNAMIC, day, style);
+        setChoice(R.id.scroll_color_classic, scrollColor == AppPrefs.SCROLL_COLOR_CLASSIC, day, style);
+        boolean burstMode = AppPrefs.phoneBurstMode(this);
+        setChoice(R.id.conn_mode_burst, burstMode, day, style);
+        setChoice(R.id.conn_mode_keep, !burstMode, day, style);
         boolean volume = AppPrefs.showVolume(this);
-        setChoice(R.id.volume_choice, volume, day);
+        setChoice(R.id.volume_choice, volume, day, style);
         ((TextView) findViewById(R.id.volume_choice)).setText(
                 volume ? R.string.settings_volume_hide : R.string.settings_volume_show);
+        setChoice(R.id.device_choice, !AppPrefs.deviceAddress(this).isEmpty(), day, style);
         String address = AppPrefs.deviceAddress(this), label = getString(R.string.settings_device_auto);
         if (!address.isEmpty()) {
             label = address;
@@ -216,7 +310,8 @@ public class SettingsActivity extends Activity {
         try {
             final BluetoothAdapter adapter = adapter();
             final List<BluetoothDevice> devices = DeviceSelector.audioDevices(adapter);
-            final AlertDialog picker = new AlertDialog.Builder(this).setTitle(R.string.settings_device)
+            final AlertDialog picker = new AlertDialog.Builder(this, NeoStyle.dialogTheme(isLightSurface()))
+                    .setTitle(R.string.settings_device)
                     .setSingleChoiceItems(deviceRows(devices), checkedDevice(devices), DEVICE_LABEL,
                             new DialogInterface.OnClickListener() {
                         @Override public void onClick(DialogInterface dialog, int which) {
@@ -231,9 +326,15 @@ public class SettingsActivity extends Activity {
                     }).setNegativeButton(R.string.dialog_cancel, null).show();
             deviceDialog = picker;
             // Native single-choice rows keep the dialog theme. Append discoveries so visible choices keep their indices.
-            final CursorAdapter rows = (CursorAdapter) picker.getListView().getAdapter();
+            ListAdapter listAdapter = picker.getListView().getAdapter();
+            if (listAdapter instanceof HeaderViewListAdapter) {
+                listAdapter = ((HeaderViewListAdapter) listAdapter).getWrappedAdapter();
+            }
+            final CursorAdapter rows = listAdapter instanceof CursorAdapter ? (CursorAdapter) listAdapter : null;
             picker.setOnDismissListener(new DialogInterface.OnDismissListener() {
-                @Override public void onDismiss(DialogInterface dialog) { rows.changeCursor(null); }
+                @Override public void onDismiss(DialogInterface dialog) {
+                    if (rows != null) rows.changeCursor(null);
+                }
             });
             AudioConnections.query(this, 0, new AudioConnections.Callback() {
                 @Override public void onResult(List<BluetoothDevice> connected, boolean complete) {
@@ -243,7 +344,7 @@ public class SettingsActivity extends Activity {
                         for (BluetoothDevice device : DeviceSelector.audioDevices(adapter, connected)) {
                             if (!devices.contains(device)) devices.add(device);
                         }
-                        if (devices.size() != previousCount) {
+                        if (rows != null && devices.size() != previousCount) {
                             rows.changeCursor(deviceRows(devices));
                             int checked = checkedDevice(devices);
                             if (checked >= 0) picker.getListView().setItemChecked(checked, true);
@@ -297,56 +398,52 @@ public class SettingsActivity extends Activity {
                 && results[0] == PackageManager.PERMISSION_GRANTED) chooseDevice();
     }
 
-    private void applySettingsTheme(boolean day) {
-        if (!getResources().getConfiguration().isScreenRound()) {
-            int barCol = day ? 0xFFF4F3EE : 0xFF000000;
-            getWindow().setStatusBarColor(barCol);
-            getWindow().setNavigationBarColor(barCol);
-            View decor = getWindow().getDecorView();
-            int flags = decor.getSystemUiVisibility();
-            if (day) {
-                flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
-            } else {
-                flags &= ~(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
-            }
-            decor.setSystemUiVisibility(flags);
-        }
+    private void applySettingsTheme(boolean day, int style) {
+        applyPhoneWindowChrome();
+        boolean light = day || style == AppPrefs.STYLE_SUPREME;
         View root = findViewById(R.id.settings_root);
         if (root != null) {
-            root.setBackgroundColor(day ? 0xFFF4F3EE : 0xFF000000);
+            root.setBackgroundColor(light ? 0xFFF4F3EE : 0xFF000000);
         }
         TextView title = (TextView) findViewById(R.id.settings_title);
         if (title != null) {
-            title.setTextColor(day ? 0xFF111317 : 0xFFFFFFFF);
+            title.setTextColor(light ? 0xFF111317 : 0xFFFFFFFF);
         }
         TextView hint = (TextView) findViewById(R.id.settings_hint);
         if (hint != null) {
-            hint.setTextColor(day ? 0xFF5A606B : 0x85FFFFFF);
+            hint.setTextColor(light ? 0xFF5A606B : NeoStyle.textFaint(style));
         }
+        int cardBg = light
+                ? (style == AppPrefs.STYLE_SUPREME ? R.drawable.bg_sup_card_paper : R.drawable.bg_set_card_day)
+                : NeoStyle.cardDrawable(style);
+        int captionColor = light ? 0xFF5A606B : NeoStyle.textFaint(style);
         View list = findViewById(R.id.settings_list);
         if (list instanceof ViewGroup) {
             ViewGroup vg = (ViewGroup) list;
             for (int i = 0; i < vg.getChildCount(); i++) {
                 View child = vg.getChildAt(i);
                 if (child instanceof LinearLayout) {
-                    child.setBackgroundResource(day ? R.drawable.bg_set_card_day : R.drawable.bg_set_card);
+                    child.setBackgroundResource(cardBg);
                     View caption = ((LinearLayout) child).getChildAt(0);
                     if (caption instanceof TextView) {
-                        ((TextView) caption).setTextColor(day ? 0xFF5A606B : 0x85FFFFFF);
+                        ((TextView) caption).setTextColor(captionColor);
                     }
                 }
             }
         }
     }
 
-    private void setChoice(int id, boolean selected, boolean day) {
+    private void setChoice(int id, boolean selected, boolean day, int style) {
         TextView chip = (TextView) findViewById(id);
-        if (day) {
+        if (chip == null) return;
+        if (style == AppPrefs.STYLE_SUPREME) {
+            chip.setBackgroundResource(selected ? R.drawable.bg_sup_chip_sel : R.drawable.bg_sup_chip);
+            chip.setTextColor(selected ? 0xFFFFFFFF : 0xFF101316);
+        } else if (day) {
             chip.setBackgroundResource(selected ? R.drawable.bg_set_choice_on_day : R.drawable.bg_set_choice_day);
             chip.setTextColor(selected ? 0xFFFFFFFF : 0xFF111317);
         } else {
-            chip.setBackgroundResource(selected ? R.drawable.bg_set_choice_on : R.drawable.bg_set_choice);
-            chip.setTextColor(getResources().getColor(selected ? R.color.text : R.color.text_dim));
+            NeoStyle.styleChip(chip, style, selected);
         }
         chip.setSelected(selected);
     }

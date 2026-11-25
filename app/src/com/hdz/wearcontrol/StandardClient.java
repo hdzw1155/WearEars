@@ -69,20 +69,19 @@ public class StandardClient implements TwsClient {
             if (closing || action == null) return;
             BluetoothDevice d = (BluetoothDevice)
                     intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-            String addr = d != null ? d.getAddress() : null;
+            String addr = safeAddress(d);
             if (address == null || !address.equals(addr)) return;
 
             if (BluetoothDevice.ACTION_ACL_CONNECTED.equals(action)) {
                 if (!connected) {
-                    if (d != null && d.getName() != null) deviceName = d.getName();
+                    String name = safeName(d);
+                    if (name != null) deviceName = name;
                     disconnectedProfiles = 0;
                     checkCurrentLink();
                 }
             } else if (BluetoothDevice.ACTION_ACL_DISCONNECTED.equals(action)) {
-                if (connected) {
-                    connected = false;
-                    fireDisconnected("耳机已断开");
-                }
+                // 双模设备单链路断开时可能仍有音频 Profile 在线，交由 AudioConnections 核验。
+                if (connected) checkCurrentLink();
             } else if (AudioConnections.profile(action) >= 0) {
                 int profile = AudioConnections.profile(action);
                 int value = intent.getIntExtra(BluetoothProfile.EXTRA_STATE, -1);
@@ -107,16 +106,26 @@ public class StandardClient implements TwsClient {
         app = ctx != null ? ctx.getApplicationContext() : null;
     }
 
+    private static String safeName(BluetoothDevice d) {
+        if (d == null) return null;
+        try { return d.getName(); }
+        catch (SecurityException ignored) { return null; }
+    }
+
+    private static String safeAddress(BluetoothDevice d) {
+        if (d == null) return null;
+        try { return d.getAddress(); }
+        catch (SecurityException ignored) { return null; }
+    }
+
     @Override
     public void connect(BluetoothDevice target) {
         disconnect();
         closing = false;
         ++session;
         device = target;
-        if (target != null) {
-            address = target.getAddress();
-            deviceName = target.getName();
-        }
+        address = safeAddress(target);
+        deviceName = safeName(target);
         disconnectedProfiles = 0;
         ensureReceiver();
         checkCurrentLink();
@@ -144,6 +153,7 @@ public class StandardClient implements TwsClient {
 
     /** 同时查询 A2DP/HFP/LE Audio，单一 Profile 断开不误判其他有效音频连接。 */
     @Override public boolean refreshPublicProfiles(Consumer<Boolean> completed) {
+        disconnectedProfiles = 0;
         profileRefresh = completed;
         checkCurrentLink();
         return true;
@@ -157,7 +167,11 @@ public class StandardClient implements TwsClient {
                 if (closing || sourceSession != session || request != linkRequest) return;
                 boolean found = false;
                 try {
-                    for (BluetoothDevice d : devices) if (address.equals(d.getAddress())) found = true;
+                    if (devices != null && address != null) {
+                        for (BluetoothDevice d : devices) {
+                            if (d != null && address.equals(d.getAddress())) found = true;
+                        }
+                    }
                 } catch (SecurityException revoked) { complete = false; }
                 Consumer<Boolean> completed = profileRefresh;
                 profileRefresh = null;
