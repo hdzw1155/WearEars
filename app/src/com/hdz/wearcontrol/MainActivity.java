@@ -867,7 +867,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
         haptic(HapticFeedbackConstants.KEYBOARD_TAP);
         if (curMeshMode == LocalMeshManager.MODE_CLIENT) {
             if (stateRes == R.string.status_mesh_unconfigured) {
-                startActivity(SettingsActivity.intent(this));
+                startActivity(DeveloperSettingsActivity.intent(this));
                 return;
             }
             connectMeshClient();
@@ -1003,6 +1003,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
 
     private void startMeshHost() {
         LocalMeshManager mesh = LocalMeshManager.get(this);
+        mesh.syncFirewallFromPrefs(this);
         mesh.startHost(ControlHub.get(this), hostStatusListener);
         ControlHub.get(this).pushMeshStateIfHosting();
     }

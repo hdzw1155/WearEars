@@ -116,6 +116,7 @@ public final class LocalMeshManager {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final SecureRandom random = new SecureRandom();
     private final AtomicInteger generation = new AtomicInteger(0);
+    private final LocalMeshFirewall firewall = new LocalMeshFirewall();
 
     private volatile int mode = MODE_OFF;
     private volatile int listenPort = 0;
@@ -148,6 +149,23 @@ public final class LocalMeshManager {
 
     private LocalMeshManager(Context app) {
         this.app = app;
+        syncFirewallFromPrefs(app);
+    }
+
+    public LocalMeshFirewall firewall() {
+        return firewall;
+    }
+
+    public void syncFirewallFromPrefs(Context ctx) {
+        Context c = ctx != null ? ctx.getApplicationContext() : app;
+        if (c == null) return;
+        firewall.configure(
+                AppPrefs.fwEnabled(c),
+                AppPrefs.fwSameSubnetOnly(c),
+                AppPrefs.fwAllowlistOnly(c),
+                AppPrefs.fwReadOnly(c)
+        );
+        firewall.setAllowlistFromCsv(AppPrefs.fwAllowlist(c));
     }
 
     public int mode() {
@@ -231,6 +249,7 @@ public final class LocalMeshManager {
 
     public synchronized void startHost(HostCommandSink sink, HostStatusListener statusListener) {
         stopAll();
+        syncFirewallFromPrefs(app);
         if (!LocalMeshProtocol.isValidPin(currentPin)) {
             regeneratePin();
         }
@@ -287,15 +306,20 @@ public final class LocalMeshManager {
                     break;
                 }
                 String remoteIp = client.getInetAddress() != null ? client.getInetAddress().getHostAddress() : null;
-                if (!LocalMeshProtocol.isPrivateLanAddress(remoteIp)) {
-                    closeQuietly(client);
+                LocalMeshFirewall.Decision connDecision = firewall.checkIncomingConnection(remoteIp, localLanIp());
+                if (!connDecision.allowed) {
+                    if (LocalMeshFirewall.REASON_NON_PRIVATE_IP.equals(connDecision.reasonCode)) {
+                        closeQuietly(client);
+                    } else {
+                        sendRejectAndClose(client);
+                    }
                     continue;
                 }
                 if (hostClients.size() >= MAX_CLIENTS) {
                     sendRejectAndClose(client);
                     continue;
                 }
-                HostClientSession session = new HostClientSession(gen, client);
+                HostClientSession session = new HostClientSession(gen, client, remoteIp);
                 session.start();
             }
         } catch (Throwable t) {
@@ -421,14 +445,16 @@ public final class LocalMeshManager {
     private final class HostClientSession {
         private final int gen;
         private final Socket socket;
+        private final String remoteIp;
         private final BlockingQueue<String> outQueue = new LinkedBlockingQueue<>(CLIENT_SEND_QUEUE_CAP);
         private volatile boolean closed = false;
         private volatile Thread reader;
         private volatile Thread writer;
 
-        HostClientSession(int gen, Socket socket) {
+        HostClientSession(int gen, Socket socket, String remoteIp) {
             this.gen = gen;
             this.socket = socket;
+            this.remoteIp = remoteIp == null ? "" : remoteIp;
         }
 
         void start() {
@@ -474,12 +500,14 @@ public final class LocalMeshManager {
                             LocalMeshProtocol.writeFrame(out, LocalMeshProtocol.encodeAuthErr());
                             return;
                         }
+                        firewall.recordAuthSuccess(remoteIp);
                         authed = true;
                         break;
                     }
                     failures++;
+                    boolean lockedOut = firewall.recordAuthFailure(remoteIp);
                     LocalMeshProtocol.writeFrame(out, LocalMeshProtocol.encodeAuthErr());
-                    if (failures >= MAX_AUTH_FAILURES) {
+                    if (lockedOut || failures >= MAX_AUTH_FAILURES) {
                         return;
                     }
                 }
@@ -504,7 +532,14 @@ public final class LocalMeshManager {
                     String line = LocalMeshProtocol.readLineBounded(in);
                     if (line == null) break;
                     LocalMeshProtocol.Frame frame = LocalMeshProtocol.parseFrame(line);
-                    if (frame == null) continue;
+                    if (frame == null) {
+                        if (line.contains("FIND_MY_BUDS")) {
+                            firewall.checkCommand(remoteIp,
+                                    LocalMeshProtocol.Frame.cmdFeature(FeatureId.FIND_MY_BUDS, 0));
+                            enqueue(LocalMeshProtocol.encodeAuthErr());
+                        }
+                        continue;
+                    }
                     handleHostFrame(frame);
                 }
             } catch (Throwable ignored) {
@@ -531,6 +566,14 @@ public final class LocalMeshManager {
         }
 
         private void handleHostFrame(LocalMeshProtocol.Frame frame) {
+            LocalMeshFirewall.Decision cmdDecision = firewall.checkCommand(remoteIp, frame);
+            if (!cmdDecision.allowed) {
+                enqueue(LocalMeshProtocol.encodeAuthErr());
+                if (LocalMeshFirewall.REASON_IP_BANNED.equals(cmdDecision.reasonCode)) {
+                    close();
+                }
+                return;
+            }
             if (frame.type == LocalMeshProtocol.FrameType.PING) {
                 enqueue(LocalMeshProtocol.encodePong());
                 return;

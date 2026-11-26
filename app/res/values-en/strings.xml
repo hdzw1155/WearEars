@@ -292,8 +292,8 @@
     <string name="settings_intent_bridge_off">Disabled (Default)</string>
 
     <string name="status_mesh_unconfigured">No Host Set</string>
-    <string name="sub_mesh_open_settings">Choose a LAN host in Settings</string>
-    <string name="cta_open_settings">Open Settings</string>
+    <string name="sub_mesh_open_settings">Choose a LAN host in Developer Options</string>
+    <string name="cta_open_settings">Developer Options</string>
     <string name="status_mesh_connecting">Connecting LAN Host</string>
     <string name="status_mesh_connected">LAN Synced</string>
     <string name="status_mesh_disconnected">LAN Disconnected</string>
@@ -302,4 +302,50 @@
     <string name="sub_mesh_host_brief">LAN %1$s:%2$d · PIN %3$s</string>
     <string name="sub_mesh_host_clients">LAN %1$s:%2$d · PIN %3$s · %4$d peer(s)</string>
     <string name="sub_mesh_error">LAN error: %1$s</string>
+
+    <!-- Developer Options & Application-layer LAN Firewall -->
+    <string name="settings_dev_options">Developer options</string>
+    <string name="settings_dev_options_summary">LAN Mesh: %1$s · Firewall: %2$s</string>
+    <string name="settings_dev_options_enter">LAN Mesh · Firewall · Bridge →</string>
+    <string name="dev_settings_title">Developer options</string>
+    <string name="fw_card_title">LAN Firewall</string>
+    <string name="fw_state_on">On</string>
+    <string name="fw_state_off">Off</string>
+    <string name="fw_enabled_on">LAN Firewall: Enabled</string>
+    <string name="fw_enabled_off">LAN Firewall: Disabled</string>
+    <string name="fw_same_subnet_on">Same /24 Subnet Only: On</string>
+    <string name="fw_same_subnet_off">Same /24 Subnet Only: Off</string>
+    <string name="fw_allowlist_only_on">Allowlist Only: On</string>
+    <string name="fw_allowlist_only_off">Allowlist Only: Off</string>
+    <string name="fw_readonly_on">Read-Only Observer: On (No remote writes)</string>
+    <string name="fw_readonly_off">Read-Only Observer: Off</string>
+    <string name="fw_manage_allowlist">Manage Trusted IP Allowlist</string>
+    <string name="fw_manage_allowlist_count">Trusted IP Allowlist (%1$d)</string>
+    <string name="fw_allowlist_dialog_title">Trusted IP Allowlist</string>
+    <string name="fw_allowlist_empty">No allowlisted IPs yet (tap Add below)</string>
+    <string name="fw_allowlist_tap_remove">(tap to remove)</string>
+    <string name="fw_allowlist_add">Add IP</string>
+    <string name="fw_allowlist_clear">Clear</string>
+    <string name="fw_allowlist_add_title">Add Trusted LAN IP</string>
+    <string name="fw_allowlist_add_hint">Private LAN IP only (e.g. 192.168.1.20)</string>
+    <string name="fw_allowlist_added">Added to allowlist: %1$s</string>
+    <string name="fw_allowlist_removed">Removed from allowlist: %1$s</string>
+    <string name="fw_allowlist_cleared">Allowlist cleared</string>
+    <string name="fw_status_summary">Blocked %1$d · Banned %2$d IP(s)</string>
+    <string name="fw_view_logs">View Block Logs</string>
+    <string name="fw_clear_bans">Unban All</string>
+    <string name="fw_bans_cleared">All IP bans cleared</string>
+    <string name="fw_logs_dialog_title">Firewall Block Logs</string>
+    <string name="fw_logs_empty">No blocked events yet</string>
+    <string name="fw_dialog_close">Close</string>
+    <string name="fw_reason_non_private">Non-private IP rejected</string>
+    <string name="fw_reason_banned">IP currently banned</string>
+    <string name="fw_reason_cross_subnet">Cross-/24 subnet blocked</string>
+    <string name="fw_reason_not_allowlisted">IP not in allowlist</string>
+    <string name="fw_reason_conn_rate">Connection rate limit exceeded</string>
+    <string name="fw_reason_auth_fail">PIN authentication failed</string>
+    <string name="fw_reason_auth_lockout">PIN failures triggered 5-min ban</string>
+    <string name="fw_reason_find_buds">Remote Find My Buds hard-blocked</string>
+    <string name="fw_reason_readonly">Write blocked by read-only mode</string>
+    <string name="fw_reason_cmd_rate">Command rate limit exceeded</string>
 </resources>

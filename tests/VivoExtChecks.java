@@ -219,6 +219,10 @@ public final class VivoExtChecks {
         check(!flushed[0], "flushed callback waits for transport flush");
         r.flushLast();
         check(flushed[0], "flushed callback runs on transport flush");
+        // After confirmation, real-device 0x8151 [00, 01] ACK updates state directly.
+        r.receive("FF 03 00 02 00 1B 81 51 00 01");
+        check(Integer.valueOf(1).equals(r.values.get(FeatureId.LOW_LATENCY)),
+                "confirmed 0x8151 [00, 01] ACK updates LOW_LATENCY=1");
 
         // TWS 4 uses v4 framing for 0x0151.
         Rig tws4 = new Rig("vivo TWS 4");
@@ -254,6 +258,9 @@ public final class VivoExtChecks {
 
         r.driver.writeFeature(FeatureId.WEAR_DETECTION, 0, () -> { });
         r.last("FF 03 00 01 00 1B 01 03 00");
+        r.receive("FF 03 00 02 00 1B 81 03 00 00");
+        check(Integer.valueOf(0).equals(r.values.get(FeatureId.WEAR_DETECTION)),
+                "confirmed 0x8103 [00, 00] ACK updates WEAR_DETECTION=0");
     }
 
     private static void findMyBuds() {

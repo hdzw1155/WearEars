@@ -295,8 +295,8 @@
     <string name="settings_intent_bridge_off">已关闭（默认）</string>
 
     <string name="status_mesh_unconfigured">未配置主机</string>
-    <string name="sub_mesh_open_settings">请在设置页选择局域网主机</string>
-    <string name="cta_open_settings">前往设置</string>
+    <string name="sub_mesh_open_settings">请在开发者选项中选择局域网主机</string>
+    <string name="cta_open_settings">前往开发者选项</string>
     <string name="status_mesh_connecting">连接局域网主机</string>
     <string name="status_mesh_connected">局域网已同步</string>
     <string name="status_mesh_disconnected">局域网已断开</string>
@@ -305,4 +305,50 @@
     <string name="sub_mesh_host_brief">LAN %1$s:%2$d · PIN %3$s</string>
     <string name="sub_mesh_host_clients">LAN %1$s:%2$d · PIN %3$s · %4$d 台</string>
     <string name="sub_mesh_error">局域网错误：%1$s</string>
+
+    <!-- 开发者选项与应用层内网防火墙 -->
+    <string name="settings_dev_options">开发者选项</string>
+    <string name="settings_dev_options_summary">局域网协同：%1$s · 防火墙：%2$s</string>
+    <string name="settings_dev_options_enter">局域网协同 · 防火墙 · 联动 →</string>
+    <string name="dev_settings_title">开发者选项</string>
+    <string name="fw_card_title">内网防火墙</string>
+    <string name="fw_state_on">开启</string>
+    <string name="fw_state_off">关闭</string>
+    <string name="fw_enabled_on">启用内网防火墙：已开启</string>
+    <string name="fw_enabled_off">启用内网防火墙：已关闭</string>
+    <string name="fw_same_subnet_on">仅允许同子网 /24：已开启</string>
+    <string name="fw_same_subnet_off">仅允许同子网 /24：已关闭</string>
+    <string name="fw_allowlist_only_on">仅白名单 IP 放行：已开启</string>
+    <string name="fw_allowlist_only_off">仅白名单 IP 放行：已关闭</string>
+    <string name="fw_readonly_on">只读观察模式：已开启（禁止远程控制）</string>
+    <string name="fw_readonly_off">只读观察模式：已关闭</string>
+    <string name="fw_manage_allowlist">管理可信 IP 白名单</string>
+    <string name="fw_manage_allowlist_count">管理可信 IP 白名单（%1$d）</string>
+    <string name="fw_allowlist_dialog_title">可信 IP 白名单</string>
+    <string name="fw_allowlist_empty">暂无白名单 IP（点击下方新增）</string>
+    <string name="fw_allowlist_tap_remove">（点按移除）</string>
+    <string name="fw_allowlist_add">新增 IP</string>
+    <string name="fw_allowlist_clear">清空</string>
+    <string name="fw_allowlist_add_title">新增可信局域网 IP</string>
+    <string name="fw_allowlist_add_hint">仅支持私有局域网 IP（如 192.168.1.20）</string>
+    <string name="fw_allowlist_added">已加入白名单：%1$s</string>
+    <string name="fw_allowlist_removed">已移除白名单：%1$s</string>
+    <string name="fw_allowlist_cleared">白名单已清空</string>
+    <string name="fw_status_summary">已拦截 %1$d 次 · 当前封禁 %2$d 个 IP</string>
+    <string name="fw_view_logs">查看拦截日志</string>
+    <string name="fw_clear_bans">解除全部封禁</string>
+    <string name="fw_bans_cleared">已解除全部封禁</string>
+    <string name="fw_logs_dialog_title">防火墙拦截日志</string>
+    <string name="fw_logs_empty">暂无拦截记录</string>
+    <string name="fw_dialog_close">关闭</string>
+    <string name="fw_reason_non_private">非私有局域网 IP 拒访</string>
+    <string name="fw_reason_banned">IP 处于封禁期内</string>
+    <string name="fw_reason_cross_subnet">跨子网 /24 拦截</string>
+    <string name="fw_reason_not_allowlisted">不在可信 IP 白名单内</string>
+    <string name="fw_reason_conn_rate">建链频率超限</string>
+    <string name="fw_reason_auth_fail">配对码校验失败</string>
+    <string name="fw_reason_auth_lockout">配对码连错触发 5 分钟封禁</string>
+    <string name="fw_reason_find_buds">永久硬拦截远程响铃寻机</string>
+    <string name="fw_reason_readonly">只读观察模式拒绝写命令</string>
+    <string name="fw_reason_cmd_rate">远程指令频率超限</string>
 </resources>

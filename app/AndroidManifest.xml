@@ -41,6 +41,11 @@
             android:label="@string/settings_title" />
 
         <activity
+            android:name=".DeveloperSettingsActivity"
+            android:exported="false"
+            android:label="@string/dev_settings_title" />
+
+        <activity
             android:name=".SpatialLabActivity"
             android:exported="false"
             android:label="@string/spatial_lab_title" />

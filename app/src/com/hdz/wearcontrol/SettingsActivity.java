@@ -13,25 +13,17 @@ import android.content.pm.PackageManager;
 import android.database.MatrixCursor;
 import android.os.Build;
 import android.os.Bundle;
-import android.text.InputFilter;
-import android.text.InputType;
 import android.util.Log;
-import android.view.ContextThemeWrapper;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
-import android.widget.ArrayAdapter;
 import android.widget.CursorAdapter;
-import android.widget.EditText;
 import android.widget.HeaderViewListAdapter;
 import android.widget.LinearLayout;
 import android.widget.ListAdapter;
-import android.widget.ListView;
 import android.widget.TextView;
-import android.widget.Toast;
-import java.util.ArrayList;
 import java.util.List;
 
 /** 所有常用选项共用旧版设置页；布局、卡片和选择态沿用 0.3.5。 */
@@ -47,14 +39,9 @@ public class SettingsActivity extends Activity {
     private AppScrollView scroll;
     private ArcIndicatorView indicator;
     private AlertDialog deviceDialog;
-    private AlertDialog meshDialog;
-    private AlertDialog meshSubDialog;
 
     @Override protected void onDestroy() {
-        LocalMeshManager.get(this).stopDiscovery();
         if (deviceDialog != null) deviceDialog.dismiss();
-        if (meshDialog != null) meshDialog.dismiss();
-        if (meshSubDialog != null) meshSubDialog.dismiss();
         super.onDestroy();
     }
 
@@ -99,32 +86,20 @@ public class SettingsActivity extends Activity {
         bindHostForm(R.id.form_watch, HostFormLogic.FORM_WATCH);
         bindHostForm(R.id.form_phone, HostFormLogic.FORM_PHONE);
         bindHostForm(R.id.form_hud, HostFormLogic.FORM_HUD);
-        bindMeshMode(R.id.mesh_mode_off, LocalMeshManager.MODE_OFF);
-        bindMeshMode(R.id.mesh_mode_host, LocalMeshManager.MODE_HOST);
-        bindMeshMode(R.id.mesh_mode_client, LocalMeshManager.MODE_CLIENT);
-        View meshAction = findViewById(R.id.mesh_action_btn);
-        if (meshAction != null) {
-            meshAction.setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View view) { onMeshActionClicked(); }
-            });
-        }
-        View bridgeChoice = findViewById(R.id.intent_bridge_choice);
-        if (bridgeChoice != null) {
-            bridgeChoice.setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View view) {
-                    boolean next = !AppPrefs.localIntentBridge(SettingsActivity.this);
-                    AppPrefs.setLocalIntentBridge(SettingsActivity.this, next);
-                    LocalControlReceiver.setBridgeEnabled(next);
-                    refreshChoices();
-                }
-            });
-        }
         findViewById(R.id.volume_choice).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View view) {
                 AppPrefs.setShowVolume(SettingsActivity.this, !AppPrefs.showVolume(SettingsActivity.this));
                 refreshChoices();
             }
         });
+        View devEntry = findViewById(R.id.dev_options_entry);
+        if (devEntry != null) {
+            devEntry.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View view) {
+                    startActivity(DeveloperSettingsActivity.intent(SettingsActivity.this));
+                }
+            });
+        }
         refreshChoices();
         applyPhoneInsets();
         if (isHudMode()) {
@@ -230,13 +205,13 @@ public class SettingsActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        refreshChoices();
         if (scroll != null) scroll.setActive(true);
         if (indicator != null && DeviceForm.isWatch(this, AppPrefs.hostFormOverride(this))) indicator.setActive(true);
     }
 
     @Override protected void onPause() {
         super.onPause();
-        LocalMeshManager.get(this).stopDiscovery();
         if (scroll != null) scroll.setActive(false);
         if (indicator != null && DeviceForm.isWatch(this, AppPrefs.hostFormOverride(this))) indicator.setActive(false);
     }
@@ -311,218 +286,6 @@ public class SettingsActivity extends Activity {
         });
     }
 
-    private void bindMeshMode(int id, final int mode) {
-        View btn = findViewById(id);
-        if (btn == null) return;
-        btn.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View view) {
-                if (AppPrefs.meshMode(SettingsActivity.this) == mode) return;
-                AppPrefs.setMeshMode(SettingsActivity.this, mode);
-                if (mode == LocalMeshManager.MODE_OFF) {
-                    LocalMeshManager.get(SettingsActivity.this).stopAll();
-                } else if (mode == LocalMeshManager.MODE_HOST) {
-                    LocalMeshManager.get(SettingsActivity.this).pin();
-                }
-                refreshChoices();
-            }
-        });
-    }
-
-    private void onMeshActionClicked() {
-        int mode = AppPrefs.meshMode(this);
-        if (mode == LocalMeshManager.MODE_HOST) {
-            LocalMeshManager.get(this).regeneratePin();
-            refreshChoices();
-        } else if (mode == LocalMeshManager.MODE_CLIENT) {
-            showMeshScanDialog();
-        }
-    }
-
-    private void showMeshScanDialog() {
-        if (isFinishing() || isDestroyed()) return;
-        if (meshDialog != null && meshDialog.isShowing()) meshDialog.dismiss();
-
-        final LocalMeshManager mesh = LocalMeshManager.get(this);
-        final List<LocalMeshManager.DiscoveredPeer> peers = new ArrayList<>();
-        final List<String> labels = new ArrayList<>();
-        labels.add(getString(R.string.settings_mesh_scanning));
-
-        int dialogTheme = NeoStyle.dialogTheme(isLightSurface());
-        Context dialogCtx = new ContextThemeWrapper(this, dialogTheme);
-        final ArrayAdapter<String> adapter = new ArrayAdapter<>(
-                dialogCtx, android.R.layout.simple_list_item_1, labels);
-        final ListView listView = new ListView(dialogCtx);
-        listView.setAdapter(adapter);
-
-        final AlertDialog dialog = new AlertDialog.Builder(this, dialogTheme)
-                .setTitle(R.string.settings_mesh_scan_title)
-                .setView(listView)
-                .setNeutralButton(R.string.settings_mesh_manual_btn, new DialogInterface.OnClickListener() {
-                    @Override public void onClick(DialogInterface d, int w) {
-                        showManualMeshDialog();
-                    }
-                })
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .create();
-        meshDialog = dialog;
-
-        listView.setOnItemClickListener(new android.widget.AdapterView.OnItemClickListener() {
-            @Override public void onItemClick(android.widget.AdapterView<?> parent, View view, int pos, long id) {
-                if (pos < 0 || pos >= peers.size()) return;
-                LocalMeshManager.DiscoveredPeer peer = peers.get(pos);
-                dialog.dismiss();
-                showPinPromptDialog(peer);
-            }
-        });
-
-        dialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
-            @Override public void onDismiss(DialogInterface d) {
-                mesh.stopDiscovery();
-            }
-        });
-
-        mesh.startDiscovery(new LocalMeshManager.DiscoveryListener() {
-            @Override public void onPeersUpdated(List<LocalMeshManager.DiscoveredPeer> updated) {
-                if (meshDialog != dialog || !dialog.isShowing() || isFinishing() || isDestroyed()) return;
-                peers.clear();
-                labels.clear();
-                if (updated == null || updated.isEmpty()) {
-                    labels.add(getString(R.string.settings_mesh_scanning));
-                } else {
-                    for (LocalMeshManager.DiscoveredPeer p : updated) {
-                        peers.add(p);
-                        String state = getString(p.connected
-                                ? R.string.settings_mesh_peer_connected
-                                : R.string.settings_mesh_peer_idle);
-                        String dev = (p.deviceName != null && !p.deviceName.isEmpty())
-                                ? " · " + p.deviceName : "";
-                        labels.add(p.hostName + " (" + p.ip + ":" + p.port + ")\n" + state + dev);
-                    }
-                }
-                adapter.notifyDataSetChanged();
-            }
-        });
-
-        dialog.show();
-    }
-
-    private void showPinPromptDialog(final LocalMeshManager.DiscoveredPeer peer) {
-        if (peer == null || isFinishing() || isDestroyed()) return;
-        if (meshSubDialog != null && meshSubDialog.isShowing()) meshSubDialog.dismiss();
-
-        int dialogTheme = NeoStyle.dialogTheme(isLightSurface());
-        Context dialogCtx = new ContextThemeWrapper(this, dialogTheme);
-        int pad = Math.round(16f * getResources().getDisplayMetrics().density);
-        LinearLayout box = new LinearLayout(dialogCtx);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(pad, pad / 2, pad, pad / 2);
-
-        TextView desc = new TextView(dialogCtx);
-        desc.setText(getString(R.string.settings_mesh_pin_for, peer.hostName, peer.ip, peer.port));
-        box.addView(desc);
-
-        final EditText pinInput = new EditText(dialogCtx);
-        pinInput.setHint(R.string.settings_mesh_pin_hint);
-        pinInput.setInputType(InputType.TYPE_CLASS_NUMBER);
-        pinInput.setFilters(new InputFilter[]{new InputFilter.LengthFilter(4)});
-        pinInput.setText(AppPrefs.meshPin(this));
-        box.addView(pinInput);
-
-        meshSubDialog = new AlertDialog.Builder(this, dialogTheme)
-                .setTitle(R.string.settings_mesh_pin_title)
-                .setView(box)
-                .setPositiveButton(R.string.settings_mesh_save, new DialogInterface.OnClickListener() {
-                    @Override public void onClick(DialogInterface d, int w) {
-                        String pin = pinInput.getText().toString().trim();
-                        if (!LocalMeshProtocol.isValidPin(pin)) {
-                            Toast.makeText(SettingsActivity.this,
-                                    R.string.settings_mesh_invalid_pin, Toast.LENGTH_SHORT).show();
-                            return;
-                        }
-                        AppPrefs.setMeshHostIp(SettingsActivity.this, peer.ip);
-                        AppPrefs.setMeshHostPort(SettingsActivity.this, peer.port);
-                        AppPrefs.setMeshPin(SettingsActivity.this, pin);
-                        AppPrefs.setMeshMode(SettingsActivity.this, LocalMeshManager.MODE_CLIENT);
-                        refreshChoices();
-                    }
-                })
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .show();
-    }
-
-    private void showManualMeshDialog() {
-        if (isFinishing() || isDestroyed()) return;
-        if (meshSubDialog != null && meshSubDialog.isShowing()) meshSubDialog.dismiss();
-
-        int dialogTheme = NeoStyle.dialogTheme(isLightSurface());
-        Context dialogCtx = new ContextThemeWrapper(this, dialogTheme);
-        int pad = Math.round(16f * getResources().getDisplayMetrics().density);
-        LinearLayout box = new LinearLayout(dialogCtx);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(pad, pad / 2, pad, pad / 2);
-
-        final EditText ipInput = new EditText(dialogCtx);
-        ipInput.setHint(R.string.settings_mesh_ip_hint);
-        ipInput.setSingleLine(true);
-        ipInput.setText(AppPrefs.meshHostIp(this));
-        box.addView(ipInput);
-
-        final EditText portInput = new EditText(dialogCtx);
-        portInput.setHint(R.string.settings_mesh_port_hint);
-        portInput.setInputType(InputType.TYPE_CLASS_NUMBER);
-        portInput.setSingleLine(true);
-        portInput.setText(String.valueOf(AppPrefs.meshHostPort(this)));
-        box.addView(portInput);
-
-        final EditText pinInput = new EditText(dialogCtx);
-        pinInput.setHint(R.string.settings_mesh_pin_hint);
-        pinInput.setInputType(InputType.TYPE_CLASS_NUMBER);
-        pinInput.setFilters(new InputFilter[]{new InputFilter.LengthFilter(4)});
-        pinInput.setText(AppPrefs.meshPin(this));
-        box.addView(pinInput);
-
-        meshSubDialog = new AlertDialog.Builder(this, dialogTheme)
-                .setTitle(R.string.settings_mesh_manual_title)
-                .setView(box)
-                .setPositiveButton(R.string.settings_mesh_save, new DialogInterface.OnClickListener() {
-                    @Override public void onClick(DialogInterface d, int w) {
-                        String ip = ipInput.getText().toString().trim();
-                        String portStr = portInput.getText().toString().trim();
-                        String pin = pinInput.getText().toString().trim();
-                        if (!LocalMeshProtocol.isPrivateLanAddress(ip)) {
-                            Toast.makeText(SettingsActivity.this,
-                                    R.string.settings_mesh_invalid_ip, Toast.LENGTH_SHORT).show();
-                            return;
-                        }
-                        int port = LocalMeshProtocol.DEFAULT_TCP_PORT;
-                        if (!portStr.isEmpty()) {
-                            try {
-                                port = Integer.parseInt(portStr);
-                            } catch (NumberFormatException ignored) {
-                                port = -1;
-                            }
-                        }
-                        if (port < 1 || port > 65535) {
-                            Toast.makeText(SettingsActivity.this,
-                                    R.string.settings_mesh_invalid_port, Toast.LENGTH_SHORT).show();
-                            return;
-                        }
-                        if (!LocalMeshProtocol.isValidPin(pin)) {
-                            Toast.makeText(SettingsActivity.this,
-                                    R.string.settings_mesh_invalid_pin, Toast.LENGTH_SHORT).show();
-                            return;
-                        }
-                        AppPrefs.setMeshHostIp(SettingsActivity.this, ip);
-                        AppPrefs.setMeshHostPort(SettingsActivity.this, port);
-                        AppPrefs.setMeshPin(SettingsActivity.this, pin);
-                        AppPrefs.setMeshMode(SettingsActivity.this, LocalMeshManager.MODE_CLIENT);
-                        refreshChoices();
-                    }
-                })
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .show();
-    }
-
     private void refreshChoices() {
         boolean hud = isHudMode();
         boolean day = !hud && AppPrefs.settingsDayMode(this);
@@ -558,52 +321,24 @@ public class SettingsActivity extends Activity {
         setChoice(R.id.form_phone, formOverride == HostFormLogic.FORM_PHONE, day, style);
         setChoice(R.id.form_hud, formOverride == HostFormLogic.FORM_HUD, day, style);
 
-        int meshMode = AppPrefs.meshMode(this);
-        setChoice(R.id.mesh_mode_off, meshMode == LocalMeshManager.MODE_OFF, day, style);
-        setChoice(R.id.mesh_mode_host, meshMode == LocalMeshManager.MODE_HOST, day, style);
-        setChoice(R.id.mesh_mode_client, meshMode == LocalMeshManager.MODE_CLIENT, day, style);
-        TextView meshStatus = (TextView) findViewById(R.id.mesh_status_text);
-        TextView meshAction = (TextView) findViewById(R.id.mesh_action_btn);
-        if (meshStatus != null && meshAction != null) {
+        TextView devSummary = (TextView) findViewById(R.id.dev_options_summary);
+        if (devSummary != null) {
             boolean light = day || style == AppPrefs.STYLE_SUPREME;
-            meshStatus.setTextColor(light ? 0xFF5A606B : NeoStyle.textDim(style));
-            if (meshMode == LocalMeshManager.MODE_HOST) {
-                LocalMeshManager mesh = LocalMeshManager.get(this);
-                int port = mesh.listenPort() > 0 ? mesh.listenPort() : LocalMeshProtocol.DEFAULT_TCP_PORT;
-                meshStatus.setText(getString(R.string.settings_mesh_host_info,
-                        mesh.localLanIp(), port, mesh.pin()));
-                meshStatus.setVisibility(View.VISIBLE);
-                meshAction.setText(R.string.settings_mesh_reset_pin);
-                meshAction.setVisibility(View.VISIBLE);
-                setChoice(R.id.mesh_action_btn, false, day, style);
-            } else if (meshMode == LocalMeshManager.MODE_CLIENT) {
-                String ip = AppPrefs.meshHostIp(this);
-                int port = AppPrefs.meshHostPort(this);
-                String pin = AppPrefs.meshPin(this);
-                boolean configured = LocalMeshProtocol.isPrivateLanAddress(ip)
-                        && LocalMeshProtocol.isValidPin(pin);
-                meshStatus.setText(configured
-                        ? getString(R.string.settings_mesh_client_configured, ip, port)
-                        : getString(R.string.settings_mesh_client_unconfigured));
-                meshStatus.setVisibility(View.VISIBLE);
-                meshAction.setText(R.string.settings_mesh_pick_host);
-                meshAction.setVisibility(View.VISIBLE);
-                setChoice(R.id.mesh_action_btn, configured, day, style);
-            } else {
-                meshStatus.setVisibility(View.GONE);
-                meshAction.setVisibility(View.GONE);
-            }
+            devSummary.setTextColor(light ? 0xFF5A606B : NeoStyle.textDim(style));
+            int meshMode = AppPrefs.meshMode(this);
+            String meshLabel = getString(meshMode == LocalMeshManager.MODE_HOST
+                    ? R.string.settings_mesh_host
+                    : (meshMode == LocalMeshManager.MODE_CLIENT
+                            ? R.string.settings_mesh_client
+                            : R.string.settings_mesh_off));
+            String fwLabel = getString(AppPrefs.fwEnabled(this)
+                    ? R.string.fw_state_on
+                    : R.string.fw_state_off);
+            devSummary.setText(getString(R.string.settings_dev_options_summary, meshLabel, fwLabel));
         }
-
-        boolean bridgeOn = AppPrefs.localIntentBridge(this);
-        LocalControlReceiver.setBridgeEnabled(bridgeOn);
-        setChoice(R.id.intent_bridge_choice, bridgeOn, day, style);
-        TextView bridgeView = (TextView) findViewById(R.id.intent_bridge_choice);
-        if (bridgeView != null) {
-            bridgeView.setText(bridgeOn
-                    ? R.string.settings_intent_bridge_on
-                    : R.string.settings_intent_bridge_off);
-        }
+        setChoice(R.id.dev_options_entry,
+                AppPrefs.meshMode(this) != LocalMeshManager.MODE_OFF || AppPrefs.localIntentBridge(this),
+                day, style);
 
         boolean volume = AppPrefs.showVolume(this);
         setChoice(R.id.volume_choice, volume, day, style);

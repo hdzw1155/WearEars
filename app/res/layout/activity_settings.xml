@@ -588,135 +588,6 @@
         </LinearLayout>
 
         <LinearLayout
-            android:id="@+id/mesh_card"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:background="@drawable/bg_set_card"
-            android:orientation="vertical"
-            android:padding="14dp">
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:letterSpacing="0.08"
-                android:text="@string/settings_mesh_title"
-                android:textColor="@color/text_faint"
-                android:textSize="10sp" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:id="@+id/mesh_mode_off"
-                    android:layout_width="0dp"
-                    android:layout_height="34dp"
-                    android:layout_marginEnd="6dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/bg_set_choice"
-                    android:ellipsize="end"
-                    android:gravity="center"
-                    android:maxLines="1"
-                    android:paddingStart="4dp"
-                    android:paddingEnd="4dp"
-                    android:text="@string/settings_mesh_off"
-                    android:textColor="@color/text_dim"
-                    android:textSize="11sp" />
-
-                <TextView
-                    android:id="@+id/mesh_mode_host"
-                    android:layout_width="0dp"
-                    android:layout_height="34dp"
-                    android:layout_marginEnd="6dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/bg_set_choice"
-                    android:ellipsize="end"
-                    android:gravity="center"
-                    android:maxLines="1"
-                    android:paddingStart="4dp"
-                    android:paddingEnd="4dp"
-                    android:text="@string/settings_mesh_host"
-                    android:textColor="@color/text_dim"
-                    android:textSize="11sp" />
-
-                <TextView
-                    android:id="@+id/mesh_mode_client"
-                    android:layout_width="0dp"
-                    android:layout_height="34dp"
-                    android:layout_weight="1"
-                    android:background="@drawable/bg_set_choice"
-                    android:ellipsize="end"
-                    android:gravity="center"
-                    android:maxLines="1"
-                    android:paddingStart="4dp"
-                    android:paddingEnd="4dp"
-                    android:text="@string/settings_mesh_client"
-                    android:textColor="@color/text_dim"
-                    android:textSize="11sp" />
-            </LinearLayout>
-
-            <TextView
-                android:id="@+id/mesh_status_text"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:ellipsize="end"
-                android:gravity="center"
-                android:maxLines="2"
-                android:textColor="@color/text_dim"
-                android:textSize="11sp"
-                android:visibility="gone" />
-
-            <TextView
-                android:id="@+id/mesh_action_btn"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:background="@drawable/bg_set_choice"
-                android:gravity="center"
-                android:minHeight="34dp"
-                android:padding="6dp"
-                android:text="@string/settings_mesh_pick_host"
-                android:textColor="@color/text_dim"
-                android:textSize="11sp"
-                android:visibility="gone" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/intent_bridge_card"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:background="@drawable/bg_set_card"
-            android:orientation="vertical"
-            android:padding="14dp">
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:letterSpacing="0.08"
-                android:text="@string/settings_intent_bridge"
-                android:textColor="@color/text_faint"
-                android:textSize="10sp" />
-
-            <TextView
-                android:id="@+id/intent_bridge_choice"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:background="@drawable/bg_set_choice"
-                android:gravity="center"
-                android:minHeight="34dp"
-                android:padding="6dp"
-                android:text="@string/settings_intent_bridge_off"
-                android:textColor="@color/text_dim"
-                android:textSize="11sp" />
-        </LinearLayout>
-
-        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
@@ -743,6 +614,48 @@
                 android:text="@string/settings_volume_show"
                 android:textColor="@color/text_dim"
                 android:textSize="12sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/dev_options_card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_set_card"
+            android:orientation="vertical"
+            android:padding="14dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:letterSpacing="0.08"
+                android:text="@string/settings_dev_options"
+                android:textColor="@color/text_faint"
+                android:textSize="10sp" />
+
+            <TextView
+                android:id="@+id/dev_options_summary"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:ellipsize="end"
+                android:gravity="center"
+                android:maxLines="2"
+                android:textColor="@color/text_dim"
+                android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/dev_options_entry"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_set_choice"
+                android:gravity="center"
+                android:minHeight="34dp"
+                android:padding="6dp"
+                android:text="@string/settings_dev_options_enter"
+                android:textColor="@color/text_dim"
+                android:textSize="11sp" />
         </LinearLayout>
 
         <TextView

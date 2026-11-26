@@ -65,6 +65,12 @@ final class AppPrefs {
     private static final String KEY_MESH_PIN = "mesh_pin";
     /** 同机本地软件广播联动（默认关闭） */
     private static final String KEY_LOCAL_INTENT_BRIDGE = "local_intent_bridge";
+    /** 应用层内网防火墙配置 */
+    private static final String KEY_FW_ENABLED = "fw_enabled";
+    private static final String KEY_FW_SAME_SUBNET_ONLY = "fw_same_subnet_only";
+    private static final String KEY_FW_ALLOWLIST_ONLY = "fw_allowlist_only";
+    private static final String KEY_FW_READ_ONLY = "fw_read_only";
+    private static final String KEY_FW_ALLOWLIST = "fw_allowlist";
 
     private AppPrefs() {
     }
@@ -296,6 +302,67 @@ final class AppPrefs {
 
     static void setLocalIntentBridge(Context ctx, boolean enabled) {
         prefs(ctx).edit().putBoolean(KEY_LOCAL_INTENT_BRIDGE, enabled).apply();
+    }
+
+    static boolean fwEnabled(Context ctx) {
+        try {
+            return prefs(ctx).getBoolean(KEY_FW_ENABLED, true);
+        } catch (RuntimeException ignored) {
+            return true;
+        }
+    }
+
+    static void setFwEnabled(Context ctx, boolean enabled) {
+        prefs(ctx).edit().putBoolean(KEY_FW_ENABLED, enabled).apply();
+    }
+
+    static boolean fwSameSubnetOnly(Context ctx) {
+        try {
+            return prefs(ctx).getBoolean(KEY_FW_SAME_SUBNET_ONLY, true);
+        } catch (RuntimeException ignored) {
+            return true;
+        }
+    }
+
+    static void setFwSameSubnetOnly(Context ctx, boolean sameSubnetOnly) {
+        prefs(ctx).edit().putBoolean(KEY_FW_SAME_SUBNET_ONLY, sameSubnetOnly).apply();
+    }
+
+    static boolean fwAllowlistOnly(Context ctx) {
+        try {
+            return prefs(ctx).getBoolean(KEY_FW_ALLOWLIST_ONLY, false);
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    static void setFwAllowlistOnly(Context ctx, boolean allowlistOnly) {
+        prefs(ctx).edit().putBoolean(KEY_FW_ALLOWLIST_ONLY, allowlistOnly).apply();
+    }
+
+    static boolean fwReadOnly(Context ctx) {
+        try {
+            return prefs(ctx).getBoolean(KEY_FW_READ_ONLY, false);
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    static void setFwReadOnly(Context ctx, boolean readOnly) {
+        prefs(ctx).edit().putBoolean(KEY_FW_READ_ONLY, readOnly).apply();
+    }
+
+    static String fwAllowlist(Context ctx) {
+        try {
+            String raw = prefs(ctx).getString(KEY_FW_ALLOWLIST, "");
+            return raw == null ? "" : raw.trim();
+        } catch (RuntimeException ignored) {
+            return "";
+        }
+    }
+
+    static void setFwAllowlist(Context ctx, String csv) {
+        prefs(ctx).edit().putString(KEY_FW_ALLOWLIST, csv == null ? "" : csv.trim()).apply();
     }
 
     private static int clampInt(int value, int min, int max) {

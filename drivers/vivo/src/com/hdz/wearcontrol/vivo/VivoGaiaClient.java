@@ -574,6 +574,14 @@ public class VivoGaiaClient extends WireDriver {
                 }
             } else if (cmd == RESP_LOW_LATENCY_ACK) {
                 trace("GaiaClient", "lowLatency ack payload=" + toHex(payload));
+                if (lowLatencyConfirmed) {
+                    Integer val = VivoProtocol.lowLatency(payload);
+                    if (val != null) {
+                        reportFeature(FeatureId.LOW_LATENCY, val.intValue());
+                    } else if (payload != null && payload.length == 1 && payload[0] == 0) {
+                        queryLowLatency();
+                    }
+                }
             } else if (cmd == RESP_WEAR_DETECT) {
                 Integer val = VivoProtocol.wearDetection(payload);
                 trace("GaiaClient", "wearDetect payload=" + toHex(payload));
@@ -587,6 +595,14 @@ public class VivoGaiaClient extends WireDriver {
                 }
             } else if (cmd == RESP_WEAR_DETECT_ACK) {
                 trace("GaiaClient", "wearDetect ack payload=" + toHex(payload));
+                if (wearDetectConfirmed) {
+                    Integer val = VivoProtocol.wearDetection(payload);
+                    if (val != null) {
+                        reportFeature(FeatureId.WEAR_DETECTION, val.intValue());
+                    } else if (payload != null && payload.length == 1 && payload[0] == 0) {
+                        queryWearDetection();
+                    }
+                }
             } else if (cmd == RESP_FIND_BUDS_ACK) {
                 Integer target = VivoProtocol.findBuds(payload);
                 trace("GaiaClient", "findBuds ack payload=" + toHex(payload));
