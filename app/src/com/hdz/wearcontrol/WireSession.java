@@ -85,7 +85,16 @@ final class WireSession implements TwsClient, WireDriver.Port {
         thread.start();
         actor = new Handler(thread.getLooper());
         execute(() -> {
-            bindDriver(device.getName());
+            String devName;
+            ParcelUuid[] advertised;
+            try {
+                devName = device.getName();
+                advertised = device.getUuids();
+            } catch (SecurityException revoked) {
+                fail("Bluetooth permission revoked");
+                return;
+            }
+            bindDriver(devName);
             if (!active()) return;
             if (driver.cancelDiscovery()) {
                 try {
@@ -93,7 +102,6 @@ final class WireSession implements TwsClient, WireDriver.Port {
                     if (manager != null && manager.getAdapter() != null) manager.getAdapter().cancelDiscovery();
                 } catch (SecurityException ignored) { }
             }
-            ParcelUuid[] advertised = device.getUuids();
             List<UUID> validIds = new ArrayList<>();
             if (advertised != null) {
                 for (ParcelUuid pu : advertised) {
@@ -150,7 +158,7 @@ final class WireSession implements TwsClient, WireDriver.Port {
         if (active() && actor != null) actor.postAtTime(() -> guarded(work), work, SystemClock.uptimeMillis() + ms);
     }
     public void cancel(Runnable work) {
-        if (actor != null) actor.removeCallbacksAndMessages(work);
+        if (actor != null && work != null) actor.removeCallbacksAndMessages(work);
     }
     public long millis() { return SystemClock.elapsedRealtime(); }
     public void trace(String tag, String message) { if (Log.isLoggable(tag, Log.DEBUG)) Log.d(tag, message); }

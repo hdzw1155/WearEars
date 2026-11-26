@@ -267,8 +267,11 @@ public final class XiaomiProtocol {
     }
 
     public static byte[] configTlv(int cfgId, byte[] value) {
-        if (isBannedConfigId(cfgId)) throw new IllegalArgumentException("Prohibited RCSP config ID");
+        if (cfgId < 0 || cfgId > 0xFFFF || isBannedConfigId(cfgId)) {
+            throw new IllegalArgumentException("Prohibited RCSP config ID");
+        }
         int vlen = value == null ? 0 : value.length;
+        if (vlen > 253) throw new IllegalArgumentException("RCSP TLV value too long");
         byte[] out = new byte[3 + vlen];
         out[0] = (byte) (2 + vlen);
         out[1] = (byte) ((cfgId >> 8) & 0xFF);

@@ -86,21 +86,30 @@ public final class OppoProtocol {
 
     /** 组帧: AA TotalLen(LEB128) 00 00 cmd(2B LE) seq payLen(2B LE) payload。禁止编码危险/禁用操作码。 */
     public static byte[] encode(int cmd, int seqNo, byte[] payload) {
-        if (isBannedOpcode(cmd)) {
+        if (cmd < 0 || cmd > 0xFFFF || isBannedOpcode(cmd)) {
             throw new IllegalArgumentException("Prohibited OPOv1 opcode: 0x" + Integer.toHexString(cmd));
         }
         int payLen = payload == null ? 0 : payload.length;
+        if (payLen > 0xFFFF) {
+            throw new IllegalArgumentException("OPOv1 payload too large: " + payLen);
+        }
         int totalLen = 7 + payLen;
-        int lebLen = totalLen < 0x80 ? 1 : 2;
+        int lebLen = 0;
+        int tmp = totalLen;
+        do {
+            lebLen++;
+            tmp >>>= 7;
+        } while (tmp != 0);
         byte[] f = new byte[1 + lebLen + 7 + payLen];
         int p = 0;
         f[p++] = (byte) 0xAA;
-        if (lebLen == 1) {
-            f[p++] = (byte) totalLen;
-        } else {
-            f[p++] = (byte) ((totalLen & 0x7F) | 0x80);
-            f[p++] = (byte) ((totalLen >> 7) & 0x7F);
-        }
+        int rem = totalLen;
+        do {
+            int b = rem & 0x7F;
+            rem >>>= 7;
+            if (rem != 0) b |= 0x80;
+            f[p++] = (byte) b;
+        } while (rem != 0);
         f[p++] = 0x00;
         f[p++] = 0x00;
         f[p++] = (byte) (cmd & 0xFF);
@@ -283,11 +292,13 @@ public final class OppoProtocol {
         return new int[]{left, right};
     }
 
-    /** 解析完整佩戴状态位掩码: 0=未佩戴, 1=左耳, 2=右耳, 3=双耳, -1=无效。 */
+    /** 解析完整佩戴状态位掩码: 0=未佩戴, 1=左耳, 2=右耳, 3=双耳, -1=无效/单耳未知。 */
     public static int wearStatus(byte[] payload, boolean event) {
         int[] flags = wearFlags(payload, event);
         if (flags == null) return -1;
-        return (flags[0] == 1 ? 1 : 0) | (flags[1] == 1 ? 2 : 0);
+        int mask = (flags[0] == 1 ? 1 : 0) | (flags[1] == 1 ? 2 : 0);
+        if (mask == 0 && (flags[0] < 0 || flags[1] < 0)) return -1;
+        return mask;
     }
 
     /** 统一 ANC 子档位掩码家族 (显式排除 realme 064C12 与 Enco Air2 Pro 等冲突机型)。 */

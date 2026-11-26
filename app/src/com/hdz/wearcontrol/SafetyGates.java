@@ -3,6 +3,7 @@ package com.hdz.wearcontrol;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
+import android.view.ContextThemeWrapper;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
@@ -142,8 +143,10 @@ final class SafetyGates {
         final boolean english = AppPrefs.LANG_EN.equals(AppPrefs.lang(activity));
         final String[] labels = new String[targets.size()];
         for (int i = 0; i < targets.size(); i++) labels[i] = targets.get(i).label(english);
+        int dialogTheme = NeoStyle.dialogTheme(activity);
         ArrayAdapter<String> adapter = new ArrayAdapter<String>(
-                activity, android.R.layout.select_dialog_item, labels) {
+                new ContextThemeWrapper(activity, dialogTheme),
+                android.R.layout.select_dialog_item, labels) {
             @Override public boolean isEnabled(int position) {
                 return !state.isTargetInEar(targets.get(position).id);
             }
@@ -156,7 +159,7 @@ final class SafetyGates {
                 return row;
             }
         };
-        showPrompt(activity, new AlertDialog.Builder(activity, NeoStyle.dialogTheme(activity))
+        showPrompt(activity, new AlertDialog.Builder(activity, dialogTheme)
                 .setTitle(R.string.find_buds_pick_title)
                 .setAdapter(adapter, new DialogInterface.OnClickListener() {
                     @Override public void onClick(DialogInterface dialog, int which) {
@@ -220,8 +223,9 @@ final class SafetyGates {
         final HostDialogs h = host(activity);
         int pending = actions != null ? actions.pendingFeature(FeatureId.FIND_MY_BUDS) : -1;
         Integer confirmed = state != null ? state.featureValue(FeatureId.FIND_MY_BUDS) : null;
+        boolean txRinging = actions != null && actions.isFindBudsRinging();
         boolean ringing = state != null && state.connected && !state.isAnyBudInEar()
-                && (pending > 0 || (pending != 0 && confirmed != null && confirmed > 0));
+                && (pending > 0 || (pending != 0 && ((confirmed != null && confirmed > 0) || txRinging)));
         if (!ringing) {
             if (h.ringing != null) {
                 h.ringing.dismiss();

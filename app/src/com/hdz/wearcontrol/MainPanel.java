@@ -9,6 +9,7 @@ interface MainPanel {
         void selectFeature(FeatureId id, int value);
         void stopFindBuds();
         int pendingFeature(FeatureId id);
+        default boolean isFindBudsRinging() { return false; }
     }
     void render(DeviceState state, int pendingMode);
     default void resume() { }

@@ -118,13 +118,19 @@ public final class AuditRegressionChecks {
         state.featureValue(FeatureId.ANC_LEVEL, 2);
         state.parked = true;
 
-        // Resuming the same parked earbud preserves cached snapshot seamlessly
+        // Resuming the same parked earbud preserves UI snapshot while clearing stale wear & live confirmations
+        state.featureValue(FeatureId.WEAR_STATUS, DeviceState.WEAR_NONE);
+        state.enterParked();
+        check(state.parked && state.wearStatus == DeviceState.WEAR_UNKNOWN
+                        && !state.isFeatureConfirmedLive(FeatureId.ANC_LEVEL),
+                "enterParked clears stale wearStatus and live feature confirmations");
         state.resumeParked("AA:BB:CC:DD:EE:FF", "vivo TWS Air3 Pro");
         check(state.connected && state.parked && state.left == 95 && state.right == 90 && state.box == 80
                         && state.mode == Controls.MODE_ANC
+                        && state.wearStatus == DeviceState.WEAR_UNKNOWN
                         && Integer.valueOf(2).equals(state.featureValue(FeatureId.ANC_LEVEL))
                         && state.isFeatureWritable(FeatureId.ANC_LEVEL),
-                "resumeParked preserves snapshot and writable feature state for same earbud");
+                "resumeParked preserves snapshot and writable feature state while keeping wear unknown");
 
         // Full disconnect clears parked & connection state
         state.disconnect();

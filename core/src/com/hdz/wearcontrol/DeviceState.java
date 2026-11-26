@@ -1,6 +1,7 @@
 package com.hdz.wearcontrol;
 
 import java.util.EnumMap;
+import java.util.EnumSet;
 
 /** 当前协议会话的状态。历史快照不能写回这里；可独立于 Android 和磁贴进行验证。 */
 final class DeviceState {
@@ -17,6 +18,7 @@ final class DeviceState {
     int spatialRevision, equalizerRevision;
     SoundPreset[] presets = new SoundPreset[0];
     final EnumMap<FeatureId, FeatureDescriptor> features = new EnumMap<>(FeatureId.class);
+    final EnumSet<FeatureId> liveConfirmedFeatures = EnumSet.noneOf(FeatureId.class);
     final EnumMap<FeatureId, Integer> featureValues = new EnumMap<>(FeatureId.class);
     final EnumMap<FeatureId, Integer> featureRevisions = new EnumMap<>(FeatureId.class);
     final EnumMap<FeatureId, String> featureTexts = new EnumMap<>(FeatureId.class);
@@ -57,14 +59,29 @@ final class DeviceState {
         }
     }
 
-    /** 手机按需短连接唤醒同一台耳机时保留快照，避免界面闪烁或清空。 */
+    /** 进入手机按需待命态：保留 UI 快照，但强制清空陈旧佩戴状态与当次会话实测确认集。 */
+    void enterParked() {
+        parked = true;
+        wearStatus = WEAR_UNKNOWN;
+        featureValues.remove(FeatureId.WEAR_STATUS);
+        liveConfirmedFeatures.clear();
+    }
+
+    /** 手机按需短连接唤醒同一台耳机时保留快照，避免界面闪烁或清空；同时复位佩戴与实测确认集防竞态。 */
     void resumeParked(String address, String name) {
         String safe = address == null ? "" : address;
         if (!parked || !this.address.equals(safe)) {
             begin(safe, name, 0, 0);
             return;
         }
+        wearStatus = WEAR_UNKNOWN;
+        featureValues.remove(FeatureId.WEAR_STATUS);
+        liveConfirmedFeatures.clear();
         if (name != null && !name.isEmpty()) this.name = name;
+    }
+
+    boolean hasSyncedData() {
+        return connected && (mode >= 0 || known(left) || known(right) || known(box));
     }
 
     void disconnect() {
@@ -79,13 +96,32 @@ final class DeviceState {
         firmware = "";
         limitation = "";
         features.clear();
+        liveConfirmedFeatures.clear();
         featureValues.clear();
         featureRevisions.clear();
         featureTexts.clear();
     }
 
     void featureSpec(FeatureDescriptor spec) {
-        if (spec != null) features.put(spec.id, spec);
+        if (spec != null) {
+            features.put(spec.id, spec);
+            liveConfirmedFeatures.add(spec.id);
+        }
+    }
+
+    boolean isFeatureConfirmedLive(FeatureId id) {
+        if (!connected || parked || id == null) return false;
+        if (id == FeatureId.ANC_LEVEL || id == FeatureId.TRANS_MODE) {
+            return (caps & Controls.CAP_NOISE) != 0 && liveConfirmedFeatures.contains(id);
+        }
+        if (liveConfirmedFeatures.contains(id)) return true;
+        if (id == FeatureId.SPATIAL_AUDIO) {
+            return (caps & Controls.CAP_SPATIAL) != 0 && spatial != null;
+        }
+        if (id == FeatureId.EQUALIZER) {
+            return (caps & (Controls.CAP_EQUALIZER | Controls.CAP_DEEPX)) != 0;
+        }
+        return false;
     }
 
     FeatureDescriptor featureSpec(FeatureId id) {

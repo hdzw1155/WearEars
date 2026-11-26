@@ -13,6 +13,7 @@ final class ConnectionOwner {
         String expectedAddress();
         Controls.Listener bind(TwsClient source, String address, String name, boolean wakingFromPark);
         void parked();
+        default boolean canSoftParkOnDrop() { return false; }
         void reset();
         void unavailable(int status, int hint);
     }
@@ -25,7 +26,7 @@ final class ConnectionOwner {
     private volatile Phase phase = Phase.IDLE;
     private int generation, retries, shortDrops;
     private boolean listening, wakingFromPark;
-    private long liveSinceMs;
+    private long liveSinceMs, connectingSinceMs;
     private volatile String address = "";
     // Up to six RFCOMM candidates, followed by authentication, GATT setup or a protocol handshake.
     private static final long CONNECT_TIMEOUT_MS = 40000;
@@ -49,8 +50,10 @@ final class ConnectionOwner {
     };
     ConnectionOwner(Context app, Handler main, Host host) { this.app = app; this.main = main; this.host = host; }
     void manual() {
-        retries = 0;
-        shortDrops = 0;
+        if (phase == Phase.IDLE || phase == Phase.PARKED) {
+            retries = 0;
+            shortDrops = 0;
+        }
         main.removeCallbacks(retry);
         if (phase == Phase.PARKED) {
             wakingFromPark = true;
@@ -130,11 +133,16 @@ final class ConnectionOwner {
     private void open(BluetoothDevice peer) {
         try {
             String nextAddress = peer.getAddress();
-            boolean waking = wakingFromPark && nextAddress != null && nextAddress.equals(address);
+            boolean sameAddress = nextAddress != null && nextAddress.equalsIgnoreCase(address);
+            boolean waking = wakingFromPark && sameAddress;
+            if (wakingFromPark && !sameAddress) {
+                // 唤醒期间自动切到了另一台耳机：先彻底清空旧设备事务，严禁串发指令
+                host.reset();
+            }
             wakingFromPark = false;
-            address = nextAddress;
+            address = nextAddress == null ? "" : nextAddress;
             String expected = host.expectedAddress();
-            if (expected != null && !expected.equals(address)) {
+            if (expected != null && !expected.equalsIgnoreCase(address)) {
                 stopWith(R.string.status_pin_unavailable, R.string.sub_select_device_action); return;
             }
             source = DriverRegistry.create(app, peer);
@@ -142,6 +150,7 @@ final class ConnectionOwner {
                 stopWith(R.string.status_no_perm, R.string.sub_no_perm_action); return;
             }
             phase = Phase.CONNECTING;
+            connectingSinceMs = SystemClock.elapsedRealtime();
             reports = host.bind(source, address, peer.getName(), waking);
             source.addListener(reports);
             main.postDelayed(deadline, CONNECT_TIMEOUT_MS);
@@ -159,6 +168,9 @@ final class ConnectionOwner {
     /** 手机按需短连接模式：优雅归还 RFCOMM 通道给同品牌系统服务，保留界面与设备状态快照。 */
     void park() {
         if (phase != Phase.LIVE || !activePrivateLink()) return;
+        enterParkState();
+    }
+    private void enterParkState() {
         ++generation;
         main.removeCallbacks(deadline);
         main.removeCallbacks(retry);
@@ -166,6 +178,7 @@ final class ConnectionOwner {
         retries = 0;
         shortDrops = 0;
         liveSinceMs = 0L;
+        connectingSinceMs = 0L;
         wakingFromPark = false;
         TwsClient old = source;
         source = null;
@@ -203,25 +216,32 @@ final class ConnectionOwner {
     private static boolean runDirect(TwsClient s, Runnable work) { s.execute(work); return true; }
     void failed(String reason) {
         android.util.Log.d("WearEars", reason);
+        // 手机按需短连接模式：如果本轮已读回有效数据且无在途操作，被同品牌系统服务踢断时直接吸收为待命态，彻底消除闪烁与重连风暴。
+        if (phase == Phase.LIVE && host.canSoftParkOnDrop()) {
+            enterParkState();
+            return;
+        }
+        long now = SystemClock.elapsedRealtime();
         boolean wasShortLive = phase == Phase.LIVE
                 && liveSinceMs > 0L
-                && (SystemClock.elapsedRealtime() - liveSinceMs) < STABLE_SESSION_MS;
+                && (now - liveSinceMs) < STABLE_SESSION_MS;
+        boolean wasShortConnect = phase == Phase.CONNECTING
+                && connectingSinceMs > 0L
+                && !"Connection timed out".equals(reason)
+                && (now - connectingSinceMs) < STABLE_SESSION_MS;
         boolean channelContested = false;
-        if (wasShortLive) {
+        if (wasShortLive || wasShortConnect) {
             shortDrops++;
             if (shortDrops >= 2) {
                 channelContested = true;
             }
         }
         wakingFromPark = false;
-        stopWith(R.string.status_conn_failed,
-                channelContested ? R.string.sub_channel_contested : R.string.sub_reconnecting_hint);
         if (channelContested) {
-            if (host.foreground()) {
-                host.unavailable(R.string.status_channel_contested, R.string.sub_channel_contested);
-            }
+            stopWith(R.string.status_channel_contested, R.string.sub_channel_contested);
             return;
         }
+        stopWith(R.string.status_conn_failed, R.string.sub_reconnecting_hint);
         if (host.foreground() && retries < 3) main.postDelayed(retry, 3000L << retries++);
         else if (host.foreground()) host.unavailable(R.string.status_idle, R.string.sub_reconnect_paused);
     }
@@ -236,6 +256,7 @@ final class ConnectionOwner {
         main.removeCallbacks(retry);
         main.removeCallbacks(markStable);
         liveSinceMs = 0L;
+        connectingSinceMs = 0L;
         wakingFromPark = false;
         TwsClient old = source;
         source = null;

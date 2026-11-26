@@ -428,16 +428,28 @@ public final class OppoExtChecks {
     }
 
     private static void sequenceWrapAndBannedOpcodes() {
-        for (int banned : new int[]{0x0F00, 0xEF01, 0xEF05, 0xEF09, 0x0405, 0x040B}) {
-            check(OppoProtocol.isBannedOpcode(banned), "banned opcode flagged 0x" + Integer.toHexString(banned));
+        for (int banned : new int[]{0x0F00, 0x10F00, 0xEF01, 0xEF05, 0xEF09, 0x0405, 0x040B, -1}) {
             boolean rejected = false;
             try {
                 OppoProtocol.encode(banned, 1, null);
             } catch (IllegalArgumentException expected) {
                 rejected = true;
             }
-            check(rejected, "encoder rejects banned opcode 0x" + Integer.toHexString(banned));
+            check(rejected, "encoder rejects banned/out-of-range opcode 0x" + Integer.toHexString(banned));
         }
+
+        // LEB128 3-byte encoding (>16376B payload) must not truncate length
+        byte[] largeEncoded = OppoProtocol.encode(0x0106, 1, new byte[16380]);
+        check((largeEncoded[1] & 0x80) != 0 && (largeEncoded[2] & 0x80) != 0 && (largeEncoded[3] & 0x80) == 0,
+                "LEB128 uses 3 bytes when totalLen >= 16384");
+
+        // Single-ear not-in-ear with other side unknown MUST return WEAR_UNKNOWN (-1), not WEAR_NONE (0)
+        check(OppoProtocol.wearStatus(hex("00 01 01 00"), false) == -1,
+                "single-ear wear report with unknown other bud returns WEAR_UNKNOWN");
+        check(OppoProtocol.wearStatus(hex("00 02 01 00 02 00"), false) == 0,
+                "both buds reported not-in-ear returns WEAR_NONE");
+        check(OppoProtocol.wearStatus(hex("00 01 01 02"), false) == 1,
+                "single-ear reported in-ear returns WEAR_LEFT");
 
         // Verify nextSeq wraps cleanly avoiding 0xFF and 0x00, while queryBattery/Noise/changeNoise keep 0xF0/F1/F3
         Rig seqRig = new Rig("OPPO Enco Free4");

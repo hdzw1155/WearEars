@@ -65,38 +65,43 @@ public class StandardClient implements TwsClient {
 
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override public void onReceive(Context ctx, Intent intent) {
-            String action = intent.getAction();
-            if (closing || action == null) return;
-            BluetoothDevice d = (BluetoothDevice)
-                    intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-            String addr = safeAddress(d);
-            if (address == null || !address.equals(addr)) return;
+            if (closing || intent == null) return;
+            try {
+                String action = intent.getAction();
+                if (action == null) return;
+                Object raw = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                BluetoothDevice d = raw instanceof BluetoothDevice ? (BluetoothDevice) raw : null;
+                String addr = safeAddress(d);
+                if (address == null || addr == null || !address.equalsIgnoreCase(addr)) return;
 
-            if (BluetoothDevice.ACTION_ACL_CONNECTED.equals(action)) {
-                if (!connected) {
-                    String name = safeName(d);
-                    if (name != null) deviceName = name;
-                    disconnectedProfiles = 0;
+                if (BluetoothDevice.ACTION_ACL_CONNECTED.equals(action)) {
+                    if (!connected) {
+                        String name = safeName(d);
+                        if (name != null) deviceName = name;
+                        disconnectedProfiles = 0;
+                        checkCurrentLink();
+                    }
+                } else if (BluetoothDevice.ACTION_ACL_DISCONNECTED.equals(action)) {
+                    // 双模设备单链路断开时可能仍有音频 Profile 在线，交由 AudioConnections 核验。
+                    if (connected) checkCurrentLink();
+                } else if (AudioConnections.profile(action) >= 0) {
+                    int profile = AudioConnections.profile(action);
+                    int value = intent.getIntExtra(BluetoothProfile.EXTRA_STATE, -1);
+                    if (value == BluetoothProfile.STATE_CONNECTED) disconnectedProfiles &= ~(1 << profile);
+                    else if (value == BluetoothProfile.STATE_DISCONNECTED || value == BluetoothProfile.STATE_DISCONNECTING)
+                        disconnectedProfiles |= 1 << profile;
+                    else return;
+                    // 明确断开的 Profile 不再接受代理中尚未更新的旧 connected 列表。
                     checkCurrentLink();
+                } else if (ACTION_HF_IND_VALUE_CHANGED.equals(action)) {
+                    int id = intent.getIntExtra(EXTRA_HF_IND_ID, -1);
+                    int value = intent.getIntExtra(EXTRA_HF_IND_VALUE, -1);
+                    if (id == 2) deliverBattery(value); // HF indicator id 2 = 电量
+                } else if (ACTION_BATTERY_LEVEL_CHANGED.equals(action)) {
+                    deliverBattery(intent.getIntExtra(EXTRA_BATTERY_LEVEL, -1));
                 }
-            } else if (BluetoothDevice.ACTION_ACL_DISCONNECTED.equals(action)) {
-                // 双模设备单链路断开时可能仍有音频 Profile 在线，交由 AudioConnections 核验。
-                if (connected) checkCurrentLink();
-            } else if (AudioConnections.profile(action) >= 0) {
-                int profile = AudioConnections.profile(action);
-                int value = intent.getIntExtra(BluetoothProfile.EXTRA_STATE, -1);
-                if (value == BluetoothProfile.STATE_CONNECTED) disconnectedProfiles &= ~(1 << profile);
-                else if (value == BluetoothProfile.STATE_DISCONNECTED || value == BluetoothProfile.STATE_DISCONNECTING)
-                    disconnectedProfiles |= 1 << profile;
-                else return;
-                // 明确断开的 Profile 不再接受代理中尚未更新的旧 connected 列表。
-                checkCurrentLink();
-            } else if (ACTION_HF_IND_VALUE_CHANGED.equals(action)) {
-                int id = intent.getIntExtra(EXTRA_HF_IND_ID, -1);
-                int value = intent.getIntExtra(EXTRA_HF_IND_VALUE, -1);
-                if (id == 2) deliverBattery(value); // HF indicator id 2 = 电量
-            } else if (ACTION_BATTERY_LEVEL_CHANGED.equals(action)) {
-                deliverBattery(intent.getIntExtra(EXTRA_BATTERY_LEVEL, -1));
+            } catch (RuntimeException e) {
+                Log.w(TAG, "Ignoring malformed Bluetooth broadcast", e);
             }
         }
     };
@@ -169,7 +174,8 @@ public class StandardClient implements TwsClient {
                 try {
                     if (devices != null && address != null) {
                         for (BluetoothDevice d : devices) {
-                            if (d != null && address.equals(d.getAddress())) found = true;
+                            String dAddr = safeAddress(d);
+                            if (dAddr != null && address.equalsIgnoreCase(dAddr)) found = true;
                         }
                     }
                 } catch (SecurityException revoked) { complete = false; }

@@ -419,7 +419,7 @@ public class OppoOpoClient extends WireDriver {
         else if (mode == MODE_TRANS) mask = MASK_ANC_SET_TRANS;
         else mask = MASK_ANC_SET_OFF;
         writeThen(frame(CMD_ANC_SET, 0xF3, new byte[]{0x01, 0x01, (byte) mask}), () -> {
-            flushed.run();
+            if (flushed != null) flushed.run();
             schedule(this::queryNoise, 350);
         });
     }
@@ -649,6 +649,11 @@ public class OppoOpoClient extends WireDriver {
         for (int[] pair : switches) {
             features010D.put(pair[0], pair[1]);
         }
+        if (!features010D.containsKey(OppoProtocol.FEAT_WIND_REDUCTION)) windSpec = null;
+        if (spatialMode43 && !features010D.containsKey(OppoProtocol.FEAT_SPATIAL_AUDIO)) {
+            spatialMode43 = false;
+            spatialSpec = null;
+        }
         refreshSpecs(protocolReady);
         if (protocolReady) {
             reportSwitchIfPresent(OppoProtocol.FEAT_WIND_REDUCTION, FeatureId.WIND_REDUCTION, windSpec);
@@ -675,7 +680,8 @@ public class OppoOpoClient extends WireDriver {
         if (flags == null) return;
         if (flags[0] >= 0) leftInEar = flags[0] == 1;
         if (flags[1] >= 0) rightInEar = flags[1] == 1;
-        int wear = (Boolean.TRUE.equals(leftInEar) ? 1 : 0) | (Boolean.TRUE.equals(rightInEar) ? 2 : 0);
+        int mask = (Boolean.TRUE.equals(leftInEar) ? 1 : 0) | (Boolean.TRUE.equals(rightInEar) ? 2 : 0);
+        int wear = (mask == 0 && (leftInEar == null || rightInEar == null)) ? -1 : mask;
         initialWear = wear;
         refreshSpecs(protocolReady);
         if (protocolReady) reportFeature(FeatureId.WEAR_STATUS, wear);
@@ -797,7 +803,7 @@ public class OppoOpoClient extends WireDriver {
     }
 
     private void maybeConfirmDynamicAncSpec(int mask, boolean emitNow) {
-        if (ancLevelSpec != null || productId == OppoProtocol.PID_REALME_AIR7_PRO) return;
+        if (ancLevelSpec != null || productId < 0 || productId == OppoProtocol.PID_REALME_AIR7_PRO) return;
         if ((mask & 0x08F0) == 0) return;
         boolean hasAdaptive = (mask & 0x0800) != 0;
         OptionItem[] opts = hasAdaptive

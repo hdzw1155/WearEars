@@ -63,6 +63,11 @@ public final class HuaweiSoundProtocol {
             offset += size;
         }
         if (!modeSeen || !optionsSeen || presets.isEmpty()) return null;
+        boolean currentValid = false;
+        for (SoundPreset p : presets) {
+            if (p.id == current) { currentValid = true; break; }
+        }
+        if (!currentValid) return null;
         return new State(current, presets.toArray(new SoundPreset[presets.size()]));
     }
 

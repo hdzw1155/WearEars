@@ -87,7 +87,10 @@ final class VolumePanel implements MainPanel {
         guard.lock();
         if (bar != null) bar.cancelInteraction();
         if (dial != null) dial.cancelVolumeInteraction();
-        if (registered) { activity.unregisterReceiver(receiver); registered = false; }
+        if (registered) {
+            try { activity.unregisterReceiver(receiver); } catch (RuntimeException ignored) { }
+            registered = false;
+        }
     }
 
     @Override public void volume(int level, int max) {

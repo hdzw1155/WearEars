@@ -324,6 +324,7 @@ public class SpatialLabActivity extends Activity {
 
     private void startPlayback() {
         refreshVolumeSafety();
+        WearEarsSpatialEffect.get(this).setLabActive(this, true);
         synchronized (audioLock) {
             if (playing) {
                 return;
@@ -372,16 +373,12 @@ public class SpatialLabActivity extends Activity {
             }
         }
         synchronized (audioLock) {
-            playing = false;
-            audioThread = null;
-            if (activeTrack != null) {
-                try {
-                    activeTrack.release();
-                } catch (RuntimeException ignored) {
-                }
-                activeTrack = null;
+            if (audioThread == threadToJoin) {
+                playing = false;
+                audioThread = null;
             }
         }
+        WearEarsSpatialEffect.get(this).setLabActive(this, false);
         refreshPlayButton();
     }
 
@@ -397,6 +394,13 @@ public class SpatialLabActivity extends Activity {
                 sampleRate, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT);
         if (minBuf <= 0) {
             Log.w(TAG, "AudioTrack minBufferSize invalid: " + minBuf);
+            synchronized (audioLock) {
+                if (audioThread == Thread.currentThread()) {
+                    playing = false;
+                    audioThread = null;
+                }
+            }
+            WearEarsSpatialEffect.get(this).setLabActive(this, false);
             notifyAudioStoppedOnUi();
             return;
         }
@@ -498,16 +502,21 @@ public class SpatialLabActivity extends Activity {
                 } catch (RuntimeException ignored) {
                 }
             }
+            boolean isCurrent;
             synchronized (audioLock) {
                 if (activeTrack == track) {
                     activeTrack = null;
                 }
-                playing = false;
-                if (audioThread == Thread.currentThread()) {
+                isCurrent = (audioThread == Thread.currentThread());
+                if (isCurrent) {
+                    playing = false;
                     audioThread = null;
                 }
             }
-            notifyAudioStoppedOnUi();
+            if (isCurrent) {
+                WearEarsSpatialEffect.get(SpatialLabActivity.this).setLabActive(SpatialLabActivity.this, false);
+                notifyAudioStoppedOnUi();
+            }
         }
     }
 

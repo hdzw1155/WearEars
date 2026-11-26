@@ -13,6 +13,7 @@ final class FeatureTransactions {
     interface Host {
         boolean live();
         boolean writable(FeatureId id, int value);
+        default boolean featureReady(FeatureId id) { return true; }
         Integer currentValue(FeatureId id);
         void read(FeatureId id);
         void write(FeatureId id, int value, BooleanSupplier claim, Runnable flushed);
@@ -114,6 +115,20 @@ final class FeatureTransactions {
         return true;
     }
 
+    void resetWearStatus() {
+        wearStatus = WEAR_UNKNOWN;
+    }
+
+    void onFeatureReady(FeatureId id) {
+        if (id == null || !host.live()) return;
+        Request r;
+        synchronized (this) {
+            r = lanes.get(id);
+            if (r == null || r.phase != Phase.WAIT) return;
+        }
+        startLane(r);
+    }
+
     void connected() {
         List<Request> snapshot;
         synchronized (this) {
@@ -121,12 +136,21 @@ final class FeatureTransactions {
             snapshot = new ArrayList<>(lanes.values());
         }
         for (Request r : snapshot) {
-            if (lanes.get(r.id) == r) startLane(r);
+            boolean stillActive;
+            synchronized (this) { stillActive = lanes.get(r.id) == r; }
+            if (stillActive) startLane(r);
         }
     }
 
     private void startLane(Request r) {
-        if (lanes.get(r.id) != r) return;
+        synchronized (this) {
+            if (lanes.get(r.id) != r || r.phase != Phase.WAIT) return;
+        }
+        if (!host.featureReady(r.id)) {
+            host.cancel(r.timer);
+            host.later(r.timer, r.id == FeatureId.FIND_MY_BUDS ? FIND_TIMEOUT : TIMEOUT);
+            return;
+        }
         if (!host.writable(r.id, r.value)) {
             finish(r.id, false);
             return;
@@ -144,7 +168,9 @@ final class FeatureTransactions {
     }
 
     private void progress(Request r, Integer reported, boolean afterSend) {
-        if (lanes.get(r.id) != r) return;
+        synchronized (this) {
+            if (lanes.get(r.id) != r) return;
+        }
         boolean matchesCurrent = r.id != FeatureId.FIND_MY_BUDS && reported != null && reported == r.value;
         boolean matchesAfterSend = afterSend && reported != null && reported == r.value;
         if (matchesAfterSend || (matchesCurrent && r.phase == Phase.WAIT && !r.force)) {
@@ -168,28 +194,39 @@ final class FeatureTransactions {
     }
 
     private void written(Request r) {
-        Runnable rb;
         synchronized (this) {
             if (lanes.get(r.id) != r || r.phase != Phase.WRITING) return;
             r.phase = Phase.SENT;
-            rb = () -> {
+            Runnable rb = () -> {
                 if (isSent(r)) host.read(r.id);
             };
             r.readback = rb;
+            host.later(rb, READBACK_DELAY_MS);
         }
-        host.later(rb, READBACK_DELAY_MS);
     }
 
     void report(Request receipt, FeatureId id, int value, boolean afterSend) {
         if (id == FeatureId.WEAR_STATUS) onWearStatus(value);
-        if (id == FeatureId.FIND_MY_BUDS && value == 0) onFindBudsStopped();
-        if (receipt == null || id == null || lanes.get(id) != receipt) return;
+        if (id == FeatureId.FIND_MY_BUDS) {
+            if (value == 0) {
+                onFindBudsStopped();
+            } else if (value > 0) {
+                findRinging = true;
+                armFindAutoTimer();
+            }
+        }
+        synchronized (this) {
+            if (receipt == null || id == null || lanes.get(id) != receipt) return;
+        }
         progress(receipt, value, afterSend);
     }
 
     void onTopModeBegin(int mode) {
         cancelLane(FeatureId.ANC_LEVEL);
         cancelLane(FeatureId.TRANS_MODE);
+        if (mode != Controls.MODE_ANC) {
+            cancelLane(FeatureId.WIND_REDUCTION);
+        }
     }
 
     void onWearStatus(int status) {
@@ -219,7 +256,7 @@ final class FeatureTransactions {
             cancelLane(FeatureId.FIND_MY_BUDS);
             return;
         }
-        if (host.live() && host.writable(FeatureId.FIND_MY_BUDS, 0)) {
+        if (host.writable(FeatureId.FIND_MY_BUDS, 0)) {
             begin(FeatureId.FIND_MY_BUDS, 0);
         } else {
             cancelLane(FeatureId.FIND_MY_BUDS);
@@ -244,7 +281,9 @@ final class FeatureTransactions {
     }
 
     private void timeout(Request r) {
-        if (lanes.get(r.id) != r) return;
+        synchronized (this) {
+            if (lanes.get(r.id) != r) return;
+        }
         finish(r.id, false);
     }
 
@@ -290,14 +329,15 @@ final class FeatureTransactions {
         }
         if (r == null) return;
         cancelTimers(r);
-        if (id == FeatureId.FIND_MY_BUDS && r.value > 0 && !success && r.phase != Phase.SENT) {
+        if (id == FeatureId.FIND_MY_BUDS && r.value > 0 && !success
+                && (r.phase == Phase.WAIT || r.phase == Phase.QUEUED)) {
             stopFindAutoTimer();
             findRinging = false;
         }
         host.changed(r.id, r.value, false, success);
     }
 
-    private void cancelTimers(Request r) {
+    private synchronized void cancelTimers(Request r) {
         if (r.timer != null) host.cancel(r.timer);
         if (r.readback != null) host.cancel(r.readback);
     }

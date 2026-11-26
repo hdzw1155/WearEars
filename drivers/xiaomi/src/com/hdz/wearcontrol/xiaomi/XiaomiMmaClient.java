@@ -561,8 +561,18 @@ public class XiaomiMmaClient extends WireDriver {
         } else if (isConnected() && opcode == OP_SET_CONFIG) {
             if (serial == pendingFindSn) {
                 pendingFindSn = -1;
-                findRingingTarget = pendingFindTarget;
-                reportFeature(FeatureId.FIND_MY_BUDS, findRingingTarget);
+                if (pendingFindTarget > 0 && wearStatus > 0) {
+                    // 响铃 ACK 到达前耳机已入耳，立刻下发停响指令防耳内响铃
+                    pendingFindTarget = 0;
+                    findRingingTarget = 0;
+                    sendCommand(OP_SET_CONFIG, dataApp(),
+                            XiaomiProtocol.configTlv(CFG_FIND_BUDS, new byte[]{0x00, 0x03}));
+                    reportFeature(FeatureId.FIND_MY_BUDS, 0);
+                } else {
+                    findRingingTarget = pendingFindTarget;
+                    if (findRingingTarget == 0) pendingFindTarget = 0;
+                    reportFeature(FeatureId.FIND_MY_BUDS, findRingingTarget);
+                }
             }
             if (data.length > 0) parseConfig(data);
         } else if (isConnected() && opcode == OP_SET_TARGET_INFO && data.length > 0) {
@@ -584,7 +594,7 @@ public class XiaomiMmaClient extends WireDriver {
             XiaomiProtocol.ModelCaps byId = XiaomiProtocol.capsForVidPid(vp[0], vp[1]);
             if (byId != null && byId != modelCaps) {
                 modelCaps = byId;
-                profile = byId.profile;
+                if (isConnected()) profile = byId.profile;
                 noNoiseModel = byId.noNoise;
                 rebuildDescriptors();
                 if (isConnected()) confirmModelFeatures(true);
@@ -686,8 +696,9 @@ public class XiaomiMmaClient extends WireDriver {
             if (wear >= 0) {
                 wearStatus = wear;
                 reportFeature(FeatureId.WEAR_STATUS, wear);
-                if (wear > 0 && findRingingTarget > 0) {
+                if (wear > 0 && (findRingingTarget > 0 || pendingFindTarget > 0)) {
                     findRingingTarget = 0;
+                    pendingFindTarget = 0;
                     pendingFindSn = -1;
                     sendCommand(OP_SET_CONFIG, dataApp(),
                             XiaomiProtocol.configTlv(CFG_FIND_BUDS, new byte[]{0x00, 0x03}));

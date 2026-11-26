@@ -503,6 +503,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
         if (fanDeck != null) fanDeck.setActive(false);
         panels.pause();
         ui.removeCallbacksAndMessages(null);
+        tempSubTask = null;
         connecting = false;
         if (dot != null) dot.setBreathing(false);
         if (client != null) {
@@ -874,6 +875,9 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
     }
     @Override public int pendingFeature(FeatureId id) {
         return client != null ? client.pendingFeature(id) : -1;
+    }
+    @Override public boolean isFindBudsRinging() {
+        return client != null && client.isFindBudsRinging();
     }
     @Override public void onSpatial(Boolean state) { renderPanels(); }
     @Override public void onDeepX(Integer mode) { renderPanels(); }

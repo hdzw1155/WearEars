@@ -182,7 +182,8 @@ public class HuaweiSppClient extends WireDriver {
 
     @Override
     public void setSpatial(boolean enabled) {
-        writeFeature(FeatureId.SPATIAL_AUDIO, enabled ? 1 : 0, null);
+        // 华为 0x18 空间音频线值: 0=关闭, 2=固定, 1=头部追踪；开启默认选固定模式避免误开头部追踪
+        writeFeature(FeatureId.SPATIAL_AUDIO, enabled ? 2 : 0, null);
     }
 
     @Override
@@ -554,16 +555,18 @@ public class HuaweiSppClient extends WireDriver {
 
     private void publishWearStatus() {
         int mask = (wearLeft == 1 ? 1 : 0) | (wearRight == 1 ? 2 : 0);
+        int reported = (mask == 0 && (wearLeft < 0 || wearRight < 0)) ? -1 : mask;
         FeatureDescriptor spec = wearStatusSpec;
         if (spec == null) {
             spec = FeatureDescriptor.readOnly(FeatureId.WEAR_STATUS, VERIF_UNTESTED, false);
             wearStatusSpec = spec;
         }
-        confirmFeature(spec, mask);
+        confirmFeature(spec, reported);
     }
 
     /** 电量 TLV: 01 整机电量 / 02 左右仓电量 / 03 充电位(分部件或整机) */
     private void parseBattery(byte[] b, int off, int len) {
+        if (!HuaweiProtocol.tlvsValidAndOk(b, off, len)) return;
         int end = off + len;
         int p = off;
         int overall = -1;

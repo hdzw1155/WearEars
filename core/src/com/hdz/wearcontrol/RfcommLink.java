@@ -117,7 +117,7 @@ final class RfcommLink implements AutoCloseable {
         lost("RFCOMM closed");
     }
     void send(byte[] data, Runnable flushed) {
-        if (closed || failed.get()) return;
+        if (data == null || data.length == 0 || closed || failed.get()) return;
         final byte[] frame = data.clone();
         final OutputStream stream = output;
         if (stream == null || !writer.post(() -> {

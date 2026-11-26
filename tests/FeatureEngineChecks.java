@@ -274,8 +274,8 @@ public final class FeatureEngineChecks {
         check(flushedFlags[0], "port flush triggers bridged writeFeature callback");
 
         driver.writeFeature(FeatureId.EQUALIZER, 5, () -> flushedFlags[1] = true);
-        check(calls.contains("setEqualizer:5") && flushedFlags[1],
-                "bridged writeFeature invokes flushed directly when legacy override sends no frame");
+        check(calls.contains("setEqualizer:5") && !flushedFlags[1],
+                "bridged writeFeature does not fabricate flushed when legacy override sends no frame");
 
         try {
             driver.getClass().getDeclaredMethod("emitSamples").invoke(driver);

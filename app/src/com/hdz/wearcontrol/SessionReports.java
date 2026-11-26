@@ -12,7 +12,7 @@ final class SessionReports implements Controls.Listener {
         int caps = source.caps(), potential = source.potentialCaps(), evidence = source.verifLevel();
         SoundPreset[] presets = source.equalizerPresets();
         deliver(() -> {
-            if (hub.state.connected) {
+            if (hub.live()) {
                 hub.sync(caps, potential, presets, evidence);
                 task.run();
             }
@@ -46,6 +46,7 @@ final class SessionReports implements Controls.Listener {
             TileStore.noteOk(hub.app); TileStore.push(hub.app);
             for (ControlHub.UiListener l : hub.views()) l.onBattery(s.left, s.right, s.box, s.charge);
             hub.transactions.battery(request);
+            hub.onBurstDataReceived();
         });
     }
     public void onNoiseMode(int mode) {
@@ -59,6 +60,9 @@ final class SessionReports implements Controls.Listener {
             TileStore.push(hub.app);
             for (ControlHub.UiListener l : hub.views()) l.onNoiseMode(mode);
             hub.transactions.noise(request, mode, dispatched);
+            hub.featureTx.onFeatureReady(FeatureId.ANC_LEVEL);
+            hub.featureTx.onFeatureReady(FeatureId.TRANS_MODE);
+            hub.onBurstDataReceived();
         });
     }
     public void onSpatial(Boolean value) {
@@ -107,6 +111,7 @@ final class SessionReports implements Controls.Listener {
         data(() -> {
             hub.state.featureSpec(spec);
             for (ControlHub.UiListener l : hub.views()) l.onFeatureSpec(spec);
+            hub.featureTx.onFeatureReady(spec.id);
         });
     }
     public void onFeatureValue(FeatureId id, int value) {
@@ -122,6 +127,9 @@ final class SessionReports implements Controls.Listener {
                 else if (id == FeatureId.EQUALIZER) l.onEqualizer(value);
             }
             hub.featureTx.report(request, id, value, dispatched);
+            if (id == FeatureId.WEAR_STATUS) {
+                hub.featureTx.onFeatureReady(FeatureId.FIND_MY_BUDS);
+            }
         });
     }
     public void onFeatureText(FeatureId id, String text) {

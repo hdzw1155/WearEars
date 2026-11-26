@@ -104,8 +104,10 @@ final class WearEarsSpatialEffect {
 
     private boolean monitorsRegistered;
     private boolean lastEarbudHwSpatialOn;
+    private boolean labActive;
     private boolean playbackActive;
     private boolean userTriggeredAttach;
+    private boolean idleTimerScheduled;
     private boolean insertReverbSupported;
     private boolean virtualizerSupported;
     private boolean effectsProbed;
@@ -193,6 +195,13 @@ final class WearEarsSpatialEffect {
         sync(ctx, earbudHwSpatialOn);
     }
 
+    /** 360° 双耳 HRTF 实验室试听期间临时旁路本机 Layer 1 DSP，防止双重空间化叠加。 */
+    synchronized void setLabActive(Context ctx, boolean active) {
+        if (labActive == active) return;
+        labActive = active;
+        sync(ctx, lastEarbudHwSpatialOn);
+    }
+
     /**
      * 同步 Layer 3 防叠加仲裁与 Layer 1 本机 DSP 挂载状态（幂等，无多余重建）。
      */
@@ -200,7 +209,7 @@ final class WearEarsSpatialEffect {
         Context c = ctx != null ? ctx : app;
         lastEarbudHwSpatialOn = earbudHwSpatialOn;
 
-        if (!AppPrefs.localSpatialEnabled(c)) {
+        if (!AppPrefs.localSpatialEnabled(c) || labActive) {
             userTriggeredAttach = false;
             cancelIdleTimer();
             unregisterMonitors();
@@ -237,23 +246,29 @@ final class WearEarsSpatialEffect {
                 cancelIdleTimer();
                 userTriggeredAttach = false;
                 attachOrUpdateLocked(activeSessionId, scene, false);
+                if (currentStatus == Status.ACTIVE_SESSION) return;
+                // 僵尸或已关闭会话挂载失败：剔除失效 sessionId，允许继续尝试全局回退
+                openSessions.remove(activeSessionId);
             } else if (userTriggeredAttach) {
                 userTriggeredAttach = false;
                 attachOrUpdateLocked(activeSessionId, scene, false);
                 if (currentStatus == Status.ACTIVE_SESSION) {
-                    scheduleIdleTimer();
+                    scheduleIdleTimerIfNeeded();
+                    return;
                 }
+                openSessions.remove(activeSessionId);
             } else if (dynamics != null && attachedSessionId == activeSessionId) {
                 attachOrUpdateLocked(activeSessionId, scene, false);
-                scheduleIdleTimer();
+                scheduleIdleTimerIfNeeded();
+                return;
             } else {
                 cancelIdleTimer();
                 releaseEffectsLocked();
                 if (currentStatus != Status.UNSUPPORTED) {
                     setStatusLocked(Status.IDLE);
                 }
+                return;
             }
-            return;
         }
 
         if (!AppPrefs.localSpatialGlobalFallback(c)) {
@@ -277,7 +292,7 @@ final class WearEarsSpatialEffect {
             }
         } else if (dynamics != null && attachedSessionId == 0) {
             attachOrUpdateLocked(0, scene, true);
-            scheduleIdleTimer();
+            scheduleIdleTimerIfNeeded();
         } else {
             cancelIdleTimer();
             releaseEffectsLocked();
@@ -302,6 +317,10 @@ final class WearEarsSpatialEffect {
             public void run() {
                 synchronized (WearEarsSpatialEffect.this) {
                     openSessions.remove(sessionId);
+                    while (openSessions.size() >= 16) {
+                        Integer oldest = openSessions.keySet().iterator().next();
+                        openSessions.remove(oldest);
+                    }
                     openSessions.put(sessionId, pkg == null ? "" : pkg);
                     userTriggeredAttach = true;
                     sync(app, lastEarbudHwSpatialOn);
@@ -347,6 +366,7 @@ final class WearEarsSpatialEffect {
     }
 
     private synchronized void onIdleTimeout() {
+        idleTimerScheduled = false;
         refreshPlaybackStateLocked();
         if (playbackActive) {
             return;
@@ -772,10 +792,18 @@ final class WearEarsSpatialEffect {
 
     private void scheduleIdleTimer() {
         mainHandler.removeCallbacks(idleReleaseTask);
+        idleTimerScheduled = true;
         mainHandler.postDelayed(idleReleaseTask, IDLE_RELEASE_MS);
     }
 
+    private void scheduleIdleTimerIfNeeded() {
+        if (!idleTimerScheduled) {
+            scheduleIdleTimer();
+        }
+    }
+
     private void cancelIdleTimer() {
+        idleTimerScheduled = false;
         mainHandler.removeCallbacks(idleReleaseTask);
     }
 

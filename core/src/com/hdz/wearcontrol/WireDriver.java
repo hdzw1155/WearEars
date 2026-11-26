@@ -111,7 +111,6 @@ public abstract class WireDriver implements Controls {
             try {
                 if (id == FeatureId.SPATIAL_AUDIO) setSpatial(value != 0);
                 else setEqualizer(value);
-                if (!legacyBridgeDispatched && flushed != null && open) flushed.run();
             } finally {
                 legacyBridgeFlushed = null;
                 legacyBridgeDispatched = false;

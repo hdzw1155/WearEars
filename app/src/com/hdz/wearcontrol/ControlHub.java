@@ -32,9 +32,11 @@ final class ControlHub implements ConnectionOwner.Host, Transactions.Host, Featu
     final ConnectionOwner links;
     private final ArrayList<UiListener> observers = new ArrayList<>();
     private final Runnable poll = this::poll;
-    private static final long BURST_INITIAL_IDLE_MS = 3800L;
-    private static final long BURST_ACTION_IDLE_MS = 2500L;
+    private static final long BURST_INITIAL_IDLE_MS = 1800L;
+    private static final long BURST_SYNCED_IDLE_MS = 900L;
+    private static final long BURST_ACTION_IDLE_MS = 450L;
     private final Runnable burstPark = this::maybeParkForBurst;
+    private Runnable deferredReset;
     private String tileAddress;
     private int evidence = Controls.VERIF_UNTESTED;
     ControlHub(Context app) { this.app = app; links = new ConnectionOwner(app, main, this); }
@@ -68,10 +70,42 @@ final class ControlHub implements ConnectionOwner.Host, Transactions.Host, Featu
     }
     void deviceChanged() {
         TileLedger.invalidate(app);
-        stopFindBuds();
+        cancelDeferredReset();
         main.removeCallbacks(burstPark);
+        boolean needFlushStop = featureTx.isFindBudsRinging() && live();
+        stopFindBuds();
+        if (needFlushStop) {
+            // 给 FIND_MY_BUDS=0 停响帧留出短时写出窗口，避免立刻 disconnect() 把停响帧静默丢弃
+            deferredReset = () -> {
+                deferredReset = null;
+                finishDeviceReset();
+            };
+            main.postDelayed(deferredReset, 320L);
+            return;
+        }
+        finishDeviceReset();
+    }
+    private void finishDeviceReset() {
         transactions.finish(false); featureTx.linkEnded(); links.reset(); links.releaseIfIdle();
         if (foreground()) links.manual();
+    }
+    private void cancelDeferredReset() {
+        if (deferredReset != null) {
+            main.removeCallbacks(deferredReset);
+            deferredReset = null;
+        }
+    }
+    boolean isFindBudsRinging() {
+        return featureTx.isFindBudsRinging();
+    }
+    void onBurstDataReceived() {
+        if (!isBurstMode() || !links.activePrivateLink()) return;
+        if (transactions.busy() || featureTx.busy() || featureTx.isFindBudsRinging()) return;
+        scheduleBurstPark(BURST_SYNCED_IDLE_MS);
+    }
+    @Override public boolean canSoftParkOnDrop() {
+        return isBurstMode() && state.hasSyncedData()
+                && !transactions.busy() && !featureTx.busy() && !featureTx.isFindBudsRinging();
     }
     void connectionModeChanged() {
         main.removeCallbacks(burstPark);
@@ -116,10 +150,12 @@ final class ControlHub implements ConnectionOwner.Host, Transactions.Host, Featu
     public boolean foreground() { return !observers.isEmpty(); }
     public String expectedAddress() { return tileAddress; }
     public Controls.Listener bind(TwsClient source, String address, String name, boolean wakingFromPark) {
-        if (wakingFromPark && state.parked && address != null && address.equals(state.address)) {
+        if (wakingFromPark && state.parked && address != null && address.equalsIgnoreCase(state.address)) {
             state.resumeParked(address, name);
+            featureTx.resetWearStatus();
         } else {
             state.begin(address, name, source.caps(), source.potentialCaps());
+            featureTx.resetWearStatus();
         }
         state.limitation = source.privateLink() ? "" : "standard";
         evidence = source.verifLevel();
@@ -150,7 +186,8 @@ final class ControlHub implements ConnectionOwner.Host, Transactions.Host, Featu
     @Override public void parked() {
         main.removeCallbacks(poll);
         main.removeCallbacks(burstPark);
-        state.parked = true;
+        state.enterParked();
+        featureTx.resetWearStatus();
         for (UiListener l : views()) l.onConnectionState(R.string.status_parked, 0);
     }
     private void scheduleBurstPark(long delayMs) {
@@ -246,6 +283,10 @@ final class ControlHub implements ConnectionOwner.Host, Transactions.Host, Featu
             return;
         }
         featureTx.stopFindBuds();
+        if (featureTx.busy(FeatureId.FIND_MY_BUDS) && !live()) {
+            if (links.isParked()) links.wakeFromPark();
+            else links.manual();
+        }
     }
     int pendingFeature(FeatureId id) {
         return id == FeatureId.NOISE_MODE ? transactions.pending() : featureTx.pending(id);
@@ -258,6 +299,15 @@ final class ControlHub implements ConnectionOwner.Host, Transactions.Host, Featu
             scheduleBurstPark(BURST_ACTION_IDLE_MS);
         }
     }
+    @Override public boolean featureReady(FeatureId id) {
+        if (!live() || id == null) return false;
+        if (id == FeatureId.FIND_MY_BUDS && featureTx.pending(FeatureId.FIND_MY_BUDS) > 0
+                && state.featureSpec(FeatureId.WEAR_STATUS) != null
+                && state.wearStatus == DeviceState.WEAR_UNKNOWN) {
+            return false;
+        }
+        return state.isFeatureConfirmedLive(id);
+    }
     @Override public boolean writable(FeatureId id, int value) {
         if (id == null || !isConnected()) return false;
         FeatureDescriptor spec = state.featureSpec(id);
@@ -266,8 +316,10 @@ final class ControlHub implements ConnectionOwner.Host, Transactions.Host, Featu
             if (id == FeatureId.FIND_MY_BUDS && value > 0
                     && (state.isAnyBudInEar() || state.isTargetInEar(value))) return false;
             if ((id == FeatureId.SPATIAL_SCENE || id == FeatureId.HEAD_TRACKING)
-                    && state.featureSpec(FeatureId.SPATIAL_AUDIO) != null
-                    && !Integer.valueOf(1).equals(state.featureValue(FeatureId.SPATIAL_AUDIO))) return false;
+                    && state.featureSpec(FeatureId.SPATIAL_AUDIO) != null) {
+                Integer sp = state.featureValue(FeatureId.SPATIAL_AUDIO);
+                if (sp == null || sp.intValue() == 0) return false;
+            }
             return true;
         }
         if (id == FeatureId.SPATIAL_AUDIO) {
@@ -316,7 +368,13 @@ final class ControlHub implements ConnectionOwner.Host, Transactions.Host, Featu
             if (!queriedEqualizer && (s.potentialCaps() & (Controls.CAP_DEEPX | Controls.CAP_EQUALIZER)) != 0) s.queryEqualizer();
         });
     }
-    private void poll() { if (foreground() && live() && !isBurstMode()) { read(true, true); schedulePoll(); } }
+    private void poll() {
+        if (foreground() && live() && !isBurstMode()) {
+            read(true, true);
+            if (state.featureSpec(FeatureId.WEAR_STATUS) != null) read(FeatureId.WEAR_STATUS);
+            schedulePoll();
+        }
+    }
     private void schedulePoll() {
         main.removeCallbacks(poll);
         if (foreground() && live() && !isBurstMode()) main.postDelayed(poll, 60000);

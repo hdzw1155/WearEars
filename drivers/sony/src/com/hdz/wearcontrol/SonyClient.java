@@ -173,6 +173,7 @@ final class SonyClient extends WireDriver {
                 if (q.length > 0 && (q[0] & 255) == replaceOpcode
                         && (!matchSub || (q.length >= 2 && q[1] == command[1]))) {
                     iterator.remove();
+                    removePendingWrites(q);
                 }
             }
         }
@@ -181,9 +182,24 @@ final class SonyClient extends WireDriver {
             if (readback != null) schedule(readback, 700);
             return;
         }
-        byte[] target = Arrays.equals(sending, command) ? sending : command;
+        boolean alreadySending = Arrays.equals(sending, command);
+        boolean alreadyQueued = false;
+        for (byte[] queued : commands) {
+            if (Arrays.equals(queued, command)) { alreadyQueued = true; break; }
+        }
+        if (!alreadySending && !alreadyQueued && commands.size() >= 24) return;
+        byte[] target = alreadySending ? sending : command;
         pendingWrites.add(new PendingWrite(target, flushed, readback));
         enqueue(command);
+    }
+
+    private void removePendingWrites(byte[] evicted) {
+        for (Iterator<PendingWrite> it = pendingWrites.iterator(); it.hasNext(); ) {
+            PendingWrite pw = it.next();
+            if (pw.frame == evicted || Arrays.equals(pw.frame, evicted)) {
+                it.remove();
+            }
+        }
     }
 
     private void publishInfoText() {
