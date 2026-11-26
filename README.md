@@ -4,19 +4,35 @@
 
 [![Release](https://img.shields.io/github/v/release/hdzw1155/WearEars)](https://github.com/hdzw1155/WearEars/releases)
 [![License](https://img.shields.io/github/license/hdzw1155/WearEars)](https://github.com/hdzw1155/WearEars/blob/main/LICENSE)
-![Platform](https://img.shields.io/badge/platform-Wear%20OS%203%2B%20%7C%20Android%2011%2B-3DDC84?logo=android&logoColor=white)
-![Version](https://img.shields.io/badge/version-0.5.0--exp--B-blue)
+![Platform](https://img.shields.io/badge/platform-Wear%20OS%203%2B%20%7C%20Android%2011%2B%20%7C%20HUD%20%7C%20TV-3DDC84?logo=android&logoColor=white)
+![Version](https://img.shields.io/badge/version-0.5.0--exp--C-blue)
 ![Data collection](https://img.shields.io/badge/data_collection-none-success)
 
-在 **Wear OS 3+ 手表**和 **Android 11+ 手机**上跨品牌查看 TWS 蓝牙耳机电量、切换降噪与音效的开源工具（应用 ID：`com.hdz.wearcontrol`，当前版本：`0.5.0-exp-B` / `versionCode 17`，最低 API 30，目标 API 34）。纯本地蓝牙通信，不联网、不收集也不上传任何数据。
+在**Wear OS 3+手表、Android 11+手机、智能眼镜/XR头显与Android TV**上跨品牌查看TWS蓝牙耳机电量、切换降噪与音效的开源工具（应用ID：`com.hdz.wearcontrol`，当前版本：`0.5.0-exp-C` / `versionCode 18`，最低API 30，目标API 34）。仅走本地蓝牙与私有局域网通信，不连公网、不依赖云端、不收集也不上传任何数据。
 
-> ⚠️ **风险提示**：本项目部分品牌协议来自社区逆向资料，并包含大量 AI 辅助编写的代码。私有蓝牙指令未经原厂授权，切换实验性功能或响铃寻机时存在突发爆音、音量突变、固件异常甚至损坏设备的风险。**首次试用新机型或点击标有「实验」的功能前，请务必摘下耳机并调低系统音量。**
+> ⚠️ **风险提示**：本项目部分品牌协议来自社区逆向资料，并包含大量AI辅助编写的代码。私有蓝牙指令未经原厂授权，切换实验性功能或响铃寻机时存在突发爆音、音量突变、固件异常甚至损坏设备的风险。**首次试用新机型或点击标有「实验」的功能前，请务必摘下耳机并调低系统音量。**
 
 ---
 
-## 0.5.0-exp-B 做了什么更新
+## 0.5.0-exp-C 做了什么更新（多端·本地互联实验版）
 
-相比早期的 `0.4.x` 版本，0.5.0系列重构了底层通信、功能框架、界面与手机端兼容性；本次 `0.5.0-exp-B`（`versionCode 17`）进一步落地手机端快撤短连接与红队审计修复：
+在 `0.5.0-exp-B` 的红队加固与手机快撤短连接基础上，`0.5.0-exp-C`（`versionCode 18`）面向 **WearEars Everywhere** 跨终端方向新增三套本地协同与多端显示能力：
+
+1. **多端形态引擎与瑞士国际主义纯黑双栏HUD（智能眼镜/XR/Android TV/蓝牙戒指）**
+   - `HostFormLogic`（纯Java 11零Android依赖）与 `DeviceForm` 统一识别圆表、手机与非触屏横屏HUD（含TV模式与 `<=1440px` 无触屏横屏微显示），设置页「终端显示形态」支持手动在 `自动/手表/手机/眼镜·HUD·大屏` 间切换。
+   - **纯黑光波导双栏布局**：HUD形态采用 `#000000` 纯黑底色（零反光不遮现实视野）、0dp直角深炭卡片与1dp细线网格，左38%固定展示状态与电量、右62%为可滚动控制栏，聚焦态使用2dp克莱因亮蓝（`#3B82F6`）描边，3米外电视或光波导上一眼看清焦点位置。
+   - **非触屏与外设按键适配**：清单声明 `touchscreen`/`leanback` 非必需并开放 `LEANBACK_LAUNCHER` 桌面入口；支持镜腿滑动、电视遥控器、VR手柄与蓝牙智能戒指的DPAD焦点导航及快捷键（`1/2/3` 切降噪/通透/关、`R/Menu` 刷新、`MediaNext/ChannelUp` 循环切降噪、降噪条聚焦时左右键步进）。
+2. **多端本地协同（Local LAN Mesh，零云端/纯局域网）**
+   - 同局域网内由一台已连耳机的手机/手表开启「主机共享」，另一台眼镜/XR/TV/备用机切为「从机遥控」，免去多端争抢蓝牙RFCOMM控制通道的冲突。
+   - **安全与省电红线**：默认关闭（零线程、零Socket、切后台立即释放）；严格限制仅私有局域网IP通信，拒绝公网地址；UDP 19846局域网发现信标绝不包含配对码；TCP 19845连接采用4位动态数字PIN常量时间校验（单连接错3次断开、上限4台客户端、单帧1024字节防OOM）；协议编解码与主机执行双端硬拦截 `FIND_MY_BUDS`，严禁跨设备远程触发寻机响铃。
+3. **本机应用联动（Local Intent Bridge）**
+   - 开放 `LocalControlReceiver`（`ACTION_SET_NOISE`、`ACTION_CYCLE_NOISE`、`ACTION_REFRESH`），便于Tasker、MacroDroid或蓝牙智能戒指辅助App一键切降噪。
+   - 默认关闭，须在设置页「本机应用联动」手动开启；执行前强制校验「已同意当前版本免责声明+开关已开启+动作白名单」三重门禁，永不响应远程寻机响铃或调大音量指令。
+4. **WearEars Everywhere跨终端路线图**
+   - 已落地：Wear OS手表（含4套皮肤与表冠/磁贴）→Android手机（480dp居中列+快撤短连接）→智能眼镜/XR/Android TV纯黑双栏HUD+纯局域网多端协同+本机Intent联动。
+   - 后续演进：桌面端（Windows/macOS/Linux）与多品牌驱动真机持续验收。
+
+### 延续自 0.5.0-exp-B 的核心底座
 
 1. **手机端「900ms/450ms快撤+软待命」按需短连接（解决同品牌手机秒踢断连）**
    - 同品牌手机（ColorOS/OriginOS/HyperOS/HarmonyOS）的系统耳机服务优先级更高，往往在1~2秒内踢掉第三方App的RFCOMM通道，导致界面在「已连接↔未连接」之间反复闪跳。
@@ -90,15 +106,15 @@
 
 ## 🚀 安装与使用
 
-手表和手机共用同一个 APK（请前往 [Releases](https://github.com/hdzw1155/WearEars/releases) 下载，优先选择带版本号、以 `.apk` 结尾的文件，如 `WearEars-0.5.0-exp-B.apk`）：
+手表、手机、智能眼镜、XR头显与Android TV共用同一个APK（请前往 [Releases](https://github.com/hdzw1155/WearEars/releases) 下载，优先选择带版本号、以 `.apk` 结尾的文件，如 `WearEars-0.5.0-exp-C.apk`）：
 
-1. **先配对耳机**：在手表或手机的系统蓝牙里正常连上耳机。
+1. **先配对耳机**：在手表或手机的系统蓝牙里正常连上耳机（若使用局域网「从机遥控」模式，仅需在主机端连耳机）。
 2. **安装 APK**：
-   - **Android 手机**：直接点击 APK 安装。
-   - **Wear OS 手表**：用手机上的 **WearOS 工具箱** / 水滴助手 / Bugjaeger 通过无线调试安装，或电脑执行 `adb install -r WearEars-0.5.0-exp-B.apk`。
+   - **Android 手机 / 智能眼镜 / XR / TV**：直接安装或通过 `adb install -r WearEars-0.5.0-exp-C.apk` 侧载（无触屏设备桌面可见）。
+   - **Wear OS 手表**：用手机上的 **WearOS 工具箱** / 水滴助手 / Bugjaeger 通过无线调试安装，或电脑执行 `adb install -r WearEars-0.5.0-exp-C.apk`。
    - **注意两个常见安装坑**：
      1. 反复下载同名包时，手机或工具箱可能会把文件重命名为 `.apk.1`，ADB 会直接拒装——确保文件名以 `.apk` 结尾。
-     2. 官方 Release 发布的 `WearEars-0.5.0-exp-B.apk` 延续了 `v0.4.x` / `v0.5.0-exp` 签名，可直接覆盖升级；如果设备上装着自行编译的本地调试包并提示签名冲突，请先卸载旧版再装新版。
+     2. 官方 Release 发布的 `WearEars-0.5.0-exp-C.apk` 延续了 `v0.4.x` / `v0.5.0-exp` 签名，可直接覆盖升级；如果设备上装着自行编译的本地调试包并提示签名冲突，请先卸载旧版再装新版。
 3. **首次启动与磁贴**：首次打开或跨 `versionCode` 升级需确认免责声明；手表端可在磁贴列表添加「耳机控制」磁贴。
 
 ---
@@ -113,7 +129,7 @@
 # 运行纯核心规则单测
 py -X utf8 build.py core
 
-# 运行全部 16 套 JVM / 平台适配层测试（含 234 组中英文文案对等检查）
+# 运行全部 17 套 JVM / 平台适配层测试（含 278 组中英文文案对等检查）
 py -X utf8 build.py test
 
 # 全量测试 + 构建 APK + zipalign + apksigner 签名校验（产物：build/WearEars.apk）

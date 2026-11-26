@@ -256,4 +256,53 @@
     <string name="settings_conn_mode">手机连接策略</string>
     <string name="settings_conn_burst">按需短连接</string>
     <string name="settings_conn_keep">持续长连接</string>
+
+    <!-- 多端形态 / 局域网本地协同 / 本机应用联动 -->
+    <string name="settings_host_form">终端显示形态</string>
+    <string name="settings_form_auto">自动</string>
+    <string name="settings_form_watch">手表</string>
+    <string name="settings_form_phone">手机</string>
+    <string name="settings_form_hud">眼镜·HUD·大屏</string>
+
+    <string name="settings_mesh_title">多端本地协同（局域网）</string>
+    <string name="settings_mesh_off">关闭</string>
+    <string name="settings_mesh_host">主机共享</string>
+    <string name="settings_mesh_client">从机遥控</string>
+    <string name="settings_mesh_host_info">本机 %1$s:%2$d · 配对码 %3$s</string>
+    <string name="settings_mesh_host_starting">等待启动 · 配对码 %1$s</string>
+    <string name="settings_mesh_reset_pin">重置配对码</string>
+    <string name="settings_mesh_client_configured">已配主机 %1$s:%2$d</string>
+    <string name="settings_mesh_client_unconfigured">未配置局域网主机</string>
+    <string name="settings_mesh_pick_host">扫描局域网主机 / 手动连接</string>
+    <string name="settings_mesh_scan_title">扫描局域网主机</string>
+    <string name="settings_mesh_scanning">正在监听局域网广播（UDP 19846）…</string>
+    <string name="settings_mesh_manual_btn">手动输入</string>
+    <string name="settings_mesh_manual_title">手动连接局域网主机</string>
+    <string name="settings_mesh_ip_hint">主机局域网 IP（如 192.168.1.8）</string>
+    <string name="settings_mesh_port_hint">端口（默认 19845）</string>
+    <string name="settings_mesh_pin_hint">4 位数字配对码</string>
+    <string name="settings_mesh_pin_title">输入 4 位配对码</string>
+    <string name="settings_mesh_pin_for">主机：%1$s（%2$s:%3$d）</string>
+    <string name="settings_mesh_save">保存</string>
+    <string name="settings_mesh_invalid_ip">仅允许私有局域网 IP</string>
+    <string name="settings_mesh_invalid_port">端口需在 1–65535 之间</string>
+    <string name="settings_mesh_invalid_pin">请输入 4 位数字配对码</string>
+    <string name="settings_mesh_peer_connected">已连耳机</string>
+    <string name="settings_mesh_peer_idle">待机</string>
+
+    <string name="settings_intent_bridge">本机应用联动</string>
+    <string name="settings_intent_bridge_on">已开启（允许 Tasker / 戒指广播）</string>
+    <string name="settings_intent_bridge_off">已关闭（默认）</string>
+
+    <string name="status_mesh_unconfigured">未配置主机</string>
+    <string name="sub_mesh_open_settings">请在设置页选择局域网主机</string>
+    <string name="cta_open_settings">前往设置</string>
+    <string name="status_mesh_connecting">连接局域网主机</string>
+    <string name="status_mesh_connected">局域网已同步</string>
+    <string name="status_mesh_disconnected">局域网已断开</string>
+    <string name="chip_mesh_host">共享 %1$s · PIN %2$s</string>
+    <string name="chip_mesh_client">局域网遥控</string>
+    <string name="sub_mesh_host_brief">LAN %1$s:%2$d · PIN %3$s</string>
+    <string name="sub_mesh_host_clients">LAN %1$s:%2$d · PIN %3$s · %4$d 台</string>
+    <string name="sub_mesh_error">局域网错误：%1$s</string>
 </resources>

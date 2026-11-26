@@ -93,7 +93,7 @@ def apk(tmp, classes, names):
     run(BT / "aapt2", "compile", "--dir", ROOT / "app/res", "-o", res)
     run(BT / "aapt2", "link", "-o", unsigned, "-I", ANDROID, "--manifest", ROOT / "app/AndroidManifest.xml",
         "--java", gen, "--min-sdk-version", "30", "--target-sdk-version", "34",
-        "--version-code", "17", "--version-name", "0.5.0-exp-B", "--auto-add-overlay", res)
+        "--version-code", "18", "--version-name", "0.5.0-exp-C", "--auto-add-overlay", res)
     javac(tmp, classes, [*(ROOT/"app/src").rglob("*.java"), *gen.rglob("*.java")], [ANDROID, *jars])
     code = tmp / "classes.jar"
     run(JDK / "jar", "cf", code, "-C", classes, ".")

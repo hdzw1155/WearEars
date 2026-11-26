@@ -10,8 +10,14 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- 本机单端空间音频 DSP (AudioEffect / DynamicsProcessing) 所需普通权限 -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- 纯局域网多端本地协同所需权限（仅限私有局域网，不联网） -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
     <uses-feature android:name="android.hardware.type.watch" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.software.leanback" android:required="false" />
 
     <application android:allowBackup="false"
         android:label="@string/app_name"
@@ -25,6 +31,7 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
 
@@ -46,6 +53,15 @@
                 <action android:name="android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED" />
                 <action android:name="android.bluetooth.headset.profile.action.CONNECTION_STATE_CHANGED" />
                 <action android:name="android.bluetooth.action.LE_AUDIO_CONNECTION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 同机本地软件联动接收器（默认关闭，内部受免责与设置开关双重门控） -->
+        <receiver android:name=".LocalControlReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="com.hdz.wearcontrol.ACTION_SET_NOISE" />
+                <action android:name="com.hdz.wearcontrol.ACTION_CYCLE_NOISE" />
+                <action android:name="com.hdz.wearcontrol.ACTION_REFRESH" />
             </intent-filter>
         </receiver>
 

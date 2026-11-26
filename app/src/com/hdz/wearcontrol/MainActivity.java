@@ -16,9 +16,13 @@ import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowInsets;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 主界面: 状态头 + 电量环卡 + 噪声控制卡 + 开发者设置(隐藏) + 折叠的免责声明.
@@ -72,12 +76,111 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
     private TextView chip;
     private View ctaReconnect;
 
-    /** 当前界面风格/语言: onResume 里与之对比, 变了就 recreate 立即生效 */
+    /** 当前界面风格/语言/形态/协同模式: onResume 里与之对比, 变了就 recreate 立即生效 */
     private int curUiStyle;
     private String curLang;
+    private int curHostForm;
+    private int curMeshMode;
+    private boolean hudMode;
+    private View hudRoot;
     private boolean supreme;
     private boolean neo;
     private boolean lightUi;
+
+    // ---- 局域网多端本地协同状态（仅前台活动期运行，切后台 stopAll 零耗电） ----
+    private String meshHostIp = "";
+    private int meshHostPort = 0;
+    private String meshHostPin = "";
+    private int meshHostClients = 0;
+    private boolean meshClientConnected = false;
+    private String meshRemoteHostName = "";
+    private final DeviceState remoteState = new DeviceState();
+
+    private final SwissHudHelper.HudKeyActions hudKeyActions = new SwissHudHelper.HudKeyActions() {
+        @Override public void onSetNoiseMode(int mode) {
+            setMode(mode);
+        }
+
+        @Override public void onRefresh() {
+            onRefreshTapped();
+        }
+
+        @Override public void onCycleNoiseMode() {
+            cycleNoiseMode();
+        }
+
+        @Override public boolean onStepFocusedControl(int delta) {
+            View focused = getCurrentFocus();
+            if (focused instanceof NoiseSegmentedView) {
+                stepNoiseSegmented(delta);
+                return true;
+            }
+            return false;
+        }
+    };
+
+    private final LocalMeshManager.HostStatusListener hostStatusListener = new LocalMeshManager.HostStatusListener() {
+        @Override public void onHostStarted(String ip, int port, String pin) {
+            if (!resumed || curMeshMode != LocalMeshManager.MODE_HOST) return;
+            meshHostIp = ip == null ? "" : ip;
+            meshHostPort = port;
+            meshHostPin = pin == null ? "" : pin;
+            meshHostClients = LocalMeshManager.get(MainActivity.this).clientCount();
+            updateHostMeshBanner();
+            ControlHub.get(MainActivity.this).pushMeshStateIfHosting();
+        }
+
+        @Override public void onHostClientCountChanged(int count) {
+            if (!resumed || curMeshMode != LocalMeshManager.MODE_HOST) return;
+            meshHostClients = count;
+            updateHostMeshBanner();
+        }
+
+        @Override public void onHostStopped() {
+            meshHostPort = 0;
+            meshHostClients = 0;
+        }
+
+        @Override public void onHostError(String reason) {
+            if (!resumed || curMeshMode != LocalMeshManager.MODE_HOST) return;
+            showTempSub(getString(R.string.sub_mesh_error, reason == null ? "" : reason), 3000L);
+        }
+    };
+
+    private final LocalMeshManager.ClientListener meshClientListener = new LocalMeshManager.ClientListener() {
+        @Override public void onClientConnected(String hostName) {
+            if (!resumed || curMeshMode != LocalMeshManager.MODE_CLIENT) return;
+            meshClientConnected = true;
+            meshRemoteHostName = hostName == null ? "" : hostName;
+            setChip(getString(R.string.chip_mesh_client));
+            setState(R.string.status_mesh_connected, colOk(), false, false, meshRemoteHostName);
+        }
+
+        @Override public void onClientState(LocalMeshProtocol.StateSnapshot snapshot) {
+            if (!resumed || curMeshMode != LocalMeshManager.MODE_CLIENT) return;
+            applyRemoteSnapshot(snapshot);
+        }
+
+        @Override public void onClientDisconnected(String reason) {
+            if (!resumed || curMeshMode != LocalMeshManager.MODE_CLIENT) return;
+            meshClientConnected = false;
+            remoteState.disconnect();
+            renderPanels();
+            setChip(getString(R.string.chip_mesh_client));
+            setState(R.string.status_mesh_disconnected, colIdle(), true, false,
+                    reason == null ? "" : reason);
+        }
+
+        @Override public void onClientError(String reason) {
+            if (!resumed || curMeshMode != LocalMeshManager.MODE_CLIENT) return;
+            meshClientConnected = false;
+            remoteState.disconnect();
+            renderPanels();
+            setChip(getString(R.string.chip_mesh_client));
+            setState(R.string.status_mesh_disconnected, colWarn(), false, false,
+                    getString(R.string.sub_mesh_error, reason == null ? "" : reason));
+        }
+    };
 
     private View disclaimerRow;
 
@@ -106,24 +209,39 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        LocalControlReceiver.setBridgeEnabled(AppPrefs.localIntentBridge(this));
         curUiStyle = AppPrefs.uiStyle(this);
         curLang = AppPrefs.lang(this);
+        int formOverride = AppPrefs.hostFormOverride(this);
+        curHostForm = DeviceForm.resolveForm(this, formOverride);
+        curMeshMode = AppPrefs.meshMode(this);
+        hudMode = (curHostForm == HostFormLogic.FORM_HUD);
 
-        supreme = curUiStyle == AppPrefs.STYLE_SUPREME;
-        neo = AppPrefs.isNeo(curUiStyle);
-        lightUi = supreme || NeoStyle.light(curUiStyle);
-        stateColor = colIdle();
-        if (neo) {
-            setTheme(NeoStyle.theme(curUiStyle));
+        if (hudMode) {
+            // 瑞士国际主义纯黑双栏 HUD 固定加载 Neo 布局（纯黑光波导底色，不走至上圆表扇形页）
+            supreme = false;
+            neo = true;
+            lightUi = false;
+            stateColor = colIdle();
+            setTheme(NeoStyle.theme(AppPrefs.STYLE_NEO_NEW));
+            setContentView(R.layout.activity_main_neo);
+        } else {
+            supreme = curUiStyle == AppPrefs.STYLE_SUPREME;
+            neo = AppPrefs.isNeo(curUiStyle);
+            lightUi = supreme || NeoStyle.light(curUiStyle);
+            stateColor = colIdle();
+            if (neo) {
+                setTheme(NeoStyle.theme(curUiStyle));
+            }
+            setContentView(supreme ? R.layout.activity_main_supreme
+                    : R.layout.activity_main_neo);
         }
-        setContentView(supreme ? R.layout.activity_main_supreme
-                : R.layout.activity_main_neo);
         applyPhoneWindowChrome();
 
         scrollView = (AppScrollView) findViewById(R.id.scroll);
         indicator = (ArcIndicatorView) findViewById(R.id.indicator);
-        DeviceForm.styleScrollContainer(this, scrollView, indicator);
-        if (indicator != null && scrollView != null && DeviceForm.isWatch(this)) {
+        DeviceForm.styleScrollContainer(this, scrollView, indicator, formOverride);
+        if (indicator != null && scrollView != null && curHostForm == HostFormLogic.FORM_WATCH) {
             indicator.attachTo(scrollView);
         }
         fanDeck = (SuprematistFanDeckView) findViewById(R.id.fan_deck);
@@ -142,7 +260,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
             if (supSpatialPage != null) fanDeck.setPageEnabled(supSpatialPage, false);
             if (supExtrasPage != null) fanDeck.setPageEnabled(supExtrasPage, false);
         }
-        final boolean isPhone = DeviceForm.isPhone(this);
+        final boolean isPhone = curHostForm == HostFormLogic.FORM_PHONE;
         if (pageRail != null && isPhone) {
             pageRail.setVisibility(View.GONE);
         }
@@ -284,8 +402,86 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
         panels = new MainPanels(this, this);
         renderPanels();
         wireListeners();
-        applyPhoneInsets();
+        if (hudMode) {
+            setupSwissHudSplit();
+        } else {
+            applyPhoneInsets();
+        }
         entryAnimation();
+    }
+
+    private void setupSwissHudSplit() {
+        View colView = findViewById(R.id.neo_content_column);
+        if (!(colView instanceof LinearLayout) || scrollView == null) {
+            return;
+        }
+        ViewGroup hostRoot = scrollView.getParent() instanceof ViewGroup
+                ? (ViewGroup) scrollView.getParent() : null;
+        if (hostRoot == null) {
+            return;
+        }
+
+        LinearLayout column = (LinearLayout) colView;
+        List<View> children = new ArrayList<>(column.getChildCount());
+        for (int i = 0; i < column.getChildCount(); i++) {
+            children.add(column.getChildAt(i));
+        }
+        column.removeAllViews();
+
+        LinearLayout statusPane = new LinearLayout(this);
+        statusPane.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout controlsPane = new LinearLayout(this);
+        controlsPane.setOrientation(LinearLayout.VERTICAL);
+
+        boolean movedToControls = false;
+        for (View child : children) {
+            if (!movedToControls) {
+                statusPane.addView(child);
+                if (child.getId() == R.id.neo_battery_card) {
+                    movedToControls = true;
+                }
+            } else {
+                controlsPane.addView(child);
+            }
+        }
+
+        LinearLayout split = SwissHudHelper.wrapAsSwissHudSplit(this, statusPane, controlsPane);
+        hostRoot.removeAllViews();
+        hostRoot.setBackgroundColor(SwissHudHelper.COLOR_BG);
+        hostRoot.addView(split, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+        scrollView = null;
+        indicator = null;
+        hudRoot = split;
+
+        int[] swissCards = {
+                R.id.neo_battery_card, R.id.volume_card, R.id.noise_card,
+                R.id.equalizer_card, R.id.spatial_card, R.id.local_spatial_card,
+                R.id.extras_toggles_card, R.id.scope_limit_card, R.id.disclaimer_row
+        };
+        for (int cardId : swissCards) {
+            SwissHudHelper.applySwissCardStyle(split.findViewById(cardId));
+        }
+
+        View noiseSeg = split.findViewById(R.id.noise_seg);
+        if (noiseSeg != null) {
+            noiseSeg.setClickable(true);
+            noiseSeg.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    cycleNoiseMode();
+                }
+            });
+            SwissHudHelper.applySwissFocus(this, noiseSeg);
+        }
+
+        SwissHudHelper.applyFocusTree(this, split);
+        split.post(new Runnable() {
+            @Override public void run() {
+                SwissHudHelper.requestInitialFocus(split);
+            }
+        });
     }
 
     private void applyPhoneWindowChrome() {
@@ -306,7 +502,8 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
     }
 
     private void applyPhoneInsets() {
-        DeviceForm.styleScrollContainer(this, scrollView, indicator);
+        int formOverride = AppPrefs.hostFormOverride(this);
+        DeviceForm.styleScrollContainer(this, scrollView, indicator, formOverride);
         if (getResources().getConfiguration().isScreenRound()) {
             return;
         }
@@ -315,7 +512,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
             return;
         }
         final int phoneSide = (int) dp(24);
-        final int maxColPx = DeviceForm.isPhone(this) ? DeviceForm.phoneColumnWidthPx(this) : 0;
+        final int maxColPx = curHostForm == HostFormLogic.FORM_PHONE ? DeviceForm.phoneColumnWidthPx(this) : 0;
         View neoCol = findViewById(R.id.neo_content_column);
         if (neoCol == null && scrollView != null && scrollView.getChildCount() > 0) {
             neoCol = scrollView.getChildAt(0);
@@ -477,19 +674,29 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
     @Override
     protected void onResume() {
         super.onResume();
-        // 设置页可能改了界面风格/语言: 回到主界面时重建一次, 立即生效
+        LocalControlReceiver.setBridgeEnabled(AppPrefs.localIntentBridge(this));
+        // 设置页可能改了界面风格/语言/显示形态/多端协同模式: 回到主界面时重建一次, 立即生效
         int style = AppPrefs.uiStyle(this);
         String lang = AppPrefs.lang(this);
-        if (style != curUiStyle || !lang.equals(curLang)) {
+        int form = DeviceForm.resolveForm(this, AppPrefs.hostFormOverride(this));
+        int meshMode = AppPrefs.meshMode(this);
+        if (style != curUiStyle || !lang.equals(curLang) || form != curHostForm || meshMode != curMeshMode) {
             recreate();
             return;
         }
         resumed = true;
         if (scrollView != null) scrollView.setActive(true);
-        if (indicator != null && DeviceForm.isWatch(this)) indicator.setActive(true);
+        if (indicator != null && curHostForm == HostFormLogic.FORM_WATCH) indicator.setActive(true);
         if (fanDeck != null) fanDeck.setActive(true);
-        if (pageRail != null && DeviceForm.isWatch(this)) pageRail.wake();
-        tryConnect();
+        if (pageRail != null && curHostForm == HostFormLogic.FORM_WATCH) pageRail.wake();
+        if (curMeshMode == LocalMeshManager.MODE_CLIENT) {
+            connectMeshClient();
+        } else {
+            tryConnect();
+            if (curMeshMode == LocalMeshManager.MODE_HOST && AppPrefs.hasDisclaimer(this)) {
+                startMeshHost();
+            }
+        }
         renderPanels();
         panels.resume();
     }
@@ -499,13 +706,17 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
         super.onPause();
         resumed = false;
         if (scrollView != null) scrollView.setActive(false);
-        if (indicator != null && DeviceForm.isWatch(this)) indicator.setActive(false);
+        if (indicator != null && curHostForm == HostFormLogic.FORM_WATCH) indicator.setActive(false);
         if (fanDeck != null) fanDeck.setActive(false);
         panels.pause();
         ui.removeCallbacksAndMessages(null);
         tempSubTask = null;
         connecting = false;
         if (dot != null) dot.setBreathing(false);
+        if (curMeshMode != LocalMeshManager.MODE_OFF) {
+            LocalMeshManager.get(this).stopAll();
+            meshClientConnected = false;
+        }
         if (client != null) {
             client.removeListener(this);
             client.disconnect();
@@ -531,6 +742,9 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
      */
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (hudMode && SwissHudHelper.handleHudKeyEvent(event, hudKeyActions)) {
+            return true;
+        }
         if (fanDeck != null && fanDeck.handleRotaryKey(keyCode)) {
             return true;
         }
@@ -550,7 +764,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
             dot.setDotState(color, hollow);
             dot.setBreathing(breathing);
             dot.setContentDescription(getString(textRes));
-            if (textRes == R.string.status_connected) {
+            if (textRes == R.string.status_connected || textRes == R.string.status_mesh_connected) {
                 dot.pop();
             }
         }
@@ -563,17 +777,26 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
         setSub(stateSub);
         boolean connectedVisual = textRes == R.string.status_connected
                 || textRes == R.string.status_parked
+                || textRes == R.string.status_mesh_connected
                 || (textRes == R.string.status_connecting && client != null && client.isConnected());
         if (ctaReconnect != null) {
-            ctaReconnect.setVisibility(textRes != R.string.status_connecting
+            boolean showCta = textRes != R.string.status_connecting
+                    && textRes != R.string.status_mesh_connecting
                     && textRes != R.string.status_connected
-                    && textRes != R.string.status_parked
-                    ? View.VISIBLE : View.GONE);
+                    && textRes != R.string.status_mesh_connected
+                    && textRes != R.string.status_parked;
+            if (ctaReconnect instanceof TextView) {
+                ((TextView) ctaReconnect).setText(textRes == R.string.status_mesh_unconfigured
+                        ? R.string.cta_open_settings : R.string.cta_reconnect);
+            }
+            ctaReconnect.setVisibility(showCta ? View.VISIBLE : View.GONE);
         }
         lastConnState = connectedVisual;
         if (supDial != null) {
             supDial.setConnectionState(getString(textRes), stateSub, color,
-                    lastConnState, breathing, !lastConnState && textRes != R.string.status_connecting);
+                    lastConnState, breathing, !lastConnState
+                            && textRes != R.string.status_connecting
+                            && textRes != R.string.status_mesh_connecting);
         }
         renderPanels();
     }
@@ -642,6 +865,14 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
 
     private void onReconnectTapped() {
         haptic(HapticFeedbackConstants.KEYBOARD_TAP);
+        if (curMeshMode == LocalMeshManager.MODE_CLIENT) {
+            if (stateRes == R.string.status_mesh_unconfigured) {
+                startActivity(SettingsActivity.intent(this));
+                return;
+            }
+            connectMeshClient();
+            return;
+        }
         permPrompted = false;
         if (AppPrefs.hasDisclaimer(this) && hasPerm()
                 && stateRes == R.string.status_no_perm && !hasScanPerm()) {
@@ -701,6 +932,18 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
         spinRefreshIcon();
         panels.refreshVolume();
         if (!resumed) return;
+        if (curMeshMode == LocalMeshManager.MODE_CLIENT) {
+            if (!AppPrefs.hasDisclaimer(this)) {
+                showDisclaimerDialog(true);
+                return;
+            }
+            if (meshClientConnected && LocalMeshManager.get(this).sendRefresh()) {
+                showTempSub(getString(R.string.sub_refreshing), 2500L);
+            } else {
+                connectMeshClient();
+            }
+            return;
+        }
         permPrompted = false;
         if (!AppPrefs.hasDisclaimer(this) || !hasPerm()) { tryConnect(); return; }
         if (stateRes == R.string.status_no_perm && !hasScanPerm()) {
@@ -718,12 +961,159 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
 
     private void setMode(int mode) {
         haptic(HapticFeedbackConstants.KEYBOARD_TAP);
+        if (curMeshMode == LocalMeshManager.MODE_CLIENT) {
+            if (!meshClientConnected || !LocalMeshManager.get(this).sendNoise(mode)) {
+                showTempSub(getString(R.string.sub_not_connected), TEMP_SUB_MS);
+                connectMeshClient();
+            } else {
+                showTempSub(getString(R.string.sub_switched, modeName(mode)), TEMP_SUB_MS);
+            }
+            return;
+        }
         if (client == null || !client.isConnected()) {
             showTempSub(getString(R.string.sub_not_connected), TEMP_SUB_MS);
             tryConnect();
             return;
         }
         client.perform(mode);
+    }
+
+    private void cycleNoiseMode() {
+        DeviceState ds = activeState();
+        int next = LocalControlReceiver.nextNoiseMode(ds != null ? ds.mode : -1);
+        setMode(next);
+    }
+
+    private void stepNoiseSegmented(int delta) {
+        int[] order = {TwsClient.MODE_OFF, TwsClient.MODE_TRANS, TwsClient.MODE_ANC};
+        DeviceState ds = activeState();
+        int cur = ds != null ? ds.mode : -1;
+        int idx = 0;
+        for (int i = 0; i < order.length; i++) {
+            if (order[i] == cur) {
+                idx = i;
+                break;
+            }
+        }
+        int nextIdx = Math.max(0, Math.min(order.length - 1, idx + (delta >= 0 ? 1 : -1)));
+        if (order[nextIdx] != cur) {
+            setMode(order[nextIdx]);
+        }
+    }
+
+    private void startMeshHost() {
+        LocalMeshManager mesh = LocalMeshManager.get(this);
+        mesh.startHost(ControlHub.get(this), hostStatusListener);
+        ControlHub.get(this).pushMeshStateIfHosting();
+    }
+
+    private void updateHostMeshBanner() {
+        if (curMeshMode != LocalMeshManager.MODE_HOST || meshHostPort <= 0) return;
+        String ip = meshHostIp.isEmpty() ? LocalMeshManager.get(this).localLanIp() : meshHostIp;
+        String pin = meshHostPin.isEmpty() ? LocalMeshManager.get(this).pin() : meshHostPin;
+        setChip(getString(R.string.chip_mesh_host, ip + ":" + meshHostPort, pin));
+        String info = meshHostClients > 0
+                ? getString(R.string.sub_mesh_host_clients, ip, meshHostPort, pin, meshHostClients)
+                : getString(R.string.sub_mesh_host_brief, ip, meshHostPort, pin);
+        if (tempSubTask == null && !lastConnState) {
+            setSub(info);
+        }
+    }
+
+    private void connectMeshClient() {
+        if (!AppPrefs.hasDisclaimer(this)) {
+            showDisclaimerDialog(true);
+            return;
+        }
+        if (!resumed) return;
+        String ip = AppPrefs.meshHostIp(this);
+        int port = AppPrefs.meshHostPort(this);
+        String pin = AppPrefs.meshPin(this);
+        if (!LocalMeshProtocol.isPrivateLanAddress(ip) || !LocalMeshProtocol.isValidPin(pin)) {
+            meshClientConnected = false;
+            remoteState.disconnect();
+            setChip(getString(R.string.chip_mesh_client));
+            setState(R.string.status_mesh_unconfigured, colWarn(), false, false,
+                    getString(R.string.sub_mesh_open_settings));
+            return;
+        }
+        setChip(getString(R.string.chip_mesh_client));
+        setState(R.string.status_mesh_connecting, colAccent(), false, true, ip + ":" + port);
+        LocalMeshManager.get(this).connectClient(ip, port, pin, meshClientListener);
+    }
+
+    private void applyRemoteSnapshot(LocalMeshProtocol.StateSnapshot snap) {
+        if (snap == null) return;
+        remoteState.disconnect();
+        if (snap.connected) {
+            remoteState.begin("lan-mesh", snap.deviceName, snap.caps, snap.caps);
+            remoteState.connected = true;
+            remoteState.parked = snap.parked;
+            remoteState.mode = snap.mode;
+            remoteState.battery(snap.left, snap.right, snap.box, snap.charge);
+
+            // 严禁在从机模式暴露 FIND_MY_BUDS（听觉安全红线）
+            if (snap.ancLevel >= 0) {
+                int maxOpt = Math.max(2, Math.min(3, snap.ancLevel));
+                OptionItem[] ancOpts = new OptionItem[maxOpt + 1];
+                ancOpts[0] = new OptionItem(0, "轻度", "Mild");
+                ancOpts[1] = new OptionItem(1, "均衡", "Balanced");
+                ancOpts[2] = new OptionItem(2, "深度", "Deep");
+                if (maxOpt >= 3) ancOpts[3] = new OptionItem(3, "自适应", "Adaptive");
+                remoteState.featureSpec(FeatureDescriptor.choice(
+                        FeatureId.ANC_LEVEL, Controls.VERIF_REAL, FeatureDescriptor.SAFETY_NONE,
+                        1 << Controls.MODE_ANC, false, ancOpts));
+                remoteState.featureValue(FeatureId.ANC_LEVEL, snap.ancLevel);
+            }
+            if (snap.windVal >= 0) {
+                remoteState.featureSpec(FeatureDescriptor.toggle(
+                        FeatureId.WIND_REDUCTION, Controls.VERIF_REAL, FeatureDescriptor.SAFETY_NONE,
+                        (1 << Controls.MODE_ANC) | (1 << Controls.MODE_TRANS), false));
+                remoteState.featureValue(FeatureId.WIND_REDUCTION, snap.windVal);
+            }
+            if (snap.eqVal >= 0) {
+                SoundPreset[] base = SoundPreset.vivo();
+                boolean found = false;
+                for (SoundPreset p : base) {
+                    if (p.id == snap.eqVal) { found = true; break; }
+                }
+                if (found) {
+                    remoteState.presets = base;
+                } else {
+                    SoundPreset[] ext = new SoundPreset[base.length + 1];
+                    System.arraycopy(base, 0, ext, 0, base.length);
+                    ext[base.length] = new SoundPreset(snap.eqVal, "预设 " + snap.eqVal, "Preset " + snap.eqVal);
+                    remoteState.presets = ext;
+                }
+                remoteState.capabilities(remoteState.caps | Controls.CAP_EQUALIZER,
+                        remoteState.potentialCaps | Controls.CAP_EQUALIZER);
+                remoteState.featureValue(FeatureId.EQUALIZER, snap.eqVal);
+            }
+            if (snap.spatialVal >= 0) {
+                remoteState.capabilities(remoteState.caps | Controls.CAP_SPATIAL,
+                        remoteState.potentialCaps | Controls.CAP_SPATIAL);
+                remoteState.featureSpec(FeatureDescriptor.toggle(
+                        FeatureId.SPATIAL_AUDIO, Controls.VERIF_UNTESTED,
+                        FeatureDescriptor.SAFETY_AUDIO_WARN, 0, false));
+                remoteState.featureValue(FeatureId.SPATIAL_AUDIO, snap.spatialVal);
+            }
+            String label = !snap.deviceName.isEmpty() ? snap.deviceName : meshRemoteHostName;
+            setChip(getString(R.string.chip_mesh_client));
+            setState(snap.parked ? R.string.status_parked : R.string.status_mesh_connected,
+                    colOk(), false, false, label);
+        } else {
+            setChip(getString(R.string.chip_mesh_client));
+            setState(R.string.status_mesh_connected, colIdle(), true, false, meshRemoteHostName);
+        }
+        if (hudMode && hudRoot != null) {
+            SwissHudHelper.applyFocusTree(this, hudRoot);
+        }
+    }
+
+    private DeviceState activeState() {
+        return curMeshMode == LocalMeshManager.MODE_CLIENT
+                ? remoteState
+                : ControlHub.get(this).state();
     }
 
     // ---------------- 弹窗 ----------------
@@ -743,7 +1133,14 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
                         TileStore.push(MainActivity.this);
                         disclaimerDialogUp = false;
                         renderPanels();
-                        tryConnect();
+                        if (curMeshMode == LocalMeshManager.MODE_CLIENT) {
+                            connectMeshClient();
+                        } else {
+                            tryConnect();
+                            if (curMeshMode == LocalMeshManager.MODE_HOST) {
+                                startMeshHost();
+                            }
+                        }
                     }
                 })
                 .setNegativeButton(R.string.dialog_refuse, new DialogInterface.OnClickListener() {
@@ -801,9 +1198,12 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
     }
 
     private void renderPanels() {
-        DeviceState ds = ControlHub.get(this).state();
+        DeviceState ds = activeState();
         syncHostSpatial(ds);
         if (panels != null) panels.render(ds, pendingMode);
+        if (hudMode && hudRoot != null) {
+            SwissHudHelper.applyFocusTree(this, hudRoot);
+        }
     }
 
     /** 未连接时清空电量、档位、芯片与临时提示 */
@@ -827,7 +1227,11 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
         setState(R.string.status_connected, colOk(), false, false, deviceName);
         renderPanels();
         boolean untested = verif == TwsClient.VERIF_UNTESTED;
-        setChip(untested ? getString(R.string.chip_unverified) : null);
+        if (curMeshMode == LocalMeshManager.MODE_HOST && meshHostPort > 0) {
+            updateHostMeshBanner();
+        } else {
+            setChip(untested ? getString(R.string.chip_unverified) : null);
+        }
         if (sub != null) {
             sub.setTextColor(untested ? colWarn() : colDim());
         }
@@ -849,7 +1253,11 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
             stateSub = getString(R.string.sub_low_battery, getString(labels[low]), levels[low]);
         } else {
             boolean experimental = client.verifLevel() == Controls.VERIF_UNTESTED;
-            setChip(experimental ? getString(R.string.chip_unverified) : null);
+            if (curMeshMode == LocalMeshManager.MODE_HOST && meshHostPort > 0) {
+                updateHostMeshBanner();
+            } else {
+                setChip(experimental ? getString(R.string.chip_unverified) : null);
+            }
             stateSub = experimental ? getString(R.string.sub_model_unverified) : deviceName;
         }
         if (tempSubTask == null) setSub(stateSub);
@@ -862,21 +1270,45 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
 
     @Override public void selectNoise(int mode) { setMode(mode); }
     @Override public void selectSpatial(boolean enabled) {
+        if (curMeshMode == LocalMeshManager.MODE_CLIENT) {
+            if (meshClientConnected) {
+                LocalMeshManager.get(this).sendFeature(FeatureId.SPATIAL_AUDIO, enabled ? 1 : 0);
+            }
+            return;
+        }
         if (client != null && client.isConnected()) client.setSpatial(enabled);
     }
     @Override public void selectEqualizer(int preset) {
+        if (curMeshMode == LocalMeshManager.MODE_CLIENT) {
+            if (meshClientConnected) {
+                LocalMeshManager.get(this).sendFeature(FeatureId.EQUALIZER, preset);
+            }
+            return;
+        }
         if (client != null && client.isConnected()) client.setEqualizer(preset);
     }
     @Override public void selectFeature(FeatureId id, int value) {
+        if (curMeshMode == LocalMeshManager.MODE_CLIENT) {
+            if (id == FeatureId.FIND_MY_BUDS || !LocalMeshProtocol.isAllowedRemoteFeature(id)) {
+                return;
+            }
+            if (meshClientConnected) {
+                LocalMeshManager.get(this).sendFeature(id, value);
+            }
+            return;
+        }
         if (client != null && client.isConnected()) client.performFeature(id, value);
     }
     @Override public void stopFindBuds() {
+        if (curMeshMode == LocalMeshManager.MODE_CLIENT) return;
         if (client != null) client.stopFindBuds();
     }
     @Override public int pendingFeature(FeatureId id) {
+        if (curMeshMode == LocalMeshManager.MODE_CLIENT) return -1;
         return client != null ? client.pendingFeature(id) : -1;
     }
     @Override public boolean isFindBudsRinging() {
+        if (curMeshMode == LocalMeshManager.MODE_CLIENT) return false;
         return client != null && client.isFindBudsRinging();
     }
     @Override public void onSpatial(Boolean state) { renderPanels(); }

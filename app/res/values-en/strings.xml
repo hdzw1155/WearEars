@@ -253,4 +253,53 @@
     <string name="settings_conn_mode">Phone connection</string>
     <string name="settings_conn_burst">On-demand</string>
     <string name="settings_conn_keep">Always-on</string>
+
+    <!-- Multi-host form / Local LAN Mesh / Local Intent Bridge -->
+    <string name="settings_host_form">Display form</string>
+    <string name="settings_form_auto">Auto</string>
+    <string name="settings_form_watch">Watch</string>
+    <string name="settings_form_phone">Phone</string>
+    <string name="settings_form_hud">Glasses · HUD · TV</string>
+
+    <string name="settings_mesh_title">Local LAN Mesh</string>
+    <string name="settings_mesh_off">Off</string>
+    <string name="settings_mesh_host">Share Host</string>
+    <string name="settings_mesh_client">Remote Client</string>
+    <string name="settings_mesh_host_info">Host %1$s:%2$d · PIN %3$s</string>
+    <string name="settings_mesh_host_starting">Ready · PIN %1$s</string>
+    <string name="settings_mesh_reset_pin">Reset PIN</string>
+    <string name="settings_mesh_client_configured">Host %1$s:%2$d</string>
+    <string name="settings_mesh_client_unconfigured">No LAN host configured</string>
+    <string name="settings_mesh_pick_host">Scan LAN Hosts / Manual</string>
+    <string name="settings_mesh_scan_title">Scan LAN Hosts</string>
+    <string name="settings_mesh_scanning">Listening for LAN beacons (UDP 19846)…</string>
+    <string name="settings_mesh_manual_btn">Manual Entry</string>
+    <string name="settings_mesh_manual_title">Manual LAN Host</string>
+    <string name="settings_mesh_ip_hint">Host LAN IP (e.g. 192.168.1.8)</string>
+    <string name="settings_mesh_port_hint">Port (default 19845)</string>
+    <string name="settings_mesh_pin_hint">4-digit PIN</string>
+    <string name="settings_mesh_pin_title">Enter 4-digit PIN</string>
+    <string name="settings_mesh_pin_for">Host: %1$s (%2$s:%3$d)</string>
+    <string name="settings_mesh_save">Save</string>
+    <string name="settings_mesh_invalid_ip">Private LAN IP required</string>
+    <string name="settings_mesh_invalid_port">Port must be 1–65535</string>
+    <string name="settings_mesh_invalid_pin">Enter a 4-digit PIN</string>
+    <string name="settings_mesh_peer_connected">Buds linked</string>
+    <string name="settings_mesh_peer_idle">Idle</string>
+
+    <string name="settings_intent_bridge">Local App Bridge</string>
+    <string name="settings_intent_bridge_on">Enabled (Tasker / Ring Intents)</string>
+    <string name="settings_intent_bridge_off">Disabled (Default)</string>
+
+    <string name="status_mesh_unconfigured">No Host Set</string>
+    <string name="sub_mesh_open_settings">Choose a LAN host in Settings</string>
+    <string name="cta_open_settings">Open Settings</string>
+    <string name="status_mesh_connecting">Connecting LAN Host</string>
+    <string name="status_mesh_connected">LAN Synced</string>
+    <string name="status_mesh_disconnected">LAN Disconnected</string>
+    <string name="chip_mesh_host">LAN %1$s · PIN %2$s</string>
+    <string name="chip_mesh_client">LAN Remote</string>
+    <string name="sub_mesh_host_brief">LAN %1$s:%2$d · PIN %3$s</string>
+    <string name="sub_mesh_host_clients">LAN %1$s:%2$d · PIN %3$s · %4$d peer(s)</string>
+    <string name="sub_mesh_error">LAN error: %1$s</string>
 </resources>

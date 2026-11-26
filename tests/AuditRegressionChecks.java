@@ -139,10 +139,60 @@ public final class AuditRegressionChecks {
                 "disconnect clears parked flag and cached feature specs");
     }
 
+    private static void hostFormLogicResolution() {
+        check(HostFormLogic.FORM_AUTO == 0 && HostFormLogic.FORM_WATCH == 1
+                        && HostFormLogic.FORM_PHONE == 2 && HostFormLogic.FORM_HUD == 3,
+                "HostFormLogic constants match documented wire/pref values");
+
+        // Explicit overrides always win over hardware probing
+        check(HostFormLogic.resolve(HostFormLogic.FORM_WATCH, false, true, false, 1920, 1080)
+                        == HostFormLogic.FORM_WATCH,
+                "explicit WATCH override wins over TV/non-touch hardware");
+        check(HostFormLogic.resolve(HostFormLogic.FORM_PHONE, true, true, false, 1280, 720)
+                        == HostFormLogic.FORM_PHONE,
+                "explicit PHONE override wins over watch/TV hardware");
+        check(HostFormLogic.resolve(HostFormLogic.FORM_HUD, true, false, true, 450, 450)
+                        == HostFormLogic.FORM_HUD,
+                "explicit HUD override wins over round watch hardware");
+
+        // AUTO precedence: Watch > TV > non-touch landscape <= 1440px > Phone
+        check(HostFormLogic.resolve(HostFormLogic.FORM_AUTO, true, true, false, 1920, 1080)
+                        == HostFormLogic.FORM_WATCH,
+                "AUTO prioritizes watch feature/round screen over TV/HUD");
+        check(HostFormLogic.resolve(HostFormLogic.FORM_AUTO, false, true, true, 1080, 1920)
+                        == HostFormLogic.FORM_HUD,
+                "AUTO maps TV UI mode to HUD regardless of touch/aspect");
+        check(HostFormLogic.resolve(HostFormLogic.FORM_AUTO, false, false, false, 1280, 720)
+                        == HostFormLogic.FORM_HUD,
+                "AUTO maps non-touch 720p landscape smart glasses to HUD");
+        check(HostFormLogic.resolve(HostFormLogic.FORM_AUTO, false, false, false, 2560, 1440)
+                        == HostFormLogic.FORM_HUD,
+                "AUTO maps non-touch 1440p landscape XR display to HUD");
+        check(HostFormLogic.resolve(HostFormLogic.FORM_AUTO, false, false, false, 3840, 2160)
+                        == HostFormLogic.FORM_PHONE,
+                "AUTO maps non-TV non-touch >1440p display to PHONE");
+        check(HostFormLogic.resolve(HostFormLogic.FORM_AUTO, false, false, true, 1920, 1080)
+                        == HostFormLogic.FORM_PHONE,
+                "AUTO maps touch-capable landscape phone/tablet to PHONE");
+        check(HostFormLogic.resolve(HostFormLogic.FORM_AUTO, false, false, false, 720, 1280)
+                        == HostFormLogic.FORM_PHONE,
+                "AUTO maps non-touch portrait display to PHONE");
+        check(HostFormLogic.resolve(HostFormLogic.FORM_AUTO, false, false, false, 1280, 0)
+                        == HostFormLogic.FORM_PHONE,
+                "AUTO guards against zero-height invalid metrics");
+        check(HostFormLogic.normalizeOverride(-1) == HostFormLogic.FORM_AUTO
+                        && HostFormLogic.normalizeOverride(99) == HostFormLogic.FORM_AUTO
+                        && HostFormLogic.normalizeOverride(HostFormLogic.FORM_HUD) == HostFormLogic.FORM_HUD,
+                "normalizeOverride sanitizes unknown preference values to AUTO");
+        check(HostFormLogic.resolve(42, false, false, false, 1280, 720) == HostFormLogic.FORM_HUD,
+                "unknown override falls back cleanly to AUTO rules");
+    }
+
     public static void main(String[] args) {
         volumeGuardObserve();
         deviceStateNullAddress();
         deviceStateResumeParked();
+        hostFormLogicResolution();
         System.out.println("PASS " + checks + " audit regression checks");
     }
 }

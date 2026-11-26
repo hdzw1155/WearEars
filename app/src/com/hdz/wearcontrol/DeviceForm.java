@@ -1,13 +1,17 @@
 package com.hdz.wearcontrol;
 
+import android.app.UiModeManager;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.content.res.Resources;
+import android.util.DisplayMetrics;
 import android.view.View;
 
 /**
- * 设备形态探测与手机/手表适配工具:
- * 区分圆表/Wear OS 手表与矩形手机屏幕，并给出单端空间音频文案与手机居中列宽。
+ * 多端宿主形态探测与适配工具:
+ * 区分圆表/Wear OS 手表、手机、以及智能眼镜/XR/Android TV 横屏 HUD 形态，
+ * 并给出单端空间音频文案、滚动容器配置与手机居中列宽。
  */
 public final class DeviceForm {
     private static final float PHONE_MAX_COLUMN_DP = 480f;
@@ -15,22 +19,74 @@ public final class DeviceForm {
     private DeviceForm() {
     }
 
-    public static boolean isWatch(Context ctx) {
+    /**
+     * 结合用户手动覆盖项与硬件特征，解析当前宿主形态。
+     *
+     * @param ctx          Android Context
+     * @param overridePref {@link HostFormLogic#FORM_AUTO} 或显式指定形态常量
+     * @return {@link HostFormLogic#FORM_WATCH} / {@link HostFormLogic#FORM_PHONE} / {@link HostFormLogic#FORM_HUD}
+     */
+    public static int resolveForm(Context ctx, int overridePref) {
         if (ctx == null) {
-            return false;
+            return HostFormLogic.resolve(overridePref, false, false, true, 0, 0);
         }
-        if (ctx.getResources() != null) {
-            Configuration cfg = ctx.getResources().getConfiguration();
-            if (cfg != null && cfg.isScreenRound()) {
-                return true;
+
+        Resources res = ctx.getResources();
+        Configuration cfg = res != null ? res.getConfiguration() : null;
+        DisplayMetrics dm = res != null ? res.getDisplayMetrics() : null;
+        PackageManager pm = ctx.getPackageManager();
+
+        boolean isRoundOrWatchFeature = (cfg != null && cfg.isScreenRound())
+                || (pm != null && pm.hasSystemFeature(PackageManager.FEATURE_WATCH));
+
+        boolean isTvUiMode = cfg != null
+                && (cfg.uiMode & Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION;
+        if (!isTvUiMode) {
+            try {
+                UiModeManager umm = (UiModeManager) ctx.getSystemService(Context.UI_MODE_SERVICE);
+                if (umm != null && umm.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION) {
+                    isTvUiMode = true;
+                }
+            } catch (RuntimeException ignored) {
             }
         }
-        PackageManager pm = ctx.getPackageManager();
-        return pm != null && pm.hasSystemFeature(PackageManager.FEATURE_WATCH);
+
+        boolean hasTouchscreen = pm == null || pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN);
+        int widthPx = dm != null ? dm.widthPixels : 0;
+        int heightPx = dm != null ? dm.heightPixels : 0;
+
+        return HostFormLogic.resolve(
+                overridePref,
+                isRoundOrWatchFeature,
+                isTvUiMode,
+                hasTouchscreen,
+                widthPx,
+                heightPx
+        );
+    }
+
+    public static boolean isHud(Context ctx, int overridePref) {
+        return resolveForm(ctx, overridePref) == HostFormLogic.FORM_HUD;
+    }
+
+    public static boolean isWatch(Context ctx, int overridePref) {
+        return resolveForm(ctx, overridePref) == HostFormLogic.FORM_WATCH;
+    }
+
+    public static boolean isPhone(Context ctx, int overridePref) {
+        return resolveForm(ctx, overridePref) == HostFormLogic.FORM_PHONE;
+    }
+
+    public static boolean isHud(Context ctx) {
+        return isHud(ctx, HostFormLogic.FORM_AUTO);
+    }
+
+    public static boolean isWatch(Context ctx) {
+        return isWatch(ctx, HostFormLogic.FORM_AUTO);
     }
 
     public static boolean isPhone(Context ctx) {
-        return !isWatch(ctx);
+        return isPhone(ctx, HostFormLogic.FORM_AUTO);
     }
 
     public static int phoneColumnWidthPx(Context ctx) {
@@ -42,9 +98,18 @@ public final class DeviceForm {
     }
 
     public static void styleScrollContainer(Context ctx, AppScrollView scroll, ArcIndicatorView indicator) {
-        boolean phone = isPhone(ctx);
+        styleScrollContainer(ctx, scroll, indicator, HostFormLogic.FORM_AUTO);
+    }
+
+    public static void styleScrollContainer(
+            Context ctx,
+            AppScrollView scroll,
+            ArcIndicatorView indicator,
+            int overridePref
+    ) {
+        boolean nonWatch = !isWatch(ctx, overridePref);
         if (indicator != null) {
-            if (phone) {
+            if (nonWatch) {
                 indicator.setActive(false);
                 indicator.setVisibility(View.GONE);
             } else {
@@ -52,7 +117,7 @@ public final class DeviceForm {
             }
         }
         if (scroll != null) {
-            scroll.setPhoneMode(phone);
+            scroll.setPhoneMode(nonWatch);
         }
     }
 

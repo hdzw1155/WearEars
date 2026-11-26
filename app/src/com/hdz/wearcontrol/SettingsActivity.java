@@ -13,17 +13,25 @@ import android.content.pm.PackageManager;
 import android.database.MatrixCursor;
 import android.os.Build;
 import android.os.Bundle;
+import android.text.InputFilter;
+import android.text.InputType;
 import android.util.Log;
+import android.view.ContextThemeWrapper;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
+import android.widget.ArrayAdapter;
 import android.widget.CursorAdapter;
+import android.widget.EditText;
 import android.widget.HeaderViewListAdapter;
 import android.widget.LinearLayout;
 import android.widget.ListAdapter;
+import android.widget.ListView;
 import android.widget.TextView;
+import android.widget.Toast;
+import java.util.ArrayList;
 import java.util.List;
 
 /** 所有常用选项共用旧版设置页；布局、卡片和选择态沿用 0.3.5。 */
@@ -39,9 +47,14 @@ public class SettingsActivity extends Activity {
     private AppScrollView scroll;
     private ArcIndicatorView indicator;
     private AlertDialog deviceDialog;
+    private AlertDialog meshDialog;
+    private AlertDialog meshSubDialog;
 
     @Override protected void onDestroy() {
+        LocalMeshManager.get(this).stopDiscovery();
         if (deviceDialog != null) deviceDialog.dismiss();
+        if (meshDialog != null) meshDialog.dismiss();
+        if (meshSubDialog != null) meshSubDialog.dismiss();
         super.onDestroy();
     }
 
@@ -60,8 +73,9 @@ public class SettingsActivity extends Activity {
         applyPhoneWindowChrome();
         scroll = (AppScrollView) findViewById(R.id.settings_scroll);
         indicator = (ArcIndicatorView) findViewById(R.id.settings_indicator);
-        DeviceForm.styleScrollContainer(this, scroll, indicator);
-        if (indicator != null && DeviceForm.isWatch(this)) {
+        int formOverride = AppPrefs.hostFormOverride(this);
+        DeviceForm.styleScrollContainer(this, scroll, indicator, formOverride);
+        if (indicator != null && DeviceForm.isWatch(this, formOverride)) {
             indicator.attachTo(scroll);
         }
         for (int style = 0; style < UI_IDS.length; style++) {
@@ -79,12 +93,32 @@ public class SettingsActivity extends Activity {
         findViewById(R.id.device_choice).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View view) { chooseDevice(); }
         });
-        View phoneConnCard = findViewById(R.id.phone_conn_card);
-        if (phoneConnCard != null) {
-            phoneConnCard.setVisibility(DeviceForm.isPhone(this) ? View.VISIBLE : View.GONE);
-        }
         bindPhoneConnMode(R.id.conn_mode_burst, true);
         bindPhoneConnMode(R.id.conn_mode_keep, false);
+        bindHostForm(R.id.form_auto, HostFormLogic.FORM_AUTO);
+        bindHostForm(R.id.form_watch, HostFormLogic.FORM_WATCH);
+        bindHostForm(R.id.form_phone, HostFormLogic.FORM_PHONE);
+        bindHostForm(R.id.form_hud, HostFormLogic.FORM_HUD);
+        bindMeshMode(R.id.mesh_mode_off, LocalMeshManager.MODE_OFF);
+        bindMeshMode(R.id.mesh_mode_host, LocalMeshManager.MODE_HOST);
+        bindMeshMode(R.id.mesh_mode_client, LocalMeshManager.MODE_CLIENT);
+        View meshAction = findViewById(R.id.mesh_action_btn);
+        if (meshAction != null) {
+            meshAction.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View view) { onMeshActionClicked(); }
+            });
+        }
+        View bridgeChoice = findViewById(R.id.intent_bridge_choice);
+        if (bridgeChoice != null) {
+            bridgeChoice.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View view) {
+                    boolean next = !AppPrefs.localIntentBridge(SettingsActivity.this);
+                    AppPrefs.setLocalIntentBridge(SettingsActivity.this, next);
+                    LocalControlReceiver.setBridgeEnabled(next);
+                    refreshChoices();
+                }
+            });
+        }
         findViewById(R.id.volume_choice).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View view) {
                 AppPrefs.setShowVolume(SettingsActivity.this, !AppPrefs.showVolume(SettingsActivity.this));
@@ -93,9 +127,22 @@ public class SettingsActivity extends Activity {
         });
         refreshChoices();
         applyPhoneInsets();
+        if (isHudMode()) {
+            View list = findViewById(R.id.settings_list);
+            if (list != null) {
+                list.post(new Runnable() {
+                    @Override public void run() { SwissHudHelper.requestInitialFocus(list); }
+                });
+            }
+        }
+    }
+
+    private boolean isHudMode() {
+        return DeviceForm.isHud(this, AppPrefs.hostFormOverride(this));
     }
 
     private boolean isLightSurface() {
+        if (isHudMode()) return false;
         return AppPrefs.settingsDayMode(this) || AppPrefs.uiStyle(this) == AppPrefs.STYLE_SUPREME;
     }
 
@@ -118,7 +165,8 @@ public class SettingsActivity extends Activity {
     }
 
     private void applyPhoneInsets() {
-        DeviceForm.styleScrollContainer(this, scroll, indicator);
+        int formOverride = AppPrefs.hostFormOverride(this);
+        DeviceForm.styleScrollContainer(this, scroll, indicator, formOverride);
         if (getResources().getConfiguration().isScreenRound()) {
             return;
         }
@@ -130,7 +178,7 @@ public class SettingsActivity extends Activity {
         final int baseTop = list.getPaddingTop();
         final int baseBot = list.getPaddingBottom();
         final int phoneSide = Math.round(24f * getResources().getDisplayMetrics().density);
-        final int maxColPx = DeviceForm.isPhone(this) ? DeviceForm.phoneColumnWidthPx(this) : 0;
+        final int maxColPx = DeviceForm.isWatch(this, formOverride) ? 0 : DeviceForm.phoneColumnWidthPx(this);
         final int[] lastInsets = new int[4];
         final Runnable syncPadding = new Runnable() {
             @Override
@@ -183,13 +231,14 @@ public class SettingsActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         if (scroll != null) scroll.setActive(true);
-        if (indicator != null && DeviceForm.isWatch(this)) indicator.setActive(true);
+        if (indicator != null && DeviceForm.isWatch(this, AppPrefs.hostFormOverride(this))) indicator.setActive(true);
     }
 
     @Override protected void onPause() {
         super.onPause();
+        LocalMeshManager.get(this).stopDiscovery();
         if (scroll != null) scroll.setActive(false);
-        if (indicator != null && DeviceForm.isWatch(this)) indicator.setActive(false);
+        if (indicator != null && DeviceForm.isWatch(this, AppPrefs.hostFormOverride(this))) indicator.setActive(false);
     }
 
     private void bindStyle(int id, final int style, final boolean tile) {
@@ -218,7 +267,8 @@ public class SettingsActivity extends Activity {
         findViewById(id).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View view) {
                 AppPrefs.setScrollColorStyle(SettingsActivity.this, colorStyle);
-                if (indicator != null && DeviceForm.isWatch(SettingsActivity.this)) {
+                if (indicator != null && DeviceForm.isWatch(SettingsActivity.this,
+                        AppPrefs.hostFormOverride(SettingsActivity.this))) {
                     indicator.refreshColorStyle();
                 }
                 refreshChoices();
@@ -248,14 +298,241 @@ public class SettingsActivity extends Activity {
         });
     }
 
+    private void bindHostForm(int id, final int form) {
+        View btn = findViewById(id);
+        if (btn == null) return;
+        btn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View view) {
+                if (AppPrefs.hostFormOverride(SettingsActivity.this) == form) return;
+                AppPrefs.setHostFormOverride(SettingsActivity.this, form);
+                ControlHub.get(SettingsActivity.this).connectionModeChanged();
+                refreshChoices();
+            }
+        });
+    }
+
+    private void bindMeshMode(int id, final int mode) {
+        View btn = findViewById(id);
+        if (btn == null) return;
+        btn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View view) {
+                if (AppPrefs.meshMode(SettingsActivity.this) == mode) return;
+                AppPrefs.setMeshMode(SettingsActivity.this, mode);
+                if (mode == LocalMeshManager.MODE_OFF) {
+                    LocalMeshManager.get(SettingsActivity.this).stopAll();
+                } else if (mode == LocalMeshManager.MODE_HOST) {
+                    LocalMeshManager.get(SettingsActivity.this).pin();
+                }
+                refreshChoices();
+            }
+        });
+    }
+
+    private void onMeshActionClicked() {
+        int mode = AppPrefs.meshMode(this);
+        if (mode == LocalMeshManager.MODE_HOST) {
+            LocalMeshManager.get(this).regeneratePin();
+            refreshChoices();
+        } else if (mode == LocalMeshManager.MODE_CLIENT) {
+            showMeshScanDialog();
+        }
+    }
+
+    private void showMeshScanDialog() {
+        if (isFinishing() || isDestroyed()) return;
+        if (meshDialog != null && meshDialog.isShowing()) meshDialog.dismiss();
+
+        final LocalMeshManager mesh = LocalMeshManager.get(this);
+        final List<LocalMeshManager.DiscoveredPeer> peers = new ArrayList<>();
+        final List<String> labels = new ArrayList<>();
+        labels.add(getString(R.string.settings_mesh_scanning));
+
+        int dialogTheme = NeoStyle.dialogTheme(isLightSurface());
+        Context dialogCtx = new ContextThemeWrapper(this, dialogTheme);
+        final ArrayAdapter<String> adapter = new ArrayAdapter<>(
+                dialogCtx, android.R.layout.simple_list_item_1, labels);
+        final ListView listView = new ListView(dialogCtx);
+        listView.setAdapter(adapter);
+
+        final AlertDialog dialog = new AlertDialog.Builder(this, dialogTheme)
+                .setTitle(R.string.settings_mesh_scan_title)
+                .setView(listView)
+                .setNeutralButton(R.string.settings_mesh_manual_btn, new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int w) {
+                        showManualMeshDialog();
+                    }
+                })
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .create();
+        meshDialog = dialog;
+
+        listView.setOnItemClickListener(new android.widget.AdapterView.OnItemClickListener() {
+            @Override public void onItemClick(android.widget.AdapterView<?> parent, View view, int pos, long id) {
+                if (pos < 0 || pos >= peers.size()) return;
+                LocalMeshManager.DiscoveredPeer peer = peers.get(pos);
+                dialog.dismiss();
+                showPinPromptDialog(peer);
+            }
+        });
+
+        dialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
+            @Override public void onDismiss(DialogInterface d) {
+                mesh.stopDiscovery();
+            }
+        });
+
+        mesh.startDiscovery(new LocalMeshManager.DiscoveryListener() {
+            @Override public void onPeersUpdated(List<LocalMeshManager.DiscoveredPeer> updated) {
+                if (meshDialog != dialog || !dialog.isShowing() || isFinishing() || isDestroyed()) return;
+                peers.clear();
+                labels.clear();
+                if (updated == null || updated.isEmpty()) {
+                    labels.add(getString(R.string.settings_mesh_scanning));
+                } else {
+                    for (LocalMeshManager.DiscoveredPeer p : updated) {
+                        peers.add(p);
+                        String state = getString(p.connected
+                                ? R.string.settings_mesh_peer_connected
+                                : R.string.settings_mesh_peer_idle);
+                        String dev = (p.deviceName != null && !p.deviceName.isEmpty())
+                                ? " · " + p.deviceName : "";
+                        labels.add(p.hostName + " (" + p.ip + ":" + p.port + ")\n" + state + dev);
+                    }
+                }
+                adapter.notifyDataSetChanged();
+            }
+        });
+
+        dialog.show();
+    }
+
+    private void showPinPromptDialog(final LocalMeshManager.DiscoveredPeer peer) {
+        if (peer == null || isFinishing() || isDestroyed()) return;
+        if (meshSubDialog != null && meshSubDialog.isShowing()) meshSubDialog.dismiss();
+
+        int dialogTheme = NeoStyle.dialogTheme(isLightSurface());
+        Context dialogCtx = new ContextThemeWrapper(this, dialogTheme);
+        int pad = Math.round(16f * getResources().getDisplayMetrics().density);
+        LinearLayout box = new LinearLayout(dialogCtx);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(pad, pad / 2, pad, pad / 2);
+
+        TextView desc = new TextView(dialogCtx);
+        desc.setText(getString(R.string.settings_mesh_pin_for, peer.hostName, peer.ip, peer.port));
+        box.addView(desc);
+
+        final EditText pinInput = new EditText(dialogCtx);
+        pinInput.setHint(R.string.settings_mesh_pin_hint);
+        pinInput.setInputType(InputType.TYPE_CLASS_NUMBER);
+        pinInput.setFilters(new InputFilter[]{new InputFilter.LengthFilter(4)});
+        pinInput.setText(AppPrefs.meshPin(this));
+        box.addView(pinInput);
+
+        meshSubDialog = new AlertDialog.Builder(this, dialogTheme)
+                .setTitle(R.string.settings_mesh_pin_title)
+                .setView(box)
+                .setPositiveButton(R.string.settings_mesh_save, new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int w) {
+                        String pin = pinInput.getText().toString().trim();
+                        if (!LocalMeshProtocol.isValidPin(pin)) {
+                            Toast.makeText(SettingsActivity.this,
+                                    R.string.settings_mesh_invalid_pin, Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        AppPrefs.setMeshHostIp(SettingsActivity.this, peer.ip);
+                        AppPrefs.setMeshHostPort(SettingsActivity.this, peer.port);
+                        AppPrefs.setMeshPin(SettingsActivity.this, pin);
+                        AppPrefs.setMeshMode(SettingsActivity.this, LocalMeshManager.MODE_CLIENT);
+                        refreshChoices();
+                    }
+                })
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .show();
+    }
+
+    private void showManualMeshDialog() {
+        if (isFinishing() || isDestroyed()) return;
+        if (meshSubDialog != null && meshSubDialog.isShowing()) meshSubDialog.dismiss();
+
+        int dialogTheme = NeoStyle.dialogTheme(isLightSurface());
+        Context dialogCtx = new ContextThemeWrapper(this, dialogTheme);
+        int pad = Math.round(16f * getResources().getDisplayMetrics().density);
+        LinearLayout box = new LinearLayout(dialogCtx);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(pad, pad / 2, pad, pad / 2);
+
+        final EditText ipInput = new EditText(dialogCtx);
+        ipInput.setHint(R.string.settings_mesh_ip_hint);
+        ipInput.setSingleLine(true);
+        ipInput.setText(AppPrefs.meshHostIp(this));
+        box.addView(ipInput);
+
+        final EditText portInput = new EditText(dialogCtx);
+        portInput.setHint(R.string.settings_mesh_port_hint);
+        portInput.setInputType(InputType.TYPE_CLASS_NUMBER);
+        portInput.setSingleLine(true);
+        portInput.setText(String.valueOf(AppPrefs.meshHostPort(this)));
+        box.addView(portInput);
+
+        final EditText pinInput = new EditText(dialogCtx);
+        pinInput.setHint(R.string.settings_mesh_pin_hint);
+        pinInput.setInputType(InputType.TYPE_CLASS_NUMBER);
+        pinInput.setFilters(new InputFilter[]{new InputFilter.LengthFilter(4)});
+        pinInput.setText(AppPrefs.meshPin(this));
+        box.addView(pinInput);
+
+        meshSubDialog = new AlertDialog.Builder(this, dialogTheme)
+                .setTitle(R.string.settings_mesh_manual_title)
+                .setView(box)
+                .setPositiveButton(R.string.settings_mesh_save, new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int w) {
+                        String ip = ipInput.getText().toString().trim();
+                        String portStr = portInput.getText().toString().trim();
+                        String pin = pinInput.getText().toString().trim();
+                        if (!LocalMeshProtocol.isPrivateLanAddress(ip)) {
+                            Toast.makeText(SettingsActivity.this,
+                                    R.string.settings_mesh_invalid_ip, Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        int port = LocalMeshProtocol.DEFAULT_TCP_PORT;
+                        if (!portStr.isEmpty()) {
+                            try {
+                                port = Integer.parseInt(portStr);
+                            } catch (NumberFormatException ignored) {
+                                port = -1;
+                            }
+                        }
+                        if (port < 1 || port > 65535) {
+                            Toast.makeText(SettingsActivity.this,
+                                    R.string.settings_mesh_invalid_port, Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        if (!LocalMeshProtocol.isValidPin(pin)) {
+                            Toast.makeText(SettingsActivity.this,
+                                    R.string.settings_mesh_invalid_pin, Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        AppPrefs.setMeshHostIp(SettingsActivity.this, ip);
+                        AppPrefs.setMeshHostPort(SettingsActivity.this, port);
+                        AppPrefs.setMeshPin(SettingsActivity.this, pin);
+                        AppPrefs.setMeshMode(SettingsActivity.this, LocalMeshManager.MODE_CLIENT);
+                        refreshChoices();
+                    }
+                })
+                .setNegativeButton(R.string.dialog_cancel, null)
+                .show();
+    }
+
     private void refreshChoices() {
-        boolean day = AppPrefs.settingsDayMode(this);
-        int style = AppPrefs.uiStyle(this), tile = AppPrefs.tileStyleChoice(this);
+        boolean hud = isHudMode();
+        boolean day = !hud && AppPrefs.settingsDayMode(this);
+        int style = hud ? AppPrefs.STYLE_NEO_NEW : AppPrefs.uiStyle(this);
+        int tile = AppPrefs.tileStyleChoice(this);
         applySettingsTheme(day, style);
         setChoice(R.id.theme_night, !day, day, style);
         setChoice(R.id.theme_day, day, day, style);
         for (int i = 0; i < UI_IDS.length; i++) {
-            setChoice(UI_IDS[i], style == i + StyleChoice.SUPREME, day, style);
+            setChoice(UI_IDS[i], AppPrefs.uiStyle(this) == i + StyleChoice.SUPREME, day, style);
             setChoice(TILE_IDS[i], tile == i + StyleChoice.SUPREME, day, style);
         }
         setChoice(R.id.tile_follow, tile == AppPrefs.STYLE_FOLLOW, day, style);
@@ -266,9 +543,68 @@ public class SettingsActivity extends Activity {
         int scrollColor = AppPrefs.scrollColorStyle(this);
         setChoice(R.id.scroll_color_dynamic, scrollColor == AppPrefs.SCROLL_COLOR_DYNAMIC, day, style);
         setChoice(R.id.scroll_color_classic, scrollColor == AppPrefs.SCROLL_COLOR_CLASSIC, day, style);
+
+        int formOverride = AppPrefs.hostFormOverride(this);
+        View phoneConnCard = findViewById(R.id.phone_conn_card);
+        if (phoneConnCard != null) {
+            phoneConnCard.setVisibility(DeviceForm.isPhone(this, formOverride) ? View.VISIBLE : View.GONE);
+        }
         boolean burstMode = AppPrefs.phoneBurstMode(this);
         setChoice(R.id.conn_mode_burst, burstMode, day, style);
         setChoice(R.id.conn_mode_keep, !burstMode, day, style);
+
+        setChoice(R.id.form_auto, formOverride == HostFormLogic.FORM_AUTO, day, style);
+        setChoice(R.id.form_watch, formOverride == HostFormLogic.FORM_WATCH, day, style);
+        setChoice(R.id.form_phone, formOverride == HostFormLogic.FORM_PHONE, day, style);
+        setChoice(R.id.form_hud, formOverride == HostFormLogic.FORM_HUD, day, style);
+
+        int meshMode = AppPrefs.meshMode(this);
+        setChoice(R.id.mesh_mode_off, meshMode == LocalMeshManager.MODE_OFF, day, style);
+        setChoice(R.id.mesh_mode_host, meshMode == LocalMeshManager.MODE_HOST, day, style);
+        setChoice(R.id.mesh_mode_client, meshMode == LocalMeshManager.MODE_CLIENT, day, style);
+        TextView meshStatus = (TextView) findViewById(R.id.mesh_status_text);
+        TextView meshAction = (TextView) findViewById(R.id.mesh_action_btn);
+        if (meshStatus != null && meshAction != null) {
+            boolean light = day || style == AppPrefs.STYLE_SUPREME;
+            meshStatus.setTextColor(light ? 0xFF5A606B : NeoStyle.textDim(style));
+            if (meshMode == LocalMeshManager.MODE_HOST) {
+                LocalMeshManager mesh = LocalMeshManager.get(this);
+                int port = mesh.listenPort() > 0 ? mesh.listenPort() : LocalMeshProtocol.DEFAULT_TCP_PORT;
+                meshStatus.setText(getString(R.string.settings_mesh_host_info,
+                        mesh.localLanIp(), port, mesh.pin()));
+                meshStatus.setVisibility(View.VISIBLE);
+                meshAction.setText(R.string.settings_mesh_reset_pin);
+                meshAction.setVisibility(View.VISIBLE);
+                setChoice(R.id.mesh_action_btn, false, day, style);
+            } else if (meshMode == LocalMeshManager.MODE_CLIENT) {
+                String ip = AppPrefs.meshHostIp(this);
+                int port = AppPrefs.meshHostPort(this);
+                String pin = AppPrefs.meshPin(this);
+                boolean configured = LocalMeshProtocol.isPrivateLanAddress(ip)
+                        && LocalMeshProtocol.isValidPin(pin);
+                meshStatus.setText(configured
+                        ? getString(R.string.settings_mesh_client_configured, ip, port)
+                        : getString(R.string.settings_mesh_client_unconfigured));
+                meshStatus.setVisibility(View.VISIBLE);
+                meshAction.setText(R.string.settings_mesh_pick_host);
+                meshAction.setVisibility(View.VISIBLE);
+                setChoice(R.id.mesh_action_btn, configured, day, style);
+            } else {
+                meshStatus.setVisibility(View.GONE);
+                meshAction.setVisibility(View.GONE);
+            }
+        }
+
+        boolean bridgeOn = AppPrefs.localIntentBridge(this);
+        LocalControlReceiver.setBridgeEnabled(bridgeOn);
+        setChoice(R.id.intent_bridge_choice, bridgeOn, day, style);
+        TextView bridgeView = (TextView) findViewById(R.id.intent_bridge_choice);
+        if (bridgeView != null) {
+            bridgeView.setText(bridgeOn
+                    ? R.string.settings_intent_bridge_on
+                    : R.string.settings_intent_bridge_off);
+        }
+
         boolean volume = AppPrefs.showVolume(this);
         setChoice(R.id.volume_choice, volume, day, style);
         ((TextView) findViewById(R.id.volume_choice)).setText(
@@ -288,6 +624,13 @@ public class SettingsActivity extends Activity {
             }
         }
         ((TextView) findViewById(R.id.device_choice)).setText(label);
+
+        if (hud) {
+            View list = findViewById(R.id.settings_list);
+            if (list != null) {
+                SwissHudHelper.applyFocusTree(this, list);
+            }
+        }
     }
 
     private BluetoothAdapter adapter() {
@@ -413,9 +756,11 @@ public class SettingsActivity extends Activity {
         if (hint != null) {
             hint.setTextColor(light ? 0xFF5A606B : NeoStyle.textFaint(style));
         }
-        int cardBg = light
-                ? (style == AppPrefs.STYLE_SUPREME ? R.drawable.bg_sup_card_paper : R.drawable.bg_set_card_day)
-                : NeoStyle.cardDrawable(style);
+        int cardBg = isHudMode()
+                ? R.drawable.bg_swiss_hud_card
+                : (light
+                        ? (style == AppPrefs.STYLE_SUPREME ? R.drawable.bg_sup_card_paper : R.drawable.bg_set_card_day)
+                        : NeoStyle.cardDrawable(style));
         int captionColor = light ? 0xFF5A606B : NeoStyle.textFaint(style);
         View list = findViewById(R.id.settings_list);
         if (list instanceof ViewGroup) {

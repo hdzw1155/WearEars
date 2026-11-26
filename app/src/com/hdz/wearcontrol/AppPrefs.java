@@ -56,6 +56,15 @@ final class AppPrefs {
     private static final String KEY_SPATIAL_PINNA_NOTCH_HZ = "spatial_pinna_notch_hz";
     /** 手机端按需短连接模式（防同品牌系统耳机服务抢占 RFCOMM，默认开启；手表端不启用） */
     private static final String KEY_PHONE_BURST_MODE = "phone_burst_mode";
+    /** 多端宿主形态覆盖（默认自动探测：0=AUTO, 1=WATCH, 2=PHONE, 3=HUD） */
+    private static final String KEY_HOST_FORM_OVERRIDE = "host_form_override";
+    /** 局域网多端本地协同模式（0=关, 1=主机共享, 2=从机遥控） */
+    private static final String KEY_MESH_MODE = "mesh_mode";
+    private static final String KEY_MESH_HOST_IP = "mesh_host_ip";
+    private static final String KEY_MESH_HOST_PORT = "mesh_host_port";
+    private static final String KEY_MESH_PIN = "mesh_pin";
+    /** 同机本地软件广播联动（默认关闭） */
+    private static final String KEY_LOCAL_INTENT_BRIDGE = "local_intent_bridge";
 
     private AppPrefs() {
     }
@@ -199,6 +208,94 @@ final class AppPrefs {
 
     static void setPhoneBurstMode(Context ctx, boolean enabled) {
         prefs(ctx).edit().putBoolean(KEY_PHONE_BURST_MODE, enabled).apply();
+    }
+
+    /** 多端宿主形态覆盖默认与范围（与 HostFormLogic.FORM_* 保持一致） */
+    static final int HOST_FORM_AUTO = 0;
+    static final int HOST_FORM_MAX = 3;
+    /** 局域网多端本地协同默认与范围（与 LocalMeshManager.MODE_* / LocalMeshProtocol.DEFAULT_TCP_PORT 一致） */
+    static final int MESH_MODE_OFF = 0;
+    static final int MESH_MODE_MAX = 2;
+    static final int MESH_DEFAULT_PORT = 19845;
+
+    static int hostFormOverride(Context ctx) {
+        try {
+            int raw = prefs(ctx).getInt(KEY_HOST_FORM_OVERRIDE, HOST_FORM_AUTO);
+            return (raw >= HOST_FORM_AUTO && raw <= HOST_FORM_MAX) ? raw : HOST_FORM_AUTO;
+        } catch (RuntimeException ignored) {
+            return HOST_FORM_AUTO;
+        }
+    }
+
+    static void setHostFormOverride(Context ctx, int form) {
+        int safe = (form >= HOST_FORM_AUTO && form <= HOST_FORM_MAX) ? form : HOST_FORM_AUTO;
+        prefs(ctx).edit().putInt(KEY_HOST_FORM_OVERRIDE, safe).apply();
+    }
+
+    static int meshMode(Context ctx) {
+        try {
+            return clampInt(prefs(ctx).getInt(KEY_MESH_MODE, MESH_MODE_OFF),
+                    MESH_MODE_OFF, MESH_MODE_MAX);
+        } catch (RuntimeException ignored) {
+            return MESH_MODE_OFF;
+        }
+    }
+
+    static void setMeshMode(Context ctx, int mode) {
+        prefs(ctx).edit().putInt(KEY_MESH_MODE,
+                clampInt(mode, MESH_MODE_OFF, MESH_MODE_MAX)).apply();
+    }
+
+    static String meshHostIp(Context ctx) {
+        try {
+            String ip = prefs(ctx).getString(KEY_MESH_HOST_IP, "");
+            return ip == null ? "" : ip.trim();
+        } catch (RuntimeException ignored) {
+            return "";
+        }
+    }
+
+    static void setMeshHostIp(Context ctx, String ip) {
+        prefs(ctx).edit().putString(KEY_MESH_HOST_IP, ip == null ? "" : ip.trim()).apply();
+    }
+
+    static int meshHostPort(Context ctx) {
+        try {
+            int port = prefs(ctx).getInt(KEY_MESH_HOST_PORT, MESH_DEFAULT_PORT);
+            return (port >= 1 && port <= 65535) ? port : MESH_DEFAULT_PORT;
+        } catch (RuntimeException ignored) {
+            return MESH_DEFAULT_PORT;
+        }
+    }
+
+    static void setMeshHostPort(Context ctx, int port) {
+        int safe = (port >= 1 && port <= 65535) ? port : MESH_DEFAULT_PORT;
+        prefs(ctx).edit().putInt(KEY_MESH_HOST_PORT, safe).apply();
+    }
+
+    static String meshPin(Context ctx) {
+        try {
+            String pin = prefs(ctx).getString(KEY_MESH_PIN, "");
+            return pin == null ? "" : pin.trim();
+        } catch (RuntimeException ignored) {
+            return "";
+        }
+    }
+
+    static void setMeshPin(Context ctx, String pin) {
+        prefs(ctx).edit().putString(KEY_MESH_PIN, pin == null ? "" : pin.trim()).apply();
+    }
+
+    static boolean localIntentBridge(Context ctx) {
+        try {
+            return prefs(ctx).getBoolean(KEY_LOCAL_INTENT_BRIDGE, false);
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    static void setLocalIntentBridge(Context ctx, boolean enabled) {
+        prefs(ctx).edit().putBoolean(KEY_LOCAL_INTENT_BRIDGE, enabled).apply();
     }
 
     private static int clampInt(int value, int min, int max) {

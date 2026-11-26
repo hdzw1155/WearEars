@@ -8,7 +8,8 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 /** Binds the two independent state machines to foreground and tile demand. All UI updates run on main. */
-final class ControlHub implements ConnectionOwner.Host, Transactions.Host, FeatureTransactions.Host {
+final class ControlHub implements ConnectionOwner.Host, Transactions.Host, FeatureTransactions.Host,
+        LocalMeshManager.HostCommandSink {
     interface UiListener extends Controls.Listener {
         void onConnectionState(int status, int hint);
         void onOperationChanged(int target, boolean active, boolean success);
@@ -39,11 +40,36 @@ final class ControlHub implements ConnectionOwner.Host, Transactions.Host, Featu
     private Runnable deferredReset;
     private String tileAddress;
     private int evidence = Controls.VERIF_UNTESTED;
-    ControlHub(Context app) { this.app = app; links = new ConnectionOwner(app, main, this); }
+    ControlHub(Context app) {
+        this.app = app;
+        links = new ConnectionOwner(app, main, this);
+        LocalControlReceiver.setBridgeEnabled(AppPrefs.localIntentBridge(app));
+    }
     DeviceState state() { return state; }
     int verifLevel() { return evidence; }
     boolean isConnected() { return links.live() || (state.connected && state.parked); }
-    boolean isBurstMode() { return DeviceForm.isPhone(app) && AppPrefs.phoneBurstMode(app); }
+    boolean isBurstMode() {
+        return DeviceForm.isPhone(app, AppPrefs.hostFormOverride(app)) && AppPrefs.phoneBurstMode(app);
+    }
+    void pushMeshStateIfHosting() {
+        LocalMeshManager mesh = LocalMeshManager.get(app);
+        if (mesh.mode() == LocalMeshManager.MODE_HOST) {
+            mesh.pushSnapshot(state, live());
+        }
+    }
+    @Override public void onRemoteNoiseMode(int mode) {
+        if (mode < Controls.MODE_ANC || mode > Controls.MODE_TRANS) return;
+        perform(mode);
+    }
+    @Override public void onRemoteRefresh() {
+        perform(-1);
+    }
+    @Override public void onRemoteFeature(FeatureId id, int value) {
+        if (id == null || id == FeatureId.FIND_MY_BUDS || !LocalMeshProtocol.isAllowedRemoteFeature(id)) {
+            return;
+        }
+        performFeature(id, value);
+    }
     int caps() { return state.caps; }
     void addListener(UiListener listener) { if (!observers.contains(listener)) observers.add(listener); }
     void removeListener(UiListener listener) { observers.remove(listener); }
@@ -171,6 +197,7 @@ final class ControlHub implements ConnectionOwner.Host, Transactions.Host, Featu
         if (name != null && !name.isEmpty()) state.name = name;
         TileStore.saveName(app, state.name);
         for (UiListener l : views()) l.onConnected(state.name);
+        pushMeshStateIfHosting();
         if (transactions.busy()) transactions.connected();
         if (featureTx.busy()) featureTx.connected();
         if (links.live()) {
@@ -189,6 +216,7 @@ final class ControlHub implements ConnectionOwner.Host, Transactions.Host, Featu
         state.enterParked();
         featureTx.resetWearStatus();
         for (UiListener l : views()) l.onConnectionState(R.string.status_parked, 0);
+        pushMeshStateIfHosting();
     }
     private void scheduleBurstPark(long delayMs) {
         main.removeCallbacks(burstPark);
@@ -214,12 +242,14 @@ final class ControlHub implements ConnectionOwner.Host, Transactions.Host, Featu
         main.removeCallbacks(poll);
         main.removeCallbacks(burstPark);
         TileStore.push(app);
+        pushMeshStateIfHosting();
     }
     public void unavailable(int status, int hint) {
         main.removeCallbacks(burstPark);
         transactions.finish(false);
         featureTx.linkEnded();
         for (UiListener l : views()) l.onConnectionState(status, hint);
+        pushMeshStateIfHosting();
     }
     public boolean live() { return links.live() && state.connected; }
     public int potential() { return state.potentialCaps; }

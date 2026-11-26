@@ -15,6 +15,7 @@ final class SessionReports implements Controls.Listener {
             if (hub.live()) {
                 hub.sync(caps, potential, presets, evidence);
                 task.run();
+                hub.pushMeshStateIfHosting();
             }
         });
     }
