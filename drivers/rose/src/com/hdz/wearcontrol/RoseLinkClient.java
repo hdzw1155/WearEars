@@ -65,6 +65,7 @@ public final class RoseLinkClient extends WireDriver {
     }
 
     @Override protected void received(byte[] bytes) {
+        if (!transportOpen() || bytes == null || bytes.length == 0) return;
         for (RoseProtocol.Item item : decoder.feed(bytes, bytes.length)) {
             if (item.type == RoseProtocol.ITEM_BATTERY) {
                 int[] value = RoseProtocol.battery(family, item.value);

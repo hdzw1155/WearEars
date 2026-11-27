@@ -247,6 +247,7 @@ final class SonyClient extends WireDriver {
     }
 
     @Override protected void received(byte[] bytes) {
+        if (!transportOpen()) return;
         for (SonyProtocol.Frame frame : decoder.feed(bytes)) {
             if (frame.type == 1) {
                 if (sending != null && frame.sequence == 1 - sequence) {

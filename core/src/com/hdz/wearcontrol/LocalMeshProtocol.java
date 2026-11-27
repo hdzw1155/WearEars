@@ -542,7 +542,7 @@ public final class LocalMeshProtocol {
     // ---- Stream framing helpers ----
 
     /**
-     * Reads one UTF-8 line terminated by '\n' with a hard 1024-byte cap to prevent OOM.
+     * Reads one UTF-8 line terminated by LF or CRLF with a hard 1024-byte payload cap.
      * Returns null on clean EOF before any bytes are read.
      */
     public static String readLineBounded(InputStream in) throws IOException {
@@ -561,6 +561,7 @@ public final class LocalMeshProtocol {
                 break;
             }
             if (buf.size() >= cap) {
+                if (b == '\r' && in.read() == '\n') break;
                 throw new IOException("Frame exceeds " + cap + " bytes");
             }
             buf.write(b);
@@ -595,8 +596,6 @@ public final class LocalMeshProtocol {
 
     private static String stripValidLine(String raw) {
         if (raw == null) return null;
-        byte[] bytes = raw.getBytes(StandardCharsets.UTF_8);
-        if (bytes.length > MAX_LINE_BYTES) return null;
         int end = raw.length();
         if (end > 0 && raw.charAt(end - 1) == '\n') {
             end--;
@@ -604,11 +603,14 @@ public final class LocalMeshProtocol {
                 end--;
             }
         }
-        for (int i = 0; i < end; i++) {
-            char c = raw.charAt(i);
+        if (end > MAX_LINE_BYTES) return null;
+        String payload = end == raw.length() ? raw : raw.substring(0, end);
+        if (payload.getBytes(StandardCharsets.UTF_8).length > MAX_LINE_BYTES) return null;
+        for (int i = 0; i < payload.length(); i++) {
+            char c = payload.charAt(i);
             if (c == '\r' || c == '\n' || c == '\0') return null;
         }
-        return end == raw.length() ? raw : raw.substring(0, end);
+        return payload;
     }
 
     private static Boolean parseBit(String s) {

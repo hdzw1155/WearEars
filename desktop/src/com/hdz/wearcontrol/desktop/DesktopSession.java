@@ -17,9 +17,8 @@ import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -37,6 +36,12 @@ public final class DesktopSession {
     public interface SessionListener {
         default void onPhaseChanged(ConnectionPhase phase, String detail) { }
         default void onStateChanged(StateSnapshotView state) { }
+        default void onPhaseChanged(int connection, ConnectionPhase phase, String detail) {
+            onPhaseChanged(phase, detail);
+        }
+        default void onStateChanged(int connection, StateSnapshotView state) {
+            onStateChanged(state);
+        }
         default void onError(String message) { }
         default void onTrace(String tag, String message) { }
     }
@@ -47,7 +52,7 @@ public final class DesktopSession {
 
     private final DesktopDriverRegistry registry;
     private final WindowsBluetoothBridge bluetoothBridge;
-    private final ScheduledExecutorService actor;
+    private final ScheduledThreadPoolExecutor actor;
     private final StateHolder stateHolder = new StateHolder();
     private final CopyOnWriteArrayList<SessionListener> listeners = new CopyOnWriteArrayList<>();
     private final AtomicInteger generation = new AtomicInteger(0);
@@ -71,11 +76,13 @@ public final class DesktopSession {
     public DesktopSession(DesktopDriverRegistry registry, WindowsBluetoothBridge bluetoothBridge) {
         this.registry = registry;
         this.bluetoothBridge = bluetoothBridge;
-        this.actor = Executors.newSingleThreadScheduledExecutor(r -> {
+        this.actor = new ScheduledThreadPoolExecutor(1, r -> {
             Thread t = new Thread(r, "WearEars-DesktopActor");
             t.setDaemon(true);
             return t;
         });
+        actor.setRemoveOnCancelPolicy(true);
+        actor.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
     }
 
     public void addListener(SessionListener listener) {
@@ -124,18 +131,23 @@ public final class DesktopSession {
             emitError("未自动识别到「" + deviceName + "」对应品牌协议，请在左侧下拉框手动指定品牌后重试");
             return;
         }
-        final int gen = generation.incrementAndGet();
-        postActor(() -> startSessionOnActor(gen, mac, deviceName, brand, sockets));
+        synchronized (this) {
+            if (shutdown) return;
+            final int gen = generation.incrementAndGet();
+            postActor(() -> startSessionOnActor(gen, mac, deviceName, brand, sockets));
+        }
     }
 
-    public void disconnect() {
+    public synchronized void disconnect() {
+        if (shutdown) return;
         final int gen = generation.incrementAndGet();
         postActor(() -> teardownOnActor(gen, "已主动断开连接"));
     }
 
     public void refresh() {
+        int gen = generation.get();
         postActor(() -> {
-            if (activeDriver != null && activeDriver.isConnected()) {
+            if (isCurrent(gen) && activeDriver.isConnected()) {
                 activeDriver.queryBattery();
                 activeDriver.queryNoise();
                 if ((activeDriver.caps() & Controls.CAP_SPATIAL) != 0) activeDriver.querySpatial();
@@ -147,14 +159,29 @@ public final class DesktopSession {
 
     public void setNoiseMode(int mode) {
         if (mode < Controls.MODE_ANC || mode > Controls.MODE_TRANS) return;
+        int gen = generation.get();
         postActor(() -> {
-            if (activeDriver == null || !activeDriver.isConnected()) {
+            if (gen != generation.get() || shutdown) return;
+            if (!isCurrent(gen) || !activeDriver.isConnected()) {
                 emitError("耳机未连接，无法切换降噪模式");
                 return;
             }
-            emitTrace("Session", "setNoiseMode(" + mode + ")");
-            activeDriver.changeNoise(mode, () -> { });
+            changeNoiseOnActor(mode);
         });
+    }
+
+    void applyNoiseHotkey(WindowsHotkeyManager.Action action, int connection) {
+        postActor(() -> {
+            if (!isCurrent(connection) || phase != ConnectionPhase.CONNECTED || !activeDriver.isConnected()
+                    || (activeDriver.caps() & Controls.CAP_NOISE) == 0) return;
+            int mode = action.noiseMode(stateHolder.view().mode);
+            if (mode >= 0) changeNoiseOnActor(mode);
+        });
+    }
+
+    private void changeNoiseOnActor(int mode) {
+        emitTrace("Session", "setNoiseMode(" + mode + ")");
+        activeDriver.changeNoise(mode, () -> { });
     }
 
     public void setEqualizer(int presetId) {
@@ -226,8 +253,13 @@ public final class DesktopSession {
         if (shutdown) return;
         shutdown = true;
         int gen = generation.incrementAndGet();
-        actor.execute(() -> teardownOnActor(gen, "应用关闭"));
-        actor.shutdown();
+        actor.execute(() -> {
+            try {
+                teardownOnActor(gen, "应用关闭");
+            } finally {
+                actor.shutdown();
+            }
+        });
     }
 
     boolean awaitShutdown(long timeout, TimeUnit unit) throws InterruptedException {
@@ -572,15 +604,19 @@ public final class DesktopSession {
     }
 
     private void emitPhase(ConnectionPhase p, String detail) {
+        int connection = activeGen;
+        if (connection != generation.get()) return;
         for (SessionListener l : listeners) {
-            l.onPhaseChanged(p, detail);
+            l.onPhaseChanged(connection, p, detail);
         }
     }
 
     private void emitState() {
+        int connection = activeGen;
+        if (connection != generation.get()) return;
         StateSnapshotView snap = stateHolder.view();
         for (SessionListener l : listeners) {
-            l.onStateChanged(snap);
+            l.onStateChanged(connection, snap);
         }
     }
 

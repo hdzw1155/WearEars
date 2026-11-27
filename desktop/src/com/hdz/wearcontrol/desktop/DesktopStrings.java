@@ -5,6 +5,9 @@ import com.hdz.wearcontrol.DesktopCoreBridge;
 import com.hdz.wearcontrol.DesktopCoreBridge.StateSnapshotView;
 import com.hdz.wearcontrol.FeatureId;
 
+import java.util.List;
+import java.util.StringJoiner;
+
 final class DesktopStrings {
     final boolean english;
 
@@ -99,6 +102,61 @@ final class DesktopStrings {
 
     private static String bolt(int charge, int index) {
         return charging(charge, index) ? " ⚡" : "";
+    }
+
+    String trayIconStyle(String style) {
+        return DesktopPrefs.TRAY_BATTERY.equals(style) ? text("电量数字", "Battery percentage")
+                : text("耳机图标", "Headset icon");
+    }
+
+    String lowBatteryTitle() {
+        return text("WearEars · 电量低", "WearEars · Low battery");
+    }
+
+    String lowBatteryBody(boolean single, List<LowBatteryAlertTracker.Reading> readings) {
+        StringJoiner levels = new StringJoiner(" · ");
+        for (LowBatteryAlertTracker.Reading reading : readings) {
+            levels.add(batteryLabel(single, reading.component, false) + " " + percent(reading.percent));
+        }
+        return levels + text("，请及时充电。", ". Please charge soon.");
+    }
+
+    String hotkeyStatus(WindowsHotkeyManager.Status status) {
+        switch (status.phase) {
+            case STARTING: return text("正在注册 Windows 全局快捷键…", "Registering Windows global hotkeys…");
+            case UNAVAILABLE: return text("无法启动全局快捷键，请检查蓝牙桥接程序。",
+                    "Could not start global hotkeys. Check the Windows Bluetooth bridge.");
+            case READY:
+                String counts = status.available + "/" + status.total;
+                if (status.available == status.total) {
+                    return text("已启用（" + counts + " 可用）", "Enabled (" + counts + " available)");
+                }
+                return status.available == 0
+                        ? text("全部热键被占用（" + counts + " 可用）", "All hotkeys are in use (" + counts + " available)")
+                        : text("部分热键被占用（" + counts + " 可用）", "Some hotkeys are in use (" + counts + " available)");
+            default:
+                return text("已关闭", "Disabled");
+        }
+    }
+
+    String hotkeyList(WindowsHotkeyManager.Status status) {
+        StringJoiner lines = new StringJoiner("\n");
+        for (WindowsHotkeyManager.Action action : WindowsHotkeyManager.Action.values()) {
+            lines.add(action.shortcut + "  " + hotkeyAction(action)
+                    + (status.busy.contains(action) ? text("（被占用）", " (in use)") : ""));
+        }
+        return lines.toString();
+    }
+
+    private String hotkeyAction(WindowsHotkeyManager.Action action) {
+        switch (action) {
+            case TOGGLE_PANEL: return text("打开或收起面板", "Show or hide panel");
+            case CYCLE_NOISE: return text("循环切换降噪模式", "Cycle noise modes");
+            case NOISE_ANC: return noise(Controls.MODE_ANC);
+            case NOISE_TRANS: return noise(Controls.MODE_TRANS);
+            case NOISE_OFF: return text("关闭降噪", "Turn noise control off");
+            default: throw new IllegalArgumentException(action.name());
+        }
     }
 
     String tooltip(DesktopSession.ConnectionPhase phase, StateSnapshotView state) {

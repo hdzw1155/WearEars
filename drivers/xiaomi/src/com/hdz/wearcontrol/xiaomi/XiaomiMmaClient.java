@@ -504,6 +504,7 @@ public class XiaomiMmaClient extends WireDriver {
     // ---- 接收 ----
 
     @Override protected void received(byte[] data) {
+        if (!transportOpen() || data == null || data.length == 0) return;
         for (byte[] frame : decoder.feed(data, data.length)) {
             if (!transportOpen()) return;
             dispatchFrame(frame, 0, frame.length - 8);

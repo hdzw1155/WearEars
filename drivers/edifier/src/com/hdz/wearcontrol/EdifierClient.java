@@ -125,6 +125,7 @@ public class EdifierClient extends WireDriver {
     // ---- 接收 ----
 
     @Override protected void received(byte[] data) {
+        if (!transportOpen() || data == null || data.length == 0) return;
         boolean probing = probeDialect >= 0;
         for (EdifierProtocol.Frame frame : decoder.feed(data, data.length)) {
             if (frame.v2 != v2) continue;

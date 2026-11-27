@@ -571,6 +571,7 @@ public class OppoOpoClient extends WireDriver {
     }
 
     @Override protected void received(byte[] data) {
+        if (!transportOpen() || data == null || data.length == 0) return;
         for (OppoProtocol.Frame frame : decoder.feed(data, data.length)) {
             anyResponse = true;
             dispatch(frame);

@@ -149,6 +149,16 @@ public final class DesktopDriverRegistry {
         return null;
     }
 
+    WindowsBluetoothBridge.BtDevice findReconnectCandidate(
+            List<WindowsBluetoothBridge.BtDevice> ranked, String lastMac, String lastBrand) {
+        for (WindowsBluetoothBridge.BtDevice device : ranked) {
+            if (matchesMac(device, lastMac) && device.connected && resolve(device.name, lastBrand) != null) {
+                return device;
+            }
+        }
+        return findAutoConnectCandidate(ranked, "");
+    }
+
     private static boolean containsAny(String haystack, String... needles) {
         for (String n : needles) {
             if (haystack.contains(n)) return true;

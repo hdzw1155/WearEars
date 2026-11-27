@@ -60,7 +60,7 @@ public final class WearEarsDesktopApp {
     private static final DateTimeFormatter TRACE_TIME = DateTimeFormatter.ofPattern("HH:mm:ss");
 
     private enum View { MAIN, SETTINGS, DEV, SPATIAL_LAB }
-    private enum Scan { STARTUP, LIST, RECONNECT }
+    private enum Scan { STARTUP, LIST, RECONNECT, WATCHDOG }
 
     private final DesktopInstanceGuard instance;
     private final DesktopPrefs prefs;
@@ -76,29 +76,37 @@ public final class WearEarsDesktopApp {
     private final DesktopDeveloperPanel developer;
     private final DesktopSpatialLab lab = new DesktopSpatialLab(dialogs);
     private final DesktopTrayManager tray;
+    private final LowBatteryAlertTracker batteryAlerts = new LowBatteryAlertTracker();
+    private final WindowsHotkeyManager hotkeys;
+    private final ReconnectWatchdog watchdog;
     private final CardLayout cards = new CardLayout();
     private final JPanel pages = new JPanel(cards);
     private final JPanel header = new JPanel(new BorderLayout(8, 0));
     private final JPanel root = new JPanel(new BorderLayout());
     private final Map<View, JScrollPane> scrolls = new EnumMap<>(View.class);
     private final Timer blurHide = new Timer(170, e -> hideIfUnfocused());
-    private final Timer reconnect = new Timer(800, e -> retryAutoConnection());
+    private final Timer reconnect = new Timer(0, e -> scan(Scan.WATCHDOG));
 
     private DesktopUi ui;
     private View view = View.MAIN;
-    private boolean closing, consentComplete, wakePending, scanned, scanning, scanFailed, connectFailed, populatingDevices;
+    private boolean closing, consentComplete, wakePending, scanned, scanFailed, connectFailed, populatingDevices;
+    private boolean reconnectArmed;
+    private Scan scanInProgress, queuedScan;
+    private Thread scanWorker, startupWorker;
     private List<BtDevice> devices = List.of();
     private BtDevice selected;
     private String selectedBrand;
     private ConnectionPhase phase = ConnectionPhase.DISCONNECTED;
     private StateSnapshotView state = session.snapshot();
-    private ConnectionRequest activeRequest, pendingRetry;
+    private int stateConnection;
+    private ConnectionRequest activeRequest;
 
     private JComboBox<DeviceChoice> deviceCombo;
     private JComboBox<BrandChoice> brandCombo;
     private DesktopUi.Button scanButton, connectButton, disconnectButton, pinButton;
     private JCheckBox startupBox, pinSetting, startMinimizedSetting;
     private DesktopUi.Note startupStatus;
+    private DesktopUi.Note hotkeyStatus, hotkeyList;
     private boolean startupBusy, startupRead, startupRegistered, startupFailed;
     private DesktopBatteryPanel battery;
     private DesktopNoiseSegmentedBar noise;
@@ -110,6 +118,7 @@ public final class WearEarsDesktopApp {
     private WearEarsDesktopApp(DesktopInstanceGuard instance, DesktopPrefs prefs) {
         this.instance = instance;
         this.prefs = prefs;
+        watchdog = new ReconnectWatchdog(prefs.autoReconnect());
         selectedBrand = registry.findByKey(prefs.lastBrand()) == null ? DesktopDriverRegistry.BRAND_AUTO : prefs.lastBrand();
         features = new DesktopFeatureDeck(prefs, session, dialogs);
         developer = new DesktopDeveloperPanel(mesh, session, prefs, dialogs, trace,
@@ -119,6 +128,8 @@ public final class WearEarsDesktopApp {
                     showPanel(DesktopTrayManager.pointerLocation());
                     if (consentComplete) showView(View.SETTINGS);
                 }, this::shutdown, blurHide::restart, message -> appendTrace("Tray", message));
+        hotkeys = new WindowsHotkeyManager(bridge.bridgeExecutable(), SwingUtilities::invokeLater,
+                this::handleHotkey, this::renderHotkeys);
     }
 
     public static void main(String[] args) {
@@ -217,6 +228,7 @@ public final class WearEarsDesktopApp {
             prefs.setDisclaimerAccepted(true);
         }
         consentComplete = true;
+        if (prefs.globalHotkeys()) hotkeys.start();
         if (wakePending) reveal(DesktopTrayManager.pointerLocation());
         else if (firstRun && prefs.startMinimized() && tray.installed()) hidePanel();
         wakePending = false;
@@ -334,8 +346,14 @@ public final class WearEarsDesktopApp {
         deviceCombo.addActionListener(e -> {
             if (populatingDevices) return;
             DeviceChoice choice = (DeviceChoice) deviceCombo.getSelectedItem();
+            BtDevice previous = selected;
             selected = choice == null ? null : choice.device;
-            cancelAutoRetry();
+            if (previous != null && !DesktopDriverRegistry.matchesMac(selected, previous.mac)) {
+                suppressReconnect();
+                if (phase == ConnectionPhase.CONNECTING && activeRequest != null && activeRequest.source != null) {
+                    cancelConnection();
+                }
+            }
             connectFailed = false;
             renderState();
         });
@@ -348,8 +366,26 @@ public final class WearEarsDesktopApp {
         JCheckBox auto = ui.check(ui.t("启动时自动连接在线耳机", "Connect to online earbuds at startup"), prefs.autoConnect());
         auto.addActionListener(e -> {
             prefs.setAutoConnect(auto.isSelected());
-            if (!auto.isSelected()) cancelAutoRetry();
+            if (!auto.isSelected() && !reconnectArmed) stopReconnectProbe();
+            scheduleReconnect();
         });
+        JCheckBox autoReconnect = ui.check(ui.t("意外断开后自动重连", "Reconnect after an unexpected disconnect"),
+                prefs.autoReconnect());
+        autoReconnect.addActionListener(e -> setAutoReconnect(autoReconnect.isSelected()));
+        JLabel trayStyleLabel = ui.label(ui.t("托盘图标风格", "Tray icon style"), 12, false, ui.theme.muted);
+        JComboBox<TrayStyleChoice> trayStyle = ui.combo(new JComboBox<>());
+        TrayStyleChoice headsetIcon = new TrayStyleChoice(DesktopPrefs.TRAY_HEADSET);
+        TrayStyleChoice batteryIcon = new TrayStyleChoice(DesktopPrefs.TRAY_BATTERY);
+        trayStyle.addItem(headsetIcon);
+        trayStyle.addItem(batteryIcon);
+        trayStyle.setSelectedItem(DesktopPrefs.TRAY_BATTERY.equals(prefs.trayIconStyle()) ? batteryIcon : headsetIcon);
+        trayStyle.addActionListener(e -> {
+            TrayStyleChoice choice = (TrayStyleChoice) trayStyle.getSelectedItem();
+            if (choice == null) return;
+            prefs.setTrayIconStyle(choice.key);
+            updateTray();
+        });
+        trayStyleLabel.setLabelFor(trayStyle);
         startMinimizedSetting = ui.check(ui.t("启动时最小化到托盘", "Start minimized to the tray"), prefs.startMinimized());
         startMinimizedSetting.setEnabled(tray.installed());
         startMinimizedSetting.addActionListener(e -> prefs.setStartMinimized(startMinimizedSetting.isSelected()));
@@ -364,6 +400,9 @@ public final class WearEarsDesktopApp {
         startupBox.addActionListener(e -> updateStartup(startupBox.isSelected()));
         startupStatus = ui.note("");
         behavior.add(auto);
+        behavior.add(autoReconnect);
+        behavior.add(trayStyleLabel);
+        behavior.add(trayStyle);
         behavior.add(startMinimizedSetting);
         behavior.add(autoHide);
         behavior.add(pinSetting);
@@ -371,6 +410,30 @@ public final class WearEarsDesktopApp {
         behavior.add(startupStatus);
         renderStartup();
         page.add(behavior);
+
+        DesktopUi.Stack shortcuts = ui.card(ui.t("快捷键与提醒", "Shortcuts and alerts"));
+        JCheckBox lowBattery = ui.check(ui.t("低电量托盘提醒（20% 及以下）", "Tray alert at 20% battery or below"),
+                prefs.lowBatteryAlert());
+        lowBattery.addActionListener(e -> {
+            prefs.setLowBatteryAlert(lowBattery.isSelected());
+            updateTray();
+        });
+        JCheckBox globalHotkeys = ui.check(ui.t("启用 Windows 全局快捷键", "Enable Windows global hotkeys"),
+                prefs.globalHotkeys());
+        globalHotkeys.addActionListener(e -> {
+            prefs.setGlobalHotkeys(globalHotkeys.isSelected());
+            if (globalHotkeys.isSelected()) hotkeys.start();
+            else hotkeys.stop();
+            renderHotkeys();
+        });
+        hotkeyStatus = ui.note("");
+        hotkeyList = ui.note("");
+        shortcuts.add(lowBattery);
+        shortcuts.add(globalHotkeys);
+        shortcuts.add(hotkeyStatus);
+        shortcuts.add(hotkeyList);
+        renderHotkeys();
+        page.add(shortcuts);
 
         DesktopUi.Stack dev = ui.card("");
         dev.add(ui.button(ui.t("开发者选项  ›", "Developer options  ›"), () -> showView(View.DEV)));
@@ -587,49 +650,124 @@ public final class WearEarsDesktopApp {
     }
 
     private void scan(Scan reason) {
-        if (closing || scanning || !consentComplete) return;
-        scanning = true;
-        scanFailed = false;
-        renderState();
-        Thread worker = new Thread(() -> {
+        if (closing || !consentComplete) return;
+        if (scanInProgress != null) {
+            if (scanInProgress == Scan.WATCHDOG && reason != Scan.WATCHDOG) {
+                queuedScan = reason;
+                scanWorker.interrupt();
+            }
+            return;
+        }
+        if (reason == Scan.WATCHDOG && reconnectDelay() < 0) return;
+        scanInProgress = reason;
+        int connection = session.connectionId();
+        long revision = watchdog.revision();
+        String lastMac = prefs.lastMac();
+        scanWorker = new Thread(() -> {
             try {
-                List<BtDevice> ranked = registry.rankDevices(bridge.listDevices(), prefs.lastMac());
-                SwingUtilities.invokeLater(() -> finishScan(reason, ranked, null));
+                List<BtDevice> ranked = registry.rankDevices(bridge.listDevices(), lastMac);
+                SwingUtilities.invokeLater(() -> finishScan(reason, connection, revision, ranked, null));
             } catch (Exception ex) {
-                SwingUtilities.invokeLater(() -> finishScan(reason, null, ex));
+                SwingUtilities.invokeLater(() -> finishScan(reason, connection, revision, null, ex));
             }
         }, "WearEars-BtScan");
-        worker.setDaemon(true);
-        worker.start();
+        scanWorker.setDaemon(true);
+        scanWorker.start();
+        if (reason != Scan.WATCHDOG) {
+            scanFailed = false;
+            renderState();
+        }
     }
 
-    private void finishScan(Scan reason, List<BtDevice> ranked, Exception failure) {
+    private void finishScan(Scan reason, int connection, long revision, List<BtDevice> ranked, Exception failure) {
+        scanWorker = null;
+        scanInProgress = null;
         if (closing) return;
-        scanning = false;
-        scanned = true;
-        scanFailed = failure != null;
-        if (failure != null) {
-            appendTrace("BT", "Enumeration failed: " + failure);
+        if (queuedScan != null) {
+            Scan next = queuedScan;
+            queuedScan = null;
+            scan(next);
+            return;
+        }
+        boolean canConnect = phase == ConnectionPhase.DISCONNECTED && session.phase() == ConnectionPhase.DISCONNECTED
+                && connection == session.connectionId() && !watchdog.userDisconnectedManually();
+        if (reason == Scan.WATCHDOG) {
+            if (canConnect && revision == watchdog.revision() && reconnectDelay() >= 0) {
+                if (failure != null) appendTrace("BT", "Reconnect enumeration failed: " + failure);
+                if (failure != null || !connectOnlineCandidate(reason, ranked)) watchdog.probeFailed();
+            }
         } else {
-            devices = ranked;
-            repopulateDevices();
-            appendTrace("BT", "Enumerated " + devices.size() + " Bluetooth device(s)");
-            if (phase == ConnectionPhase.DISCONNECTED && (reason == Scan.RECONNECT
-                    || (reason == Scan.STARTUP && prefs.autoConnect()))) {
-                BtDevice candidate = registry.findAutoConnectCandidate(devices, prefs.lastMac());
-                if (candidate != null) {
-                    String brand = DesktopDriverRegistry.matchesMac(candidate, prefs.lastMac())
-                            && registry.findByKey(prefs.lastBrand()) != null ? prefs.lastBrand() : DesktopDriverRegistry.BRAND_AUTO;
-                    if (reason == Scan.RECONNECT && selected != null && selected.mac.equals(candidate.mac)
-                            && registry.resolve(candidate.name, selectedBrand) != null) brand = selectedBrand;
-                    if (registry.resolve(candidate.name, brand) != null) {
-                        selectBrand(brand);
-                        beginConnection(candidate, brand, reason == Scan.STARTUP);
-                    }
+            scanned = true;
+            scanFailed = failure != null;
+            if (failure != null) {
+                appendTrace("BT", "Enumeration failed: " + failure);
+            } else {
+                appendTrace("BT", "Enumerated " + ranked.size() + " Bluetooth device(s)");
+                boolean autoConnect = canConnect && (reason == Scan.RECONNECT || (reason == Scan.STARTUP && prefs.autoConnect()));
+                if (!autoConnect || !connectOnlineCandidate(reason, ranked)) {
+                    devices = ranked;
+                    repopulateDevices();
                 }
             }
+            renderState();
         }
-        renderState();
+        scheduleReconnect();
+    }
+
+    private boolean connectOnlineCandidate(Scan reason, List<BtDevice> ranked) {
+        String lastMac = prefs.lastMac();
+        String lastBrand = prefs.lastBrand();
+        BtDevice candidate = reason == Scan.WATCHDOG ? registry.findReconnectCandidate(ranked, lastMac, lastBrand)
+                : registry.findAutoConnectCandidate(ranked, lastMac);
+        if (candidate == null) return false;
+        String brand = DesktopDriverRegistry.matchesMac(candidate, lastMac) && registry.findByKey(lastBrand) != null
+                ? lastBrand : DesktopDriverRegistry.BRAND_AUTO;
+        if (reason == Scan.RECONNECT && selected != null && selected.mac.equals(candidate.mac)
+                && registry.resolve(candidate.name, selectedBrand) != null) brand = selectedBrand;
+        if (registry.resolve(candidate.name, brand) == null) return false;
+        devices = ranked;
+        selected = candidate;
+        repopulateDevices();
+        selectBrand(brand);
+        beginConnection(candidate, brand, reason);
+        return true;
+    }
+
+    private void setAutoReconnect(boolean enabled) {
+        prefs.setAutoReconnect(enabled);
+        watchdog.setEnabled(enabled);
+        if (!enabled) {
+            stopReconnectProbe();
+            if (phase == ConnectionPhase.CONNECTING && activeRequest != null && activeRequest.source == Scan.WATCHDOG) {
+                cancelConnection();
+            }
+        }
+        scheduleReconnect();
+    }
+
+    private int reconnectDelay() {
+        if (closing || !consentComplete || session.phase() != ConnectionPhase.DISCONNECTED) return -1;
+        boolean hasTarget = (reconnectArmed || prefs.autoConnect()) && !prefs.lastMac().isBlank();
+        return watchdog.delayMillis(hasTarget, phase);
+    }
+
+    private void scheduleReconnect() {
+        int delay = reconnectDelay();
+        if (delay < 0) reconnect.stop();
+        else if (scanInProgress == null && !reconnect.isRunning()) {
+            reconnect.setInitialDelay(delay);
+            reconnect.start();
+        }
+    }
+
+    private void stopReconnectProbe() {
+        reconnect.stop();
+        if (scanInProgress == Scan.WATCHDOG) scanWorker.interrupt();
+    }
+
+    private void suppressReconnect() {
+        watchdog.suppressUntilManualConnect();
+        stopReconnectProbe();
     }
 
     private void primaryConnectionAction() {
@@ -640,7 +778,6 @@ public final class WearEarsDesktopApp {
 
     private void connectSelected() {
         if (phase != ConnectionPhase.DISCONNECTED || selected == null || !consentComplete) return;
-        cancelAutoRetry();
         if (registry.resolve(selected.name, selectedBrand) == null) {
             dialogs.info(ui.t("协议品牌", "Protocol brand"),
                     ui.t("未识别此设备的协议。可在设置中选择适用的品牌后重试。",
@@ -648,11 +785,15 @@ public final class WearEarsDesktopApp {
                     JOptionPane.INFORMATION_MESSAGE);
             return;
         }
-        beginConnection(selected, selectedBrand, false);
+        watchdog.manualConnect();
+        reconnectArmed = true;
+        stopReconnectProbe();
+        beginConnection(selected, selectedBrand, null);
     }
 
-    private void beginConnection(BtDevice device, String brand, boolean retry) {
-        activeRequest = new ConnectionRequest(device, brand, retry);
+    private void beginConnection(BtDevice device, String brand, Scan source) {
+        reconnect.stop();
+        activeRequest = new ConnectionRequest(device, brand, source);
         phase = ConnectionPhase.CONNECTING;
         connectFailed = false;
         session.connect(device, brand);
@@ -660,23 +801,13 @@ public final class WearEarsDesktopApp {
     }
 
     private void disconnect() {
-        cancelAutoRetry();
+        suppressReconnect();
+        cancelConnection();
+    }
+
+    private void cancelConnection() {
         activeRequest = null;
         session.disconnect();
-    }
-
-    private void cancelAutoRetry() {
-        reconnect.stop();
-        pendingRetry = null;
-        if (activeRequest != null) activeRequest.retry = false;
-    }
-
-    private void retryAutoConnection() {
-        ConnectionRequest retry = pendingRetry;
-        pendingRetry = null;
-        if (retry != null && !closing && prefs.autoConnect() && phase == ConnectionPhase.DISCONNECTED) {
-            beginConnection(retry.device, retry.brand, false);
-        }
     }
 
     private void refreshStatus() {
@@ -695,40 +826,52 @@ public final class WearEarsDesktopApp {
         return phase == ConnectionPhase.CONNECTED && state.connected && (state.caps & Controls.CAP_NOISE) != 0;
     }
 
+    private void handleHotkey(WindowsHotkeyManager.Action action) {
+        if (closing || !consentComplete || !prefs.globalHotkeys()) return;
+        if (action == WindowsHotkeyManager.Action.TOGGLE_PANEL) {
+            tray.closeMenu();
+            togglePanel(DesktopTrayManager.pointerLocation());
+        } else if (localNoiseAvailable()) {
+            session.applyNoiseHotkey(action, stateConnection);
+        }
+    }
+
     private void bindSession() {
         session.addListener(new DesktopSession.SessionListener() {
-            @Override public void onPhaseChanged(ConnectionPhase next, String detail) {
-                int connection = session.connectionId();
+            @Override public void onPhaseChanged(int connection, ConnectionPhase next, String detail) {
                 StateSnapshotView snapshot = session.snapshot();
                 mesh.pushSnapshot(session.meshSnapshot());
                 SwingUtilities.invokeLater(() -> {
                     if (closing || connection != session.connectionId()) return;
                     phase = next;
                     state = snapshot;
+                    stateConnection = connection;
                     if (next == ConnectionPhase.CONNECTED) {
-                        if (activeRequest != null) {
+                        reconnectArmed = true;
+                        watchdog.connected();
+                        if (activeRequest != null && !activeRequest.established) {
                             prefs.rememberConnection(activeRequest.device.mac, activeRequest.brand);
-                            activeRequest.retry = false;
+                            activeRequest.established = true;
                         }
                     } else if (next == ConnectionPhase.DISCONNECTED) {
                         ConnectionRequest failed = activeRequest;
                         activeRequest = null;
                         connectFailed = failed != null;
-                        if (failed != null && failed.retry && prefs.autoConnect()) {
-                            pendingRetry = failed;
-                            reconnect.restart();
+                        if (failed != null && failed.source == Scan.WATCHDOG && !failed.established) {
+                            watchdog.probeFailed();
                         }
                     }
+                    scheduleReconnect();
                     appendTrace("Session", detail);
                     renderState();
                 });
             }
-            @Override public void onStateChanged(StateSnapshotView snapshot) {
-                int connection = session.connectionId();
+            @Override public void onStateChanged(int connection, StateSnapshotView snapshot) {
                 mesh.pushSnapshot(session.meshSnapshot());
                 SwingUtilities.invokeLater(() -> {
                     if (closing || connection != session.connectionId()) return;
                     state = snapshot;
+                    stateConnection = connection;
                     renderState();
                 });
             }
@@ -742,6 +885,7 @@ public final class WearEarsDesktopApp {
     }
 
     private void renderState() {
+        boolean scanning = scanInProgress != null && scanInProgress != Scan.WATCHDOG;
         boolean connected = phase == ConnectionPhase.CONNECTED && state.connected;
         boolean linking = phase == ConnectionPhase.CONNECTING;
         phaseText.setText(connected ? ui.t("已连接", "Connected") : linking ? ui.t("连接中…", "Connecting…")
@@ -787,7 +931,20 @@ public final class WearEarsDesktopApp {
     }
 
     private void updateTray() {
-        if (ui != null) tray.update(ui, phase, state, localNoiseAvailable() || mesh.isClientConnected());
+        if (ui == null) return;
+        tray.update(ui, phase, state, localNoiseAvailable() || mesh.isClientConnected(), prefs.trayIconStyle());
+        List<LowBatteryAlertTracker.Reading> alerts = batteryAlerts.update(state, prefs.lowBatteryAlert() && tray.installed());
+        if (!alerts.isEmpty()) {
+            boolean single = (state.caps & Controls.CAP_BATTERY_SINGLE) != 0;
+            tray.notifyLowBattery(ui.strings.lowBatteryTitle(), ui.strings.lowBatteryBody(single, alerts));
+        }
+    }
+
+    private void renderHotkeys() {
+        if (closing || hotkeyStatus == null) return;
+        WindowsHotkeyManager.Status status = hotkeys.status();
+        hotkeyStatus.setText(ui.strings.hotkeyStatus(status));
+        hotkeyList.setText(ui.strings.hotkeyList(status));
     }
 
     private void updateStartup(Boolean enabled) {
@@ -795,7 +952,7 @@ public final class WearEarsDesktopApp {
         startupBusy = true;
         startupFailed = false;
         renderStartup();
-        Thread worker = new Thread(() -> {
+        startupWorker = new Thread(() -> {
             try {
                 boolean registered = enabled == null ? startup.registered() : startup.setRegistered(enabled);
                 SwingUtilities.invokeLater(() -> finishStartup(registered, null));
@@ -803,11 +960,12 @@ public final class WearEarsDesktopApp {
                 SwingUtilities.invokeLater(() -> finishStartup(null, ex));
             }
         }, "WearEars-StartupRegistry");
-        worker.setDaemon(true);
-        worker.start();
+        startupWorker.setDaemon(true);
+        startupWorker.start();
     }
 
     private void finishStartup(Boolean registered, Exception failure) {
+        startupWorker = null;
         if (closing) return;
         startupRead = true;
         startupBusy = false;
@@ -856,7 +1014,12 @@ public final class WearEarsDesktopApp {
         if (closing) return;
         closing = true;
         blurHide.stop();
-        cancelAutoRetry();
+        reconnect.stop();
+        Thread scan = scanWorker;
+        Thread registryWorker = startupWorker;
+        if (scan != null) scan.interrupt();
+        if (registryWorker != null) registryWorker.interrupt();
+        hotkeys.shutdown();
         lab.stop();
         features.close();
         developer.stopDiscovery();
@@ -867,6 +1030,9 @@ public final class WearEarsDesktopApp {
                 mesh.stopAll();
                 session.shutdown();
                 session.awaitShutdown(3, TimeUnit.SECONDS);
+                hotkeys.awaitShutdown(3, TimeUnit.SECONDS);
+                if (scan != null) scan.join(1_000);
+                if (registryWorker != null) registryWorker.join(1_000);
                 lab.awaitStopped(900);
             } catch (InterruptedException ex) {
                 Thread.currentThread().interrupt();
@@ -881,11 +1047,12 @@ public final class WearEarsDesktopApp {
     private static final class ConnectionRequest {
         final BtDevice device;
         final String brand;
-        boolean retry;
-        ConnectionRequest(BtDevice device, String brand, boolean retry) {
+        final Scan source;
+        boolean established;
+        ConnectionRequest(BtDevice device, String brand, Scan source) {
             this.device = device;
             this.brand = brand;
-            this.retry = retry;
+            this.source = source;
         }
     }
 
@@ -900,6 +1067,12 @@ public final class WearEarsDesktopApp {
         final String key, label;
         BrandChoice(String key, String label) { this.key = key; this.label = label; }
         @Override public String toString() { return label; }
+    }
+
+    private final class TrayStyleChoice {
+        final String key;
+        TrayStyleChoice(String key) { this.key = key; }
+        @Override public String toString() { return ui.strings.trayIconStyle(key); }
     }
 
     private static final class StatusDot extends JComponent {

@@ -75,6 +75,7 @@ final class TechnicsClient extends WireDriver {
         ready();
     }
     @Override protected void received(byte[] data) {
+        if (!transportOpen()) return;
         for (byte[] frame : decoder.feed(data)) {
             int mode = TechnicsProtocol.mode(frame);
             if (mode >= 0) {

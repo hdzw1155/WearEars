@@ -493,6 +493,7 @@ public class VivoGaiaClient extends WireDriver {
     // ---- 接收 ----
 
     @Override protected void received(byte[] data) {
+        if (!transportOpen() || data == null || data.length == 0) return;
         for (VivoProtocol.Frame frame : decoder.feed(data, data.length)) {
             int vendor = frame.vendor, cmd = frame.command;
             byte[] payload = frame.payload;

@@ -3,11 +3,17 @@ package com.hdz.wearcontrol.desktop;
 import com.hdz.wearcontrol.Controls;
 import com.hdz.wearcontrol.DesktopCoreBridge;
 import com.hdz.wearcontrol.DesktopCoreBridge.BrandModuleEntry;
+import com.hdz.wearcontrol.DesktopCoreBridge.StateSnapshotView;
 import com.hdz.wearcontrol.FeatureDescriptor;
 import com.hdz.wearcontrol.FeatureId;
 import com.hdz.wearcontrol.LocalMeshFirewall;
 import com.hdz.wearcontrol.LocalMeshProtocol;
 import com.hdz.wearcontrol.WireDriver;
+import com.hdz.wearcontrol.desktop.DesktopSession.ConnectionPhase;
+import com.hdz.wearcontrol.desktop.WindowsBluetoothBridge.BtDevice;
+import com.hdz.wearcontrol.desktop.WindowsHotkeyManager.Action;
+import com.hdz.wearcontrol.desktop.WindowsHotkeyManager.Event;
+import com.hdz.wearcontrol.desktop.WindowsHotkeyManager.Kind;
 
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
@@ -18,6 +24,7 @@ import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -27,12 +34,22 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Predicate;
+import java.util.stream.Stream;
 
 /**
  * Pure JVM verification suite for WearEars Desktop for Windows.
@@ -67,6 +84,11 @@ public final class DesktopChecks {
         checkAnimationsAndFeatureDeck();
         checkInitialRefresh();
         checkFindBudsSafety();
+        checkTrayBatteryIconAndLowBatteryAlerts();
+        checkHotkeyProtocolAndActions();
+        checkReconnectWatchdogStateMachine();
+        checkDesktopSessionConcurrencyStress();
+        checkNewPrefsPersistence();
         System.out.println("PASS " + checks + " desktop checks");
     }
 
@@ -772,5 +794,552 @@ public final class DesktopChecks {
         assertTrue(!DesktopSession.canRingFindBuds(holder.view(), 4, 7, 7), "Unknown target rejected");
         holder.disconnect();
         assertTrue(!DesktopSession.canRingFindBuds(holder.view(), 3, 7, 7), "Disconnect blocks pending ring");
+    }
+
+    private static void checkTrayBatteryIconAndLowBatteryAlerts() {
+        String firstMac = "AA:BB:CC:DD:EE:FF";
+        DesktopCoreBridge.StateHolder holder = new DesktopCoreBridge.StateHolder();
+        assertEquals(-1, DesktopTrayManager.displayBatteryPercent(holder.view()), "Disconnected tray has unknown battery");
+        startBatteryState(holder, firstMac, Controls.CAP_BATTERY);
+        assertEquals(-1, DesktopTrayManager.displayBatteryPercent(holder.view()), "All tray levels unknown");
+        holder.battery(85, 93, 45, 2, true);
+        assertEquals(85, DesktopTrayManager.displayBatteryPercent(holder.view()), "Tray chooses the minimum of both buds");
+        assertTrue(!DesktopTrayManager.displayBatteryCharging(holder.view()), "Other bud's charge bit does not color the badge");
+        holder.battery(255, 93, 45, 2, true);
+        assertEquals(93, DesktopTrayManager.displayBatteryPercent(holder.view()), "Tray shows a lone right bud");
+        assertTrue(DesktopTrayManager.displayBatteryCharging(holder.view()), "Lone right bud uses the right charge bit");
+        holder.battery(100, 255, 36, 1, true);
+        assertEquals(100, DesktopTrayManager.displayBatteryPercent(holder.view()), "Tray shows a lone left bud at 100%");
+        holder.battery(255, 255, 36, 4, true);
+        assertEquals(36, DesktopTrayManager.displayBatteryPercent(holder.view()), "Tray falls back to the case");
+        assertTrue(DesktopTrayManager.displayBatteryCharging(holder.view()), "Case fallback uses the case charge bit");
+        holder.battery(20, 20, 85, 1, true);
+        assertTrue(!DesktopTrayManager.displayBatteryCharging(holder.view()), "At an equal level the discharging bud wins");
+        holder.battery(20, 20, 85, 3, true);
+        assertTrue(DesktopTrayManager.displayBatteryCharging(holder.view()), "Equal charging buds show the charging bar");
+        startBatteryState(holder, firstMac, Controls.CAP_BATTERY_SINGLE);
+        holder.battery(255, 50, 30, 0, true);
+        assertEquals(-1, DesktopTrayManager.displayBatteryPercent(holder.view()), "Unknown aggregate does not use case");
+        holder.battery(0, 50, 30, 1, true);
+        assertEquals(0, DesktopTrayManager.displayBatteryPercent(holder.view()), "Aggregate zero is valid");
+        assertTrue(DesktopTrayManager.displayBatteryCharging(holder.view()), "Aggregate charge uses bit 0");
+
+        int[] headset = DesktopTrayManager.image(Color.GREEN).getRGB(0, 0, 64, 64, null, 0, 64);
+        for (int percent : new int[] {0, 15, 20, 50, 100, -1}) {
+            for (boolean charging : new boolean[] {false, true}) {
+                BufferedImage badge = DesktopTrayManager.batteryImage(percent, charging, Color.GREEN);
+                assertEquals(64, badge.getWidth(), "64px battery badge width at " + percent);
+                assertEquals(64, badge.getHeight(), "64px battery badge height at " + percent);
+                int[] pixels = badge.getRGB(0, 0, 64, 64, null, 0, 64);
+                if (percent < 0) {
+                    assertTrue(Arrays.equals(headset, pixels), "Unknown battery exactly preserves the headset icon");
+                    continue;
+                }
+                int background = percent <= 20 && !charging ? 0xffdf1b22 : 0xff0d4fb8;
+                assertEquals(background, badge.getRGB(4, 32), "Badge backing color at " + percent + " charging=" + charging);
+                assertTrue(Arrays.stream(pixels).anyMatch(p -> p == Color.WHITE.getRGB()), "Badge contains white digits at " + percent);
+                assertEquals(charging, badge.getRGB(32, 55) == 0xff8bf9a6, "Charging marker at " + percent);
+                for (int y = 0; y < badge.getHeight(); y++) {
+                    if (badge.getRGB(4, y) == Color.WHITE.getRGB() || badge.getRGB(59, y) == Color.WHITE.getRGB()) {
+                        throw new AssertionError("Digit strokes reached the badge margin at " + percent);
+                    }
+                }
+                assertTrue((badge.getRGB(0, 0) >>> 24) == 0, "Rounded badge retains transparent corners");
+            }
+        }
+
+        LowBatteryAlertTracker tracker = new LowBatteryAlertTracker();
+        assertTrue(tracker.update(holder.view(), true).isEmpty(), "Charging aggregate suppresses its alert");
+        holder.battery(0, 255, 255, 0, true);
+        assertEquals("总电量 0%，请及时充电。", new DesktopStrings("zh").lowBatteryBody(true, tracker.update(holder.view(), true)),
+                "Aggregate alerts are expressed as a single level");
+        startBatteryState(holder, "00:11:22:33:44:55", Controls.CAP_BATTERY);
+        holder.battery(21, 30, 85, 0, true);
+        assertTrue(tracker.update(holder.view(), true).isEmpty(), "21% remains above the warning threshold");
+        holder.battery(20, 19, 85, 0, true);
+        assertTrue(tracker.update(holder.view(), false).isEmpty(), "Disabled tray alert emits nothing");
+        List<LowBatteryAlertTracker.Reading> alert = tracker.update(holder.view(), true);
+        assertEquals(2, alert.size(), "Both earbud readings are returned in one alert");
+        assertEquals("左耳 20% · 右耳 19%，请及时充电。", new DesktopStrings("zh").lowBatteryBody(false, alert),
+                "Chinese tray alert combines both buds");
+        assertEquals("Left 20% · Right 19%. Please charge soon.", new DesktopStrings("en").lowBatteryBody(false, alert),
+                "English tray alert combines both buds");
+        assertTrue(tracker.update(holder.view(), true).isEmpty(), "Unchanged low values do not repeat");
+        holder.battery(3, 0, 85, 0, true);
+        assertTrue(tracker.update(holder.view(), true).isEmpty(), "Further discharge does not repeat");
+        holder.battery(29, 255, 85, 0, true);
+        assertTrue(tracker.update(holder.view(), true).isEmpty(), "29% and unknown readings do not rearm");
+        holder.battery(18, 19, 0, 4, true);
+        assertTrue(tracker.update(holder.view(), true).isEmpty(), "Both buds remain warned and a charging case is quiet");
+        holder.battery(30, 18, 0, 2, true);
+        alert = tracker.update(holder.view(), true);
+        assertEquals(1, alert.size(), "An independently discharging case triggers");
+        assertEquals(2, alert.get(0).component, "Warning belongs to the case");
+        assertEquals(0, alert.get(0).percent, "Empty case counts as a valid reading");
+        holder.battery(18, 19, 0, 0, true);
+        alert = tracker.update(holder.view(), true);
+        assertEquals(2, alert.size(), "30% and a charging episode each rearm one ear");
+        assertEquals(0, alert.get(0).component, "Recovered left bud first");
+        assertEquals(1, alert.get(1).component, "Previously charging right bud second");
+        startBatteryState(holder, firstMac, Controls.CAP_BATTERY);
+        holder.battery(18, 19, 0, 0, true);
+        assertEquals(3, tracker.update(holder.view(), true).size(), "Changing address resets all discharge records");
+        holder.disconnect();
+        assertTrue(tracker.update(holder.view(), true).isEmpty(), "Disconnect clears records without warning");
+        startBatteryState(holder, firstMac, Controls.CAP_BATTERY);
+        holder.battery(18, 65, 80, 0, true);
+        assertEquals(1, tracker.update(holder.view(), true).size(), "Reconnecting the same address starts a new alert record");
+    }
+
+    private static void startBatteryState(DesktopCoreBridge.StateHolder holder, String address, int caps) {
+        holder.begin(address, "Battery fixture", "Test", caps, 0, Controls.VERIF_REAL);
+        holder.setConnected(true, null, caps, 0, null);
+    }
+
+    private static void checkHotkeyProtocolAndActions() throws Exception {
+        String[] expectedKeys = {"Ctrl+Alt+W", "Ctrl+Alt+N", "Ctrl+Alt+A", "Ctrl+Alt+T", "Ctrl+Alt+O"};
+        Action[] actions = Action.values();
+        assertEquals(expectedKeys.length, actions.length, "Exactly five native actions");
+        for (int i = 0; i < actions.length; i++) {
+            Action action = actions[i];
+            assertEquals(expectedKeys[i], action.shortcut, "Displayed binding for " + action);
+            Event ok = WindowsHotkeyManager.parseLine("REG|" + action + "|OK");
+            assertTrue(ok.kind == Kind.REG && ok.action == action && ok.registered, "Registration OK for " + action);
+            Event busy = WindowsHotkeyManager.parseLine("REG|" + action + "|BUSY");
+            assertTrue(busy.kind == Kind.REG && busy.action == action && !busy.registered, "Registration conflict for " + action);
+            Event key = WindowsHotkeyManager.parseLine("HOTKEY|" + action);
+            assertTrue(key.kind == Kind.HOTKEY && key.action == action, "Native hotkey action " + action);
+        }
+        for (int available : new int[] {0, 4, 5}) {
+            Event ready = WindowsHotkeyManager.parseLine(" READY|" + available + "|5\r\n");
+            assertTrue(ready.kind == Kind.READY && ready.available == available && ready.total == 5,
+                    "READY with " + available + " usable keys");
+        }
+        for (String invalid : new String[] {null, "", " ", "UNRECOGNIZED", "REG|TOGGLE_PANEL",
+                "REG|TOGGLE_PANEL|NO", "REG|FIND_MY_BUDS|OK", "READY|-1|5", "READY|6|5", "READY|0|0",
+                "READY|+4|5", "READY||5", "READY|4|5|", "READY|2147483648|5", "HOTKEY",
+                "HOTKEY|", "HOTKEY|FIND_MY_BUDS", "HOTKEY|NOISE_ANC|EXTRA"}) {
+            assertEquals(null, WindowsHotkeyManager.parseLine(invalid), "Reject malformed hotkey protocol: " + invalid);
+        }
+        assertEquals(Controls.MODE_ANC, WindowsHotkeyManager.nextNoiseMode(Controls.MODE_OFF), "Cycle off to ANC");
+        assertEquals(Controls.MODE_TRANS, WindowsHotkeyManager.nextNoiseMode(Controls.MODE_ANC), "Cycle ANC to transparency");
+        assertEquals(Controls.MODE_OFF, WindowsHotkeyManager.nextNoiseMode(Controls.MODE_TRANS), "Cycle transparency to off");
+        assertEquals(Controls.MODE_ANC, WindowsHotkeyManager.nextNoiseMode(-1), "Cycle unknown to ANC");
+        assertEquals(Controls.MODE_TRANS, Action.CYCLE_NOISE.noiseMode(Controls.MODE_ANC), "Cycle action uses reported mode");
+        assertEquals(Controls.MODE_ANC, Action.NOISE_ANC.noiseMode(-1), "Direct ANC action");
+        assertEquals(Controls.MODE_TRANS, Action.NOISE_TRANS.noiseMode(-1), "Direct transparency action");
+        assertEquals(Controls.MODE_OFF, Action.NOISE_OFF.noiseMode(-1), "Direct off action");
+        assertEquals(-1, Action.TOGGLE_PANEL.noiseMode(-1), "Panel action cannot send a noise command");
+        checkHotkeyProcessLifecycle();
+    }
+
+    private static void checkHotkeyProcessLifecycle() throws Exception {
+        MockHotkeyProcess first = new MockHotkeyProcess(true);
+        MockHotkeyProcess second = new MockHotkeyProcess(false);
+        AtomicInteger starts = new AtomicInteger();
+        AtomicInteger overlap = new AtomicInteger();
+        BlockingQueue<Runnable> dispatched = new LinkedBlockingQueue<>();
+        List<Action> actions = new ArrayList<>();
+        WindowsHotkeyManager manager = new WindowsHotkeyManager(() -> {
+            if (starts.getAndIncrement() == 0) return first;
+            if (first.isAlive()) overlap.incrementAndGet();
+            return second;
+        }, dispatched::add, actions::add, () -> { });
+        try {
+            manager.start();
+            manager.start();
+            first.send("HOTKEY|TOGGLE_PANEL\nREG|TOGGLE_PANEL|OK\nREG|CYCLE_NOISE|BUSY\n"
+                    + "REG|NOISE_ANC|OK\nREG|NOISE_TRANS|OK\nREG|NOISE_OFF|OK\nREADY|4|5\n"
+                    + "HOTKEY|CYCLE_NOISE\nHOTKEY|TOGGLE_PANEL\n");
+            takeCallback(dispatched).run(); // Starting notification
+            takeCallback(dispatched).run(); // Ready notification
+            takeCallback(dispatched).run(); // First usable hotkey
+            assertEquals(List.of(Action.TOGGLE_PANEL), actions, "Only registered keys dispatch after READY");
+            assertEquals(1, starts.get(), "Repeated start uses one native process");
+            WindowsHotkeyManager.Status status = manager.status();
+            assertEquals(WindowsHotkeyManager.Phase.READY, status.phase, "Partial registration remains enabled");
+            assertEquals(Set.of(Action.CYCLE_NOISE), status.busy, "Busy key reaches the settings status");
+            assertEquals("部分热键被占用（4/5 可用）", new DesktopStrings("zh").hotkeyStatus(status), "Chinese conflict summary");
+            assertTrue(new DesktopStrings("en").hotkeyList(status).contains("Ctrl+Alt+N  Cycle noise modes (in use)"),
+                    "Settings identify the occupied key");
+
+            first.send("HOTKEY|NOISE_ANC\n");
+            Runnable stale = takeCallback(dispatched);
+            manager.stop();
+            manager.stop();
+            stale.run();
+            assertEquals(List.of(Action.TOGGLE_PANEL), actions, "An event queued before stop cannot run after stop");
+            assertEquals(WindowsHotkeyManager.Phase.DISABLED, manager.status().phase, "Stop updates registration state");
+            manager.start();
+            StringBuilder busy = new StringBuilder();
+            for (Action action : Action.values()) busy.append("REG|").append(action).append("|BUSY\n");
+            second.send(busy.append("READY|0|5\nHOTKEY|TOGGLE_PANEL\n").toString());
+            takeCallback(dispatched).run(); // Disabled notification
+            takeCallback(dispatched).run(); // Starting notification
+            takeCallback(dispatched).run(); // Ready notification
+            assertEquals(0, overlap.get(), "Rapid restart first releases previous registrations");
+            assertEquals(0, manager.status().available, "All-busy helper reports zero active shortcuts");
+            assertTrue(new DesktopStrings("en").hotkeyStatus(manager.status()).contains("0/5 available"),
+                    "All conflicts are visible to the user");
+
+            manager.shutdown();
+            manager.shutdown();
+            manager.start();
+            assertTrue(manager.awaitShutdown(3, TimeUnit.SECONDS), "Hotkey lifecycle and reader terminate on shutdown");
+            assertEquals(2, starts.get(), "A closed manager cannot restart");
+            assertEquals("QUIT\n", first.stdin.toString(StandardCharsets.US_ASCII), "Graceful stop writes QUIT");
+            assertTrue(first.stdinClosed && !first.forced && !first.isAlive(), "Graceful stop closes stdin and helper exits");
+            assertEquals("QUIT\n", second.stdin.toString(StandardCharsets.US_ASCII), "Shutdown requests graceful exit first");
+            assertTrue(second.stdinClosed && second.forced && !second.isAlive(), "A stuck helper is forcibly terminated");
+        } finally {
+            manager.shutdown();
+            first.destroy();
+            second.destroy();
+            manager.awaitShutdown(3, TimeUnit.SECONDS);
+        }
+    }
+
+    private static Runnable takeCallback(BlockingQueue<Runnable> dispatched) throws InterruptedException {
+        Runnable callback = dispatched.poll(3, TimeUnit.SECONDS);
+        assertTrue(callback != null, "Hotkey callback dispatched within deadline");
+        return callback;
+    }
+
+    private static final class MockHotkeyProcess extends Process {
+        private final boolean honorsQuit;
+        private final CountDownLatch exited = new CountDownLatch(1);
+        private final PipedOutputStream events = new PipedOutputStream();
+        private final PipedInputStream stdout = new PipedInputStream(events);
+        volatile boolean forced;
+        volatile boolean stdinClosed;
+        final ByteArrayOutputStream stdin = new ByteArrayOutputStream() {
+            @Override public void close() {
+                stdinClosed = true;
+                if (honorsQuit) destroy();
+            }
+        };
+
+        MockHotkeyProcess(boolean honorsQuit) throws IOException { this.honorsQuit = honorsQuit; }
+
+        void send(String lines) throws IOException {
+            events.write(lines.getBytes(StandardCharsets.UTF_8));
+            events.flush();
+        }
+
+        @Override public OutputStream getOutputStream() { return stdin; }
+        @Override public InputStream getInputStream() { return stdout; }
+        @Override public InputStream getErrorStream() { return InputStream.nullInputStream(); }
+        @Override public int waitFor() throws InterruptedException { exited.await(); return 0; }
+        @Override public boolean waitFor(long timeout, TimeUnit unit) { return !isAlive(); }
+        @Override public boolean isAlive() { return exited.getCount() != 0; }
+        @Override public int exitValue() {
+            if (isAlive()) throw new IllegalThreadStateException();
+            return 0;
+        }
+        @Override public void destroy() {
+            try { events.close(); } catch (IOException ignored) { }
+            exited.countDown();
+        }
+        @Override public Process destroyForcibly() {
+            forced = true;
+            destroy();
+            return this;
+        }
+    }
+
+    private static void checkReconnectWatchdogStateMachine() {
+        ReconnectWatchdog watchdog = new ReconnectWatchdog(true);
+        assertEquals(-1, watchdog.delayMillis(false, ConnectionPhase.DISCONNECTED), "Watchdog requires a known target");
+        assertEquals(-1, watchdog.delayMillis(true, ConnectionPhase.CONNECTING), "No overlapping dial while connecting");
+        assertEquals(-1, watchdog.delayMillis(true, ConnectionPhase.CONNECTED), "Live session needs no watchdog");
+        for (int delay : new int[] {5_000, 10_000, 15_000, 30_000, 30_000, 30_000}) {
+            assertEquals(delay, watchdog.delayMillis(true, ConnectionPhase.DISCONNECTED), "Reconnect step " + delay);
+            watchdog.probeFailed();
+        }
+        long revision = watchdog.revision();
+        watchdog.connected();
+        assertTrue(watchdog.revision() != revision, "Success invalidates a previous in-flight probe");
+        assertEquals(5_000, watchdog.delayMillis(true, ConnectionPhase.DISCONNECTED), "Success resets pressure");
+        revision = watchdog.revision();
+        watchdog.suppressUntilManualConnect();
+        assertTrue(watchdog.userDisconnectedManually() && watchdog.revision() != revision, "Manual intent invalidates scan");
+        assertEquals(-1, watchdog.delayMillis(true, ConnectionPhase.DISCONNECTED), "Manual disconnect suppresses watch");
+        watchdog.connected();
+        assertEquals(-1, watchdog.delayMillis(true, ConnectionPhase.DISCONNECTED), "Late success cannot rearm manual suppression");
+        watchdog.manualConnect();
+        assertTrue(!watchdog.userDisconnectedManually(), "Explicit connect lifts manual suppression");
+        assertEquals(5_000, watchdog.delayMillis(true, ConnectionPhase.DISCONNECTED), "Explicit connect resumes at base delay");
+        watchdog.probeFailed();
+        revision = watchdog.revision();
+        watchdog.setEnabled(false);
+        assertEquals(-1, watchdog.delayMillis(true, ConnectionPhase.DISCONNECTED), "Disabling cancels the watch immediately");
+        assertTrue(watchdog.revision() != revision, "Disabling invalidates a previous in-flight probe");
+        watchdog.probeFailed();
+        watchdog.manualConnect();
+        assertEquals(-1, watchdog.delayMillis(true, ConnectionPhase.DISCONNECTED), "Manual connect respects disabled watch");
+        watchdog.setEnabled(true);
+        assertEquals(5_000, watchdog.delayMillis(true, ConnectionPhase.DISCONNECTED), "Re-enable starts at the base delay");
+        watchdog.suppressUntilManualConnect();
+        watchdog.setEnabled(false);
+        watchdog.setEnabled(true);
+        assertEquals(-1, watchdog.delayMillis(true, ConnectionPhase.DISCONNECTED), "Toggle cannot undo manual disconnect");
+
+        DesktopDriverRegistry registry = new DesktopDriverRegistry();
+        BtDevice known = new BtDevice("AA:BB:CC:DD:EE:FF", "Renamed headset", true, true);
+        BtDevice offline = new BtDevice(known.mac, known.name, false, true);
+        BtDevice onlineHeadset = new BtDevice("AA:BB:CC:DD:EE:10", "vivo TWS Air3 Pro", true, true);
+        BtDevice onlinePhone = new BtDevice("AA:BB:CC:DD:EE:11", "iQOO 12", true, true);
+        assertEquals(known, registry.findReconnectCandidate(List.of(onlineHeadset, known), known.mac, "sony"),
+                "Reconnect prioritizes the remembered live MAC and protocol override");
+        assertEquals(onlineHeadset, registry.findReconnectCandidate(List.of(offline, onlinePhone, onlineHeadset), known.mac, "sony"),
+                "Reconnect falls back to a strongly matched online headset");
+        assertEquals(null, registry.findReconnectCandidate(List.of(offline, onlinePhone), known.mac, "sony"),
+                "Never dial the offline target or phone from the watchdog");
+        assertEquals(onlineHeadset, registry.findReconnectCandidate(List.of(known, onlineHeadset), known.mac, "auto"),
+                "An unidentifiable remembered device does not prevent a compatible fallback");
+    }
+
+    private static void checkNewPrefsPersistence() throws IOException {
+        Path dir = Files.createTempDirectory("wear-tray-prefs-test-");
+        Path file = dir.resolve("desktop.properties");
+        try {
+            Files.writeString(file, "disclaimer_accepted=true\nlast_mac=AA:BB:CC:DD:EE:FF\n");
+            DesktopPrefs prefs = new DesktopPrefs(file);
+            assertEquals("headset", prefs.trayIconStyle(), "Existing preferences default to headset icon");
+            assertTrue(prefs.lowBatteryAlert(), "Battery warnings default enabled");
+            assertTrue(!prefs.globalHotkeys(), "First run does not reserve system hotkeys");
+            assertTrue(prefs.autoReconnect(), "Watchdog defaults enabled");
+            prefs.setTrayIconStyle("battery");
+            prefs.setLowBatteryAlert(false);
+            prefs.setGlobalHotkeys(true);
+            prefs.setAutoReconnect(false);
+            DesktopPrefs loaded = new DesktopPrefs(file);
+            assertEquals("battery", loaded.trayIconStyle(), "Battery badge persists");
+            assertTrue(!loaded.lowBatteryAlert(), "Disabled warning persists");
+            assertTrue(loaded.globalHotkeys(), "Explicit hotkey opt-in persists");
+            assertTrue(!loaded.autoReconnect(), "Disabled watchdog persists");
+            assertTrue(loaded.disclaimerAccepted(), "Atomic replacements retain older fields");
+            assertEquals("AA:BB:CC:DD:EE:FF", loaded.lastMac(), "Remembered target survives settings saves");
+            try (Stream<Path> entries = Files.list(dir)) {
+                assertEquals(1L, entries.count(), "Atomic preference save leaves no staging files");
+            }
+            loaded.setTrayIconStyle("unknown");
+            loaded.setLowBatteryAlert(true);
+            loaded.setGlobalHotkeys(false);
+            loaded.setAutoReconnect(true);
+            DesktopPrefs restored = new DesktopPrefs(file);
+            assertEquals("headset", restored.trayIconStyle(), "Unknown style safely restores headset");
+            assertTrue(restored.lowBatteryAlert(), "Re-enabled warning persists");
+            assertTrue(!restored.globalHotkeys(), "Disabling hotkeys persists");
+            assertTrue(restored.autoReconnect(), "Re-enabled watchdog persists");
+            Files.writeString(file, "tray_icon_style=invalid\nlow_battery_alert=invalid\nglobal_hotkeys=invalid\nauto_reconnect=invalid\n");
+            DesktopPrefs malformed = new DesktopPrefs(file);
+            assertEquals("headset", malformed.trayIconStyle(), "Malformed style uses default");
+            assertTrue(malformed.lowBatteryAlert() && !malformed.globalHotkeys() && malformed.autoReconnect(),
+                    "Malformed booleans use safe defaults");
+        } finally {
+            Files.deleteIfExists(file);
+            Files.deleteIfExists(dir);
+        }
+    }
+
+    private static void checkDesktopSessionConcurrencyStress() throws Exception {
+        String priorMac = "00:11:22:33:44:55";
+        String nextMac = "00:11:22:33:44:66";
+        DesktopSession session = new DesktopSession(new DesktopDriverRegistry(), new WindowsBluetoothBridge());
+        ExecutorService callers = Executors.newFixedThreadPool(3);
+        BlockingQueue<StateSnapshotView> published = new LinkedBlockingQueue<>();
+        AtomicInteger staleTelemetry = new AtomicInteger();
+        AtomicReference<Throwable> uncaught = new AtomicReference<>();
+        Thread.UncaughtExceptionHandler previousHandler = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((thread, failure) -> {
+            uncaught.compareAndSet(null, failure);
+            if (previousHandler != null) previousHandler.uncaughtException(thread, failure);
+        });
+        session.addListener(new DesktopSession.SessionListener() {
+            @Override public void onStateChanged(StateSnapshotView snapshot) {
+                if (snapshot.left == 1) staleTelemetry.incrementAndGet();
+                published.add(snapshot);
+            }
+        });
+        try {
+            for (int round = 0; round < 25; round++) {
+                published.clear();
+                GatedRead lateRead = new GatedRead();
+                try (StressSocket prior = new StressSocket(); StressSocket next = new StressSocket()) {
+                    session.connectWithSockets(priorMac, "OriG in", "nicehck", (service, insecure, channel) -> prior);
+                    waitForSnapshot(published, snap -> snap.connected && priorMac.equals(snap.address), round);
+                    int priorConnection = session.connectionId();
+                    prior.telemetry(42, 77, 61, 0, null);
+                    waitForSnapshot(published, snap -> priorMac.equals(snap.address) && snap.left == 42
+                            && snap.mode == Controls.MODE_OFF, round);
+
+                    // The old reader is inside read() before cancellation and returns only after the replacement is live.
+                    prior.telemetry(1, 2, 3, 1, lateRead);
+                    assertTrue(lateRead.reading.await(3, TimeUnit.SECONDS), "Old RFCOMM read is in flight, round " + round);
+
+                    CountDownLatch go = new CountDownLatch(1);
+                    Future<?> telemetry = callers.submit(() -> {
+                        awaitStorm(go);
+                        for (int i = 0; i < 12; i++) {
+                            session.refresh();
+                            session.setNoiseMode(i % 3);
+                            session.snapshot();
+                        }
+                    });
+                    Future<?> disconnects = callers.submit(() -> {
+                        awaitStorm(go);
+                        for (int i = 0; i < 6; i++) session.disconnect();
+                    });
+                    Future<?> contenders = callers.submit(() -> {
+                        awaitStorm(go);
+                        for (int i = 0; i < 6; i++) {
+                            session.connectWithSockets(priorMac, "OriG in", "nicehck",
+                                    (service, insecure, channel) -> new StressSocket());
+                        }
+                    });
+                    go.countDown();
+                    telemetry.get(3, TimeUnit.SECONDS);
+                    disconnects.get(3, TimeUnit.SECONDS);
+                    contenders.get(3, TimeUnit.SECONDS);
+
+                    session.connectWithSockets(nextMac, "OriG in", "nicehck", (service, insecure, channel) -> next);
+                    StateSnapshotView replacement = waitForSnapshot(published,
+                            snap -> snap.connected && nextMac.equals(snap.address), round);
+                    assertEquals(-1, replacement.left, "Replacement starts with unknown battery, round " + round);
+                    assertEquals(-1, replacement.mode, "Replacement starts with unknown noise, round " + round);
+                    int connectedGeneration = session.connectionId();
+                    session.applyNoiseHotkey(Action.NOISE_TRANS, connectedGeneration);
+                    int nextLevel = 80 + round % 10;
+                    next.telemetry(nextLevel, 90, 50, 0, null);
+                    waitForSnapshot(published, snap -> nextMac.equals(snap.address) && snap.left == nextLevel
+                            && snap.mode == Controls.MODE_OFF, round);
+
+                    lateRead.release.countDown();
+                    lateRead.reader.join(3_000);
+                    assertTrue(!lateRead.reader.isAlive(), "Superseded RFCOMM reader terminates, round " + round);
+                    assertEquals(1, lateRead.delivered.get(), "Late old bytes were returned by the fake socket, round " + round);
+                    assertEquals(0, staleTelemetry.get(), "The late old battery never reaches a session snapshot, round " + round);
+                    assertEquals(nextMac, session.snapshot().address, "Winning address retained, round " + round);
+                    assertEquals(nextLevel, session.snapshot().left, "Winning battery retained, round " + round);
+                    assertEquals(Controls.MODE_OFF, session.snapshot().mode, "Winning noise retained, round " + round);
+
+                    session.applyNoiseHotkey(Action.NOISE_OFF, priorConnection);
+                    session.applyNoiseHotkey(Action.CYCLE_NOISE, connectedGeneration);
+                    assertEquals(2, next.noiseWrites.poll(3, TimeUnit.SECONDS), "Live hotkey cycles from confirmed OFF to ANC");
+                    assertEquals(null, next.noiseWrites.poll(), "Stale and unsupported hotkeys write no commands");
+
+                    session.disconnect();
+                    waitForSnapshot(published, snap -> !snap.connected && nextMac.equals(snap.address), round);
+                    assertEquals(ConnectionPhase.DISCONNECTED, session.phase(), "Storm converges to disconnected, round " + round);
+                } finally {
+                    lateRead.release.countDown();
+                }
+            }
+        } finally {
+            callers.shutdownNow();
+            session.shutdown();
+            try {
+                assertTrue(callers.awaitTermination(3, TimeUnit.SECONDS), "Storm caller threads terminate");
+                assertTrue(session.awaitShutdown(3, TimeUnit.SECONDS), "Storm protocol actor terminates");
+            } finally {
+                Thread.setDefaultUncaughtExceptionHandler(previousHandler);
+            }
+        }
+        assertEquals(null, uncaught.get(), "No uncaught exceptions during 25 concurrent reconnect rounds");
+    }
+
+    private static void awaitStorm(CountDownLatch go) {
+        try {
+            if (!go.await(3, TimeUnit.SECONDS)) throw new AssertionError("Concurrent callers did not reach the barrier");
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(interrupted);
+        }
+    }
+
+    private static StateSnapshotView waitForSnapshot(BlockingQueue<StateSnapshotView> published,
+                                                      Predicate<StateSnapshotView> matches, int round) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+        StateSnapshotView next;
+        while ((next = published.poll(Math.max(0, deadline - System.nanoTime()), TimeUnit.NANOSECONDS)) != null) {
+            if (matches.test(next)) return next;
+        }
+        throw new AssertionError("Desktop session missed a state transition, round " + round);
+    }
+
+    private static final class GatedRead {
+        final CountDownLatch reading = new CountDownLatch(1);
+        final CountDownLatch release = new CountDownLatch(1);
+        final AtomicInteger delivered = new AtomicInteger();
+        volatile Thread reader;
+    }
+
+    private static final class StressSocket implements DesktopCoreBridge.Socket {
+        private static final Frame EOF = new Frame(new byte[0], null);
+        private final BlockingQueue<Frame> frames = new LinkedBlockingQueue<>();
+        final BlockingQueue<Integer> noiseWrites = new LinkedBlockingQueue<>();
+        private final InputStream in = new InputStream() {
+            @Override public int read() throws IOException {
+                byte[] single = new byte[1];
+                return read(single, 0, 1) < 0 ? -1 : single[0] & 0xff;
+            }
+
+            @Override public int read(byte[] data, int offset, int length) throws IOException {
+                Frame frame;
+                try {
+                    frame = frames.take();
+                } catch (InterruptedException closed) {
+                    Thread.currentThread().interrupt();
+                    return -1;
+                }
+                if (frame == EOF) return -1;
+                if (frame.gate != null) waitForRelease(frame.gate);
+                if (length < frame.bytes.length) throw new IOException("Stress frame exceeds reader buffer");
+                System.arraycopy(frame.bytes, 0, data, offset, frame.bytes.length);
+                if (frame.gate != null) frame.gate.delivered.incrementAndGet();
+                return frame.bytes.length;
+            }
+        };
+        private final OutputStream out = new OutputStream() {
+            @Override public void write(int value) { }
+            @Override public void write(byte[] data, int offset, int length) {
+                if (length == 8 && data[offset] == 0x4e && data[offset + 4] == 0x01 && data[offset + 5] == 0x02) {
+                    noiseWrites.add(data[offset + 6] & 0xff);
+                }
+            }
+        };
+
+        void telemetry(int left, int right, int box, int noise, GatedRead gate) {
+            frames.add(new Frame(new byte[] {0x4e, 6, 0, 0, 5, 0, (byte) left, (byte) right, (byte) box,
+                    0x4e, 4, 0, 0, 1, 1, (byte) noise}, gate));
+        }
+
+        private static void waitForRelease(GatedRead gate) throws IOException {
+            gate.reader = Thread.currentThread();
+            gate.reading.countDown();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+            while (true) {
+                try {
+                    if (!gate.release.await(Math.max(0, deadline - System.nanoTime()), TimeUnit.NANOSECONDS)) {
+                        throw new IOException("Test did not release the late RFCOMM frame");
+                    }
+                    return;
+                } catch (InterruptedException closed) {
+                    // Simulate bytes already in a native read when the old socket is closed.
+                }
+            }
+        }
+
+        @Override public void connect() { }
+        @Override public InputStream input() { return in; }
+        @Override public OutputStream output() { return out; }
+        @Override public void close() { frames.offer(EOF); }
+
+        private static final class Frame {
+            final byte[] bytes;
+            final GatedRead gate;
+            Frame(byte[] bytes, GatedRead gate) { this.bytes = bytes; this.gate = gate; }
+        }
     }
 }

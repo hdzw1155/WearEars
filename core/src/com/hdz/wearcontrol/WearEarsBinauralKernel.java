@@ -44,6 +44,8 @@ public final class WearEarsBinauralKernel {
     private static final float NOMINAL_HEADROOM_GAIN = 0.70794578f; // -3.0 dB
     private static final float SOFT_KNEE = 0.85f;
     private static final float HARD_CLAMP = 0.95f;
+    // Allow overdrive while keeping delay interpolation and feedback arithmetic bounded.
+    private static final float MAX_INPUT_AMPLITUDE = 32.0f;
     private static final float FADE_STEP = 1.0f / (0.025f * SAMPLE_RATE); // 25 ms @ 48 kHz = 1200 samples
     private static final float DENORMAL_FLOOR = 1.0e-20f;
 
@@ -569,7 +571,7 @@ public final class WearEarsBinauralKernel {
     }
 
     private static float sanitize(float x) {
-        return Float.isFinite(x) ? x : 0.0f;
+        return Float.isFinite(x) ? clampFloat(x, -MAX_INPUT_AMPLITUDE, MAX_INPUT_AMPLITUDE) : 0.0f;
     }
 
     private static float flushDenormal(float v) {

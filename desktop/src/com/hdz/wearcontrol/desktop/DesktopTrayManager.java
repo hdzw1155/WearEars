@@ -14,6 +14,7 @@ import java.awt.AWTException;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.GraphicsConfiguration;
 import java.awt.GraphicsDevice;
@@ -40,6 +41,11 @@ import java.util.function.IntConsumer;
 
 final class DesktopTrayManager implements AutoCloseable {
     private static final int PANEL_MARGIN = 12;
+    private static final Color DISCONNECTED = new Color(0x8394A9);
+    private static final Color CONNECTED = new Color(0x5EDDA6);
+    private static final Color BADGE_BLUE = new Color(0x0D4FB8);
+    private static final Color BADGE_RED = new Color(0xDF1B22);
+    private static final Color CHARGING = new Color(0x8BF9A6);
     private final JFrame frame;
     private final Consumer<Point> togglePanel;
     private final Runnable refresh;
@@ -52,7 +58,10 @@ final class DesktopTrayManager implements AutoCloseable {
     private TrayIcon icon;
     private JDialog menu;
     private DesktopUi ui;
-    private Color indicator;
+    private Color indicator = DISCONNECTED;
+    private String iconStyle = DesktopPrefs.TRAY_HEADSET;
+    private int iconPercent = -1;
+    private boolean iconCharging;
     private boolean noiseAvailable;
 
     DesktopTrayManager(JFrame frame, Consumer<Point> togglePanel, Runnable refresh, IntConsumer noise,
@@ -74,7 +83,7 @@ final class DesktopTrayManager implements AutoCloseable {
         }
         try {
             tray = SystemTray.getSystemTray();
-            TrayIcon candidate = new TrayIcon(image(new Color(0x8394A9)), "WearEars");
+            TrayIcon candidate = new TrayIcon(image(DISCONNECTED), "WearEars");
             candidate.setImageAutoSize(true);
             candidate.addMouseListener(new MouseAdapter() {
                 @Override public void mouseReleased(MouseEvent event) {
@@ -94,6 +103,10 @@ final class DesktopTrayManager implements AutoCloseable {
             });
             tray.add(candidate);
             icon = candidate;
+            iconStyle = DesktopPrefs.TRAY_HEADSET;
+            iconPercent = -1;
+            iconCharging = false;
+            indicator = DISCONNECTED;
             return true;
         } catch (AWTException | RuntimeException ex) {
             trace.accept("Could not install notification-area icon: " + ex);
@@ -105,7 +118,7 @@ final class DesktopTrayManager implements AutoCloseable {
     boolean menuOpen() { return menu != null && menu.isShowing(); }
 
     void update(DesktopUi ui, DesktopSession.ConnectionPhase phase, StateSnapshotView state,
-                boolean canControlNoise) {
+                boolean canControlNoise, String style) {
         this.ui = ui;
         noiseAvailable = canControlNoise;
         if (icon == null) return;
@@ -113,16 +126,53 @@ final class DesktopTrayManager implements AutoCloseable {
         if (!tooltip.equals(icon.getToolTip())) icon.setToolTip(tooltip);
         boolean low = low(state.left, state.charge, 0) || low(state.right, state.charge, 1)
                 || low(state.box, state.charge, 2);
-        Color next = state.connected ? (low ? ui.theme.danger : new Color(0x5EDDA6))
-                : phase == DesktopSession.ConnectionPhase.CONNECTING ? ui.theme.warning : new Color(0x8394A9);
-        if (!next.equals(indicator)) {
-            indicator = next;
-            icon.setImage(image(indicator));
-        }
+        Color next = state.connected ? (low ? ui.theme.danger : CONNECTED)
+                : phase == DesktopSession.ConnectionPhase.CONNECTING ? ui.theme.warning : DISCONNECTED;
+        boolean batteryStyle = DesktopPrefs.TRAY_BATTERY.equals(style);
+        int percent = batteryStyle ? displayBatteryPercent(state) : -1;
+        boolean charging = batteryStyle && displayBatteryCharging(state);
+        if (style.equals(iconStyle) && percent == iconPercent && charging == iconCharging && next.equals(indicator)) return;
+        icon.setImage(batteryStyle ? batteryImage(percent, charging, next) : image(next));
+        iconStyle = style;
+        iconPercent = percent;
+        iconCharging = charging;
+        indicator = next;
     }
 
     private static boolean low(int percent, int flags, int part) {
-        return percent >= 0 && percent <= 20 && !DesktopStrings.charging(flags, part);
+        return percent >= 0 && percent <= LowBatteryAlertTracker.LOW_THRESHOLD && !DesktopStrings.charging(flags, part);
+    }
+
+    void notifyLowBattery(String title, String body) {
+        if (icon != null) icon.displayMessage(title, body, TrayIcon.MessageType.WARNING);
+    }
+
+    static int displayBatteryPercent(StateSnapshotView state) {
+        switch (displayBatteryComponent(state)) {
+            case 0: return state.left;
+            case 1: return state.right;
+            case 2: return state.box;
+            default: return -1;
+        }
+    }
+
+    static boolean displayBatteryCharging(StateSnapshotView state) {
+        int part = displayBatteryComponent(state);
+        return part >= 0 && DesktopStrings.charging(state.charge, part);
+    }
+
+    private static int displayBatteryComponent(StateSnapshotView state) {
+        if (!state.connected) return -1;
+        boolean left = DesktopStrings.validBattery(state.left);
+        if ((state.caps & Controls.CAP_BATTERY_SINGLE) != 0) return left ? 0 : -1;
+        boolean right = DesktopStrings.validBattery(state.right);
+        if (left && right) {
+            if (state.left != state.right) return state.left < state.right ? 0 : 1;
+            // At the same level, a discharging earbud takes priority.
+            return DesktopStrings.charging(state.charge, 0) && !DesktopStrings.charging(state.charge, 1) ? 1 : 0;
+        }
+        if (left || right) return left ? 0 : 1;
+        return DesktopStrings.validBattery(state.box) ? 2 : -1;
     }
 
     private void showMenu(Point point) {
@@ -185,7 +235,7 @@ final class DesktopTrayManager implements AutoCloseable {
         return item;
     }
 
-    private void closeMenu() {
+    void closeMenu() {
         JDialog previous = menu;
         menu = null;
         if (previous != null) previous.dispose();
@@ -247,6 +297,27 @@ final class DesktopTrayManager implements AutoCloseable {
             g.fillOval(42, 42, 19, 19);
             g.setColor(dot);
             g.fillOval(45, 45, 13, 13);
+        } finally {
+            g.dispose();
+            base.dispose();
+        }
+        return image;
+    }
+
+    static BufferedImage batteryImage(int percent, boolean charging, Color indicator) {
+        if (percent < 0) return image(indicator);
+        BufferedImage image = new BufferedImage(64, 64, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D base = image.createGraphics();
+        Graphics2D g = DesktopUi.graphics(base);
+        try {
+            g.setColor(!charging && percent <= LowBatteryAlertTracker.LOW_THRESHOLD ? BADGE_RED : BADGE_BLUE);
+            g.fillRoundRect(2, 2, 60, 60, 15, 15);
+            DesktopUi.drawText(g, Integer.toString(percent), DesktopTheme.font(Font.BOLD, 46),
+                    Color.WHITE, 5, 4, 54, charging ? 49 : 56, 0);
+            if (charging) {
+                g.setColor(CHARGING);
+                g.fillRoundRect(15, 53, 34, 5, 5, 5);
+            }
         } finally {
             g.dispose();
             base.dispose();

@@ -34,6 +34,12 @@ public final class DesktopPrefs {
     private static final String KEY_START_MINIMIZED = "start_minimized";
     private static final String KEY_AUTO_HIDE = "auto_hide_on_blur";
     private static final String KEY_PINNED = "pinned";
+    private static final String KEY_TRAY_ICON_STYLE = "tray_icon_style";
+    private static final String KEY_LOW_BATTERY_ALERT = "low_battery_alert";
+    private static final String KEY_GLOBAL_HOTKEYS = "global_hotkeys";
+    private static final String KEY_AUTO_RECONNECT = "auto_reconnect";
+    static final String TRAY_HEADSET = "headset";
+    static final String TRAY_BATTERY = "battery";
 
     private final Path file;
     private final Properties props = new Properties();
@@ -143,11 +149,23 @@ public final class DesktopPrefs {
     public boolean startMinimized() { return flag(KEY_START_MINIMIZED, false); }
     public boolean autoHideOnBlur() { return flag(KEY_AUTO_HIDE, true); }
     public boolean pinned() { return flag(KEY_PINNED, false); }
+    public String trayIconStyle() { return trayStyle(props.getProperty(KEY_TRAY_ICON_STYLE)); }
+    public boolean lowBatteryAlert() { return flag(KEY_LOW_BATTERY_ALERT, true); }
+    public boolean globalHotkeys() { return flag(KEY_GLOBAL_HOTKEYS, false); }
+    public boolean autoReconnect() { return flag(KEY_AUTO_RECONNECT, true); }
 
     public void setAutoConnect(boolean value) { set(KEY_AUTO_CONNECT, Boolean.toString(value)); }
     public void setStartMinimized(boolean value) { set(KEY_START_MINIMIZED, Boolean.toString(value)); }
     public void setAutoHideOnBlur(boolean value) { set(KEY_AUTO_HIDE, Boolean.toString(value)); }
     public void setPinned(boolean value) { set(KEY_PINNED, Boolean.toString(value)); }
+    public void setTrayIconStyle(String style) { set(KEY_TRAY_ICON_STYLE, trayStyle(style)); }
+    public void setLowBatteryAlert(boolean value) { set(KEY_LOW_BATTERY_ALERT, Boolean.toString(value)); }
+    public void setGlobalHotkeys(boolean value) { set(KEY_GLOBAL_HOTKEYS, Boolean.toString(value)); }
+    public void setAutoReconnect(boolean value) { set(KEY_AUTO_RECONNECT, Boolean.toString(value)); }
+
+    private static String trayStyle(String style) {
+        return TRAY_BATTERY.equals(style) ? TRAY_BATTERY : TRAY_HEADSET;
+    }
 
     private boolean flag(String key, boolean fallback) {
         String value = props.getProperty(key);
@@ -156,7 +174,7 @@ public final class DesktopPrefs {
         return fallback;
     }
 
-    private void set(String key, String value) {
+    private synchronized void set(String key, String value) {
         props.setProperty(key, value);
         save();
     }

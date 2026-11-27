@@ -281,8 +281,8 @@ public final class LocalMeshFirewall {
     /**
      * Checks an authenticated inbound command frame:
      * - Always hard-blocks FIND_MY_BUDS (and disallowed remote features), even if enabled == false.
-     * - When enabled: rejects banned IPs, blocks write commands (CMD_NOISE / CMD_FEATURE) in readOnlyMode
-     *   while allowing CMD_REFRESH / PING / PONG, and enforces MAX_CMDS_PER_10S per 10s window.
+     * - When enabled: rejects banned IPs, allows only CMD_REFRESH / PING / PONG in readOnlyMode,
+     *   and enforces MAX_CMDS_PER_10S per 10s window.
      */
     public synchronized Decision checkCommand(String remoteIp, LocalMeshProtocol.Frame frame) {
         long now = clockMs.getAsLong();
@@ -306,11 +306,10 @@ public final class LocalMeshFirewall {
             if (!ip.isEmpty() && isBannedLocked(ip, now)) {
                 return denyAndRecord(now, logIp, REASON_IP_BANNED);
             }
-            if (readOnlyMode) {
-                if (frame.type == LocalMeshProtocol.FrameType.CMD_NOISE
-                        || frame.type == LocalMeshProtocol.FrameType.CMD_FEATURE) {
-                    return denyAndRecord(now, logIp, REASON_READ_ONLY_MODE);
-                }
+            if (readOnlyMode && frame.type != LocalMeshProtocol.FrameType.CMD_REFRESH
+                    && frame.type != LocalMeshProtocol.FrameType.PING
+                    && frame.type != LocalMeshProtocol.FrameType.PONG) {
+                return denyAndRecord(now, logIp, REASON_READ_ONLY_MODE);
             }
             if (!consumeRateSlotLocked(cmdTimes, logIp, now, MAX_CMDS_PER_10S)) {
                 return denyAndRecord(now, logIp, REASON_CMD_RATE_LIMIT);

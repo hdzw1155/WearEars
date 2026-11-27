@@ -1,5 +1,7 @@
 package com.hdz.wearcontrol;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /** A fresh protocol instance belongs to exactly one actor and one peer. */
@@ -17,8 +19,9 @@ public abstract class WireDriver implements Controls {
     private Port port;
     private Listener listener;
     private String name = "";
-    private boolean open;
+    private Object transportSession;
     private volatile boolean ready;
+    private final List<DelayedWork> delayed = new ArrayList<>();
     private Runnable legacyBridgeFlushed;
     private boolean legacyBridgeDispatched;
 
@@ -45,14 +48,20 @@ public abstract class WireDriver implements Controls {
     protected void closed() { }
     protected void openFallback() { fail(connectionFailure()); }
 
-    final void onOpen() { open = true; opened(); }
-    final void onClose() { open = ready = false; closed(); }
+    final void onOpen() { transportSession = new Object(); opened(); }
+    final void onClose() {
+        transportSession = null;
+        ready = false;
+        for (DelayedWork task : delayed) port.cancel(task);
+        delayed.clear();
+        closed();
+    }
     protected final Listener events() { return listener; }
     protected final String deviceName() { return name; }
-    protected final boolean transportOpen() { return open; }
+    protected final boolean transportOpen() { return transportSession != null; }
     public final boolean isConnected() { return ready; }
     protected final void ready() {
-        if (ready || !open) return;
+        if (ready || !transportOpen()) return;
         ready = true;
         listener.onConnected(name.isEmpty() ? unnamedDevice() : name);
     }
@@ -71,10 +80,36 @@ public abstract class WireDriver implements Controls {
             legacyBridgeFlushed = null;
             legacyBridgeDispatched = true;
         }
-        if (open) port.send(frame, callback);
+        Object sendingSession = transportSession;
+        Runnable completion = callback;
+        if (sendingSession != null) {
+            port.send(frame, completion == null ? null : () -> {
+                if (transportSession == sendingSession) completion.run();
+            });
+        }
     }
-    protected final void schedule(Runnable work, long delay) { port.after(work, delay); }
-    protected final void cancel(Runnable work) { port.cancel(work); }
+    protected final void schedule(Runnable work, long delay) {
+        if (!transportOpen()) return;
+        DelayedWork task = new DelayedWork(work);
+        delayed.add(task);
+        port.after(task, delay);
+    }
+    protected final void cancel(Runnable work) {
+        if (work == null) return;
+        delayed.removeIf(task -> {
+            if (task.work != work) return false;
+            port.cancel(task);
+            return true;
+        });
+    }
+    private final class DelayedWork implements Runnable {
+        final Runnable work;
+        DelayedWork(Runnable work) { this.work = work; }
+        @Override public void run() {
+            // A task already handed to the actor may survive cancellation in the Port.
+            if (transportOpen() && delayed.remove(this)) work.run();
+        }
+    }
     protected final long clockMillis() { return port.millis(); }
     protected final void trace(String tag, String message) { port.trace(tag, message); }
     protected final void fail(String message) { port.fail(message); }

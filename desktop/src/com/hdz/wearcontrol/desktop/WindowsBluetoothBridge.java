@@ -135,6 +135,7 @@ public final class WindowsBluetoothBridge {
     /** Executes WearEarsBtBridge.exe list and parses paired/connected Windows Bluetooth devices. */
     public List<BtDevice> listDevices() throws IOException {
         Path runnableExe = ensureRunnableBridgeExe(bridgeExe);
+        if (Thread.currentThread().isInterrupted()) throw new IOException("枚举蓝牙设备被中断");
         ProcessBuilder pb = new ProcessBuilder(runnableExe.toString(), "list");
         pb.redirectErrorStream(false);
         Process proc = pb.start();
@@ -142,20 +143,17 @@ public final class WindowsBluetoothBridge {
         ByteArrayOutputStream stderr = new ByteArrayOutputStream();
         Thread outReader = copyAsync(proc.getInputStream(), stdout);
         Thread errReader = copyAsync(proc.getErrorStream(), stderr);
-        boolean finished;
         try {
-            finished = proc.waitFor(LIST_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            proc.getOutputStream().close();
+            if (!proc.waitFor(LIST_TIMEOUT_MS, TimeUnit.MILLISECONDS)) throw new IOException("枚举蓝牙设备超时");
+            outReader.join(1000);
+            errReader.join(1000);
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
-            proc.destroyForcibly();
             throw new IOException("枚举蓝牙设备被中断", ie);
+        } finally {
+            if (proc.isAlive()) proc.destroyForcibly();
         }
-        if (!finished) {
-            proc.destroyForcibly();
-            throw new IOException("枚举蓝牙设备超时");
-        }
-        joinQuietly(outReader);
-        joinQuietly(errReader);
         int code = proc.exitValue();
         if (code != 0) {
             String errMsg = new String(stderr.toByteArray(), StandardCharsets.UTF_8).trim();
@@ -387,9 +385,9 @@ public final class WindowsBluetoothBridge {
     private static Thread copyAsync(InputStream in, OutputStream out) {
         Thread t = new Thread(() -> {
             byte[] buf = new byte[1024];
-            try {
+            try (InputStream stream = in) {
                 int n;
-                while ((n = in.read(buf)) >= 0) {
+                while ((n = stream.read(buf)) >= 0) {
                     if (n > 0) out.write(buf, 0, n);
                 }
             } catch (IOException ignored) {
@@ -400,11 +398,4 @@ public final class WindowsBluetoothBridge {
         return t;
     }
 
-    private static void joinQuietly(Thread t) {
-        try {
-            t.join(1000);
-        } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
-        }
-    }
 }

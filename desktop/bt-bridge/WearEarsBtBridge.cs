@@ -13,7 +13,28 @@ namespace WearEarsBtBridge
         private const int SOCK_STREAM = 1;
         private const int BTHPROTO_RFCOMM = 3;
         private const int SD_BOTH = 2;
+        private const uint WM_QUIT = 0x0012;
+        private const uint WM_HOTKEY = 0x0312;
+        private const uint WM_USER = 0x0400;
+        private const uint HOTKEY_MODIFIERS = 0x0002 | 0x0001 | 0x4000; // Ctrl + Alt, no repeat
+        private static readonly uint[] HotkeyKeys = { 0x57, 0x4E, 0x41, 0x54, 0x4F };
+        private static readonly string[] HotkeyActions = {
+            "TOGGLE_PANEL", "CYCLE_NOISE", "NOISE_ANC", "NOISE_TRANS", "NOISE_OFF"
+        };
         private static readonly IntPtr INVALID_SOCKET = new IntPtr(-1);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MSG
+        {
+            public IntPtr hwnd;
+            public uint message;
+            public UIntPtr wParam;
+            public IntPtr lParam;
+            public uint time;
+            public int x;
+            public int y;
+            public uint lPrivate;
+        }
 
         [StructLayout(LayoutKind.Sequential)]
         private struct SYSTEMTIME
@@ -122,11 +143,33 @@ namespace WearEarsBtBridge
         [DllImport("ws2_32.dll", SetLastError = false)]
         private static extern int closesocket(IntPtr s);
 
+        [DllImport("user32.dll", ExactSpelling = true, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+        [DllImport("user32.dll", ExactSpelling = true, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+        [DllImport("user32.dll", ExactSpelling = true, SetLastError = true)]
+        private static extern int GetMessageW(out MSG message, IntPtr hWnd, uint min, uint max);
+
+        [DllImport("user32.dll", ExactSpelling = true, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool PeekMessageW(out MSG message, IntPtr hWnd, uint min, uint max, uint remove);
+
+        [DllImport("user32.dll", ExactSpelling = true, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool PostThreadMessageW(uint threadId, uint message, UIntPtr wParam, IntPtr lParam);
+
+        [DllImport("kernel32.dll", ExactSpelling = true)]
+        private static extern uint GetCurrentThreadId();
+
         private static int Main(string[] args)
         {
             if (args == null || args.Length == 0)
             {
-                WriteErr("Usage: WearEarsBtBridge.exe list | connect <MAC> <UUID|CHANNEL>");
+                WriteErr("Usage: WearEarsBtBridge.exe list | connect <MAC> <UUID|CHANNEL> | check | hotkeys");
                 return 2;
             }
 
@@ -150,9 +193,81 @@ namespace WearEarsBtBridge
                 WriteOutUtf8("OK|SOCKADDR_BTH=" + sz + "|PTR=" + IntPtr.Size + "\n");
                 return sz == 30 ? 0 : 3;
             }
+            if (cmd == "hotkeys")
+            {
+                return RunHotkeys();
+            }
 
             WriteErr("Unknown command: " + args[0]);
             return 2;
+        }
+
+        private static int RunHotkeys()
+        {
+            uint mainThread = GetCurrentThreadId();
+            MSG message;
+            // Create the queue before starting the stdin listener, even if stdin is already closed.
+            PeekMessageW(out message, IntPtr.Zero, WM_USER, WM_USER, 0);
+            var registered = new bool[HotkeyActions.Length];
+            try
+            {
+                using (var stdout = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false)))
+                {
+                    stdout.NewLine = "\n";
+                    stdout.AutoFlush = true;
+                    int count = 0;
+                    for (int i = 0; i < HotkeyActions.Length; i++)
+                    {
+                        registered[i] = RegisterHotKey(IntPtr.Zero, i + 1, HOTKEY_MODIFIERS, HotkeyKeys[i]);
+                        if (registered[i]) count++;
+                        stdout.WriteLine("REG|" + HotkeyActions[i] + (registered[i] ? "|OK" : "|BUSY"));
+                    }
+                    stdout.WriteLine("READY|" + count.ToString(CultureInfo.InvariantCulture)
+                        + "|" + registered.Length.ToString(CultureInfo.InvariantCulture));
+
+                    var listener = new Thread(() =>
+                    {
+                        try
+                        {
+                            string line;
+                            while ((line = Console.ReadLine()) != null && line != "QUIT") { }
+                        }
+                        catch (IOException) { }
+                        finally
+                        {
+                            PostThreadMessageW(mainThread, WM_QUIT, UIntPtr.Zero, IntPtr.Zero);
+                        }
+                    });
+                    listener.IsBackground = true;
+                    listener.Start();
+
+                    int result;
+                    while ((result = GetMessageW(out message, IntPtr.Zero, 0, 0)) > 0)
+                    {
+                        if (message.message != WM_HOTKEY) continue;
+                        ulong id = message.wParam.ToUInt64();
+                        if (id >= 1 && id <= (ulong)registered.Length && registered[(int)id - 1])
+                        {
+                            stdout.WriteLine("HOTKEY|" + HotkeyActions[(int)id - 1]);
+                        }
+                    }
+                    if (result == 0) return 0;
+                    WriteErr("GetMessageW failed: " + Marshal.GetLastWin32Error());
+                    return 1;
+                }
+            }
+            catch (IOException ex)
+            {
+                WriteErr("Hotkey output failed: " + ex.Message);
+                return 1;
+            }
+            finally
+            {
+                for (int i = 0; i < registered.Length; i++)
+                {
+                    if (registered[i]) UnregisterHotKey(IntPtr.Zero, i + 1);
+                }
+            }
         }
 
         private static int RunList()

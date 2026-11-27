@@ -116,6 +116,7 @@ public class NiceHckClient extends WireDriver {
         }}, 120);
     }
     @Override protected void received(byte[] data) {
+        if (!transportOpen() || data == null || data.length == 0) return;
         for (byte[] frame : decoder.feed(data, data.length)) onFrame(frame, 0);
     }
 
