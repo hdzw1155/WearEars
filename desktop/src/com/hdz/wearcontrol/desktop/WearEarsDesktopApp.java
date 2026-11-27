@@ -442,7 +442,7 @@ public final class WearEarsDesktopApp {
         page.add(dev);
 
         DesktopUi.Stack about = ui.card(ui.t("关于 WearEars", "About WearEars"));
-        about.add(ui.note("v0.5.0-exp-C (Windows)"));
+        about.add(ui.note("v0.5.0 (Windows)"));
         DesktopUi.Button exit = ui.button(ui.t("完全退出 WearEars", "Exit WearEars"), false, this::shutdown);
         exit.markDanger();
         about.add(ui.row(ui.button(ui.t("查看免责声明", "Read disclaimer"),
