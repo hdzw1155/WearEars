@@ -487,9 +487,11 @@ public final class ProtocolRobustnessChecks {
         LocalMeshProtocol.Frame read = LocalMeshProtocol.Frame.cmdRefresh();
         for (int i = 0; i < MAX_CONNS_PER_10S; i++) {
             decision(fw.checkIncomingConnection(PEER, HOST), REASON_ALLOW, "connection slot " + i);
+            check(fw.allowsPeer(PEER, HOST), "revalidation must ignore the connection rate bucket");
         }
         for (int i = 0; i < MAX_CMDS_PER_10S; i++) {
             decision(fw.checkCommand(PEER, read), REASON_ALLOW, "read slot " + i);
+            decision(fw.recheckCommand(PEER, read), REASON_ALLOW, "dispatch uses the accepted rate slot " + i);
         }
         clock.tick(RATE_WINDOW_MS - 1);
         decision(fw.checkIncomingConnection(PEER, HOST), REASON_CONN_RATE_LIMIT, "connection before reset");
@@ -497,6 +499,12 @@ public final class ProtocolRobustnessChecks {
         clock.tick(1);
         decision(fw.checkIncomingConnection(PEER, HOST), REASON_ALLOW, "connection at reset");
         decision(fw.checkCommand(PEER, read), REASON_ALLOW, "command at reset");
+        fw.setAllowlistOnly(true);
+        check(!fw.allowsPeer(PEER, HOST), "revalidation honors newly enabled allowlist");
+        fw.addAllowedIp(PEER);
+        check(fw.allowsPeer(PEER, HOST), "revalidation allows the newly listed peer");
+        fw.removeAllowedIp(PEER);
+        check(!fw.allowsPeer(PEER, HOST), "revalidation rejects the removed peer");
     }
 
     private static void firewallAuthCooldownAndClear() {
@@ -510,6 +518,7 @@ public final class ProtocolRobustnessChecks {
             check(!fw.recordAuthFailure(PEER), "auth success kept a previous failure " + i);
         }
         check(fw.recordAuthFailure(PEER) && fw.isBanned(PEER) && fw.bannedIpCount() == 1, "threshold starts lockout");
+        check(!fw.allowsPeer(PEER, HOST), "new lockout revokes existing peer admission");
         clock.tick(AUTH_LOCKOUT_MS - 1);
         decision(fw.checkIncomingConnection(PEER, HOST), REASON_IP_BANNED, "1 ms before lockout expiry");
         decision(fw.checkCommand(PEER, LocalMeshProtocol.Frame.cmdRefresh()), REASON_IP_BANNED, "banned peer reading");
@@ -530,19 +539,21 @@ public final class ProtocolRobustnessChecks {
     }
 
     private static void firewallReadOnlyAllowsOnlyReads() {
-        // Write-only filtering left HELLO and server STATE frames admissible after authentication.
         LocalMeshFirewall fw = new LocalMeshFirewall(() -> 1000L);
-        fw.setReadOnlyMode(true);
-        for (String wire : new String[]{"CMD|REFRESH", "PING", "PONG"}) {
-            decision(fw.checkCommand(PEER, LocalMeshProtocol.parseFrame(wire)), REASON_ALLOW, wire);
+        for (boolean filterEnabled : new boolean[] {true, false}) {
+            fw.configure(filterEnabled, false, false, true);
+            for (String wire : new String[]{"CMD|REFRESH", "PING", "PONG"}) {
+                decision(fw.checkCommand(PEER, LocalMeshProtocol.parseFrame(wire)), REASON_ALLOW, wire);
+            }
+            for (String wire : new String[]{"CMD|NOISE|1", "CMD|FEATURE|EQUALIZER|3", "HELLO|1234|Peer",
+                    "AUTH_OK|Peer", "AUTH_ERR", LocalMeshProtocol.encodeState(LocalMeshProtocol.StateSnapshot.disconnected())}) {
+                LocalMeshProtocol.Frame frame = LocalMeshProtocol.parseFrame(wire);
+                check(frame != null, "read-only test needs a decoded " + wire);
+                decision(fw.checkCommand(PEER, frame), REASON_READ_ONLY_MODE, wire);
+                decision(fw.recheckCommand(PEER, frame), REASON_READ_ONLY_MODE, "queued " + wire);
+            }
+            decision(fw.checkCommand(PEER, null), REASON_INVALID_FRAME, "unknown frame");
         }
-        for (String wire : new String[]{"CMD|NOISE|1", "CMD|FEATURE|EQUALIZER|3", "HELLO|1234|Peer",
-                "AUTH_OK|Peer", "AUTH_ERR", LocalMeshProtocol.encodeState(LocalMeshProtocol.StateSnapshot.disconnected())}) {
-            LocalMeshProtocol.Frame frame = LocalMeshProtocol.parseFrame(wire);
-            check(frame != null, "read-only test needs a decoded " + wire);
-            decision(fw.checkCommand(PEER, frame), REASON_READ_ONLY_MODE, wire);
-        }
-        decision(fw.checkCommand(PEER, null), REASON_INVALID_FRAME, "unknown frame");
         fw.setReadOnlyMode(false);
         decision(fw.checkCommand(PEER, LocalMeshProtocol.Frame.cmdNoise(MODE_OFF)), REASON_ALLOW, "writes re-enabled");
     }

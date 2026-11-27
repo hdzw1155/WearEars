@@ -73,6 +73,7 @@ final class ConnectionOwner {
         }
     }
     boolean isParked() { return phase == Phase.PARKED; }
+    String connectionStage() { return phase.name(); }
     boolean current(TwsClient client) { return client != null && source == client; }
     boolean live() { TwsClient s = source; return phase == Phase.LIVE && s != null && s.isConnected(); }
     boolean privateLink(String target) {

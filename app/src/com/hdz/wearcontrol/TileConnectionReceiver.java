@@ -9,11 +9,9 @@ import android.content.Intent;
 import android.os.Build;
 import android.util.Log;
 
-/** 系统连接事件只触发重绘，连接结论由本次系统查询产生。 */
+/** Bluetooth events update the cached Quick Settings link and request a Wear tile redraw. */
 public final class TileConnectionReceiver extends BroadcastReceiver {
     @Override public void onReceive(Context context, Intent intent) {
-        // 手机端没有 Wear OS 磁贴，直接忽略系统蓝牙广播避免无谓后台唤醒与 IPC 耗电。
-        if (!DeviceForm.isWatch(context)) return;
         try { update(context, intent); }
         catch (SecurityException permissionRevoked) { TileStore.pushNow(context); }
         catch (RuntimeException e) { Log.w("TileConnRx", "Ignoring invalid broadcast", e); }
@@ -29,6 +27,12 @@ public final class TileConnectionReceiver extends BroadcastReceiver {
                 && !BluetoothDevice.ACTION_ACL_CONNECTED.equals(action)
                 && !BluetoothDevice.ACTION_ACL_DISCONNECTED.equals(action)
                 && profile < 0) return;
+        if (BluetoothAdapter.ACTION_STATE_CHANGED.equals(action)) {
+            int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1);
+            if (state == BluetoothAdapter.STATE_OFF || state == BluetoothAdapter.STATE_TURNING_OFF) {
+                TileStore.noteQuickSettingsConnection(context, null, false);
+            }
+        }
         BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
         if (device != null) {
             String addr = device.getAddress();
@@ -42,6 +46,9 @@ public final class TileConnectionReceiver extends BroadcastReceiver {
             } else {
                 String stored = TileStore.deviceAddress(context);
                 if (stored.isEmpty() || !addr.equals(stored)) return;
+            }
+            if (isConnectEvent || BluetoothDevice.ACTION_ACL_DISCONNECTED.equals(action)) {
+                TileStore.noteQuickSettingsConnection(context, addr, isConnectEvent);
             }
         }
         // 活跃控制器自行监听断连；刷新磁贴无需实例化控制器或启动蓝牙会话。

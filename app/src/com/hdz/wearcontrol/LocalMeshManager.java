@@ -25,15 +25,14 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Enumeration;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Local LAN Mesh runtime for WearEars (SDK 30-34, zero external dependencies).
@@ -47,6 +46,7 @@ public final class LocalMeshManager {
     public static final int MODE_CLIENT = 2;
 
     private static final int MAX_CLIENTS = 4;
+    private static final int MAX_PENDING = 8;
     private static final int MAX_AUTH_FAILURES = 3;
     private static final int CONNECT_TIMEOUT_MS = 5_000;
     private static final int AUTH_READ_TIMEOUT_MS = 15_000;
@@ -90,6 +90,7 @@ public final class LocalMeshManager {
 
     public interface DiscoveryListener {
         void onPeersUpdated(List<DiscoveredPeer> peers);
+        default void onDiscoveryError() { }
     }
 
     public interface ClientListener {
@@ -115,37 +116,16 @@ public final class LocalMeshManager {
     private final Context app;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final SecureRandom random = new SecureRandom();
-    private final AtomicInteger generation = new AtomicInteger(0);
     private final LocalMeshFirewall firewall = new LocalMeshFirewall();
 
+    // The monitor owns role transitions, socket registration and peer membership.
+    private volatile long generation;
     private volatile int mode = MODE_OFF;
-    private volatile int listenPort = 0;
-    private volatile String currentPin = "";
-    private volatile LocalMeshProtocol.StateSnapshot latestSnapshot = LocalMeshProtocol.StateSnapshot.disconnected();
-
-    // Host state
-    private volatile ServerSocket hostServerSocket;
-    private volatile DatagramSocket beaconSocket;
-    private volatile Thread hostAcceptThread;
-    private volatile Thread beaconThread;
-    private volatile HostCommandSink hostSink;
-    private volatile HostStatusListener hostStatusListener;
-    private final CopyOnWriteArraySet<HostClientSession> hostClients = new CopyOnWriteArraySet<>();
-
-    // Discovery state
-    private volatile boolean discoveryActive = false;
-    private volatile DatagramSocket discoverySocket;
-    private volatile Thread discoveryThread;
-    private volatile DiscoveryListener discoveryListener;
-    private final ConcurrentHashMap<String, DiscoveredPeer> discoveredPeers = new ConcurrentHashMap<>();
-
-    // Client state
-    private volatile boolean clientAuthed = false;
-    private volatile Socket clientSocket;
-    private volatile Thread clientReadThread;
-    private volatile Thread clientWriteThread;
-    private volatile ClientListener clientListener;
-    private volatile BlockingQueue<String> clientSendQueue;
+    private volatile int discoveryGen;
+    private String currentPin = "";
+    private HostSession hostSession;
+    private ClientSession clientSession;
+    private DiscoverySession discoverySession;
 
     private LocalMeshManager(Context app) {
         this.app = app;
@@ -156,7 +136,7 @@ public final class LocalMeshManager {
         return firewall;
     }
 
-    public void syncFirewallFromPrefs(Context ctx) {
+    public synchronized void syncFirewallFromPrefs(Context ctx) {
         Context c = ctx != null ? ctx.getApplicationContext() : app;
         if (c == null) return;
         firewall.configure(
@@ -166,17 +146,19 @@ public final class LocalMeshManager {
                 AppPrefs.fwReadOnly(c)
         );
         firewall.setAllowlistFromCsv(AppPrefs.fwAllowlist(c));
+        enforceFirewallPolicy();
     }
 
     public int mode() {
         return mode;
     }
 
-    public int listenPort() {
-        return listenPort;
+    public synchronized int listenPort() {
+        ServerSocket server = hostSession == null ? null : hostSession.serverSocket;
+        return server == null ? 0 : Math.max(0, server.getLocalPort());
     }
 
-    public String pin() {
+    public synchronized String pin() {
         String p = currentPin;
         if (!LocalMeshProtocol.isValidPin(p)) {
             p = regeneratePin();
@@ -191,12 +173,12 @@ public final class LocalMeshManager {
         return fresh;
     }
 
-    public int clientCount() {
-        return hostClients.size();
+    public synchronized int clientCount() {
+        return hostSession == null ? 0 : hostSession.hostClients.size();
     }
 
-    public boolean isClientConnected() {
-        return mode == MODE_CLIENT && clientAuthed;
+    public synchronized boolean isClientConnected() {
+        return clientSession != null && clientSession.authed;
     }
 
     public String hostName() {
@@ -250,142 +232,160 @@ public final class LocalMeshManager {
     public synchronized void startHost(HostCommandSink sink, HostStatusListener statusListener) {
         stopAll();
         syncFirewallFromPrefs(app);
-        if (!LocalMeshProtocol.isValidPin(currentPin)) {
-            regeneratePin();
-        }
-        int gen = generation.incrementAndGet();
-        this.hostSink = sink;
-        this.hostStatusListener = statusListener;
-        this.mode = MODE_HOST;
+        pin();
+        HostSession host = new HostSession(generation, sink, statusListener);
+        hostSession = host;
+        mode = MODE_HOST;
+        host.acceptThread.start();
+    }
 
-        Thread accept = new Thread(() -> runHostAcceptor(gen), "WearEars-MeshHost");
-        accept.setDaemon(true);
-        this.hostAcceptThread = accept;
-        accept.start();
+    private boolean isCurrentHost(HostSession host) {
+        return mode == MODE_HOST && generation == host.gen;
     }
 
     public void pushSnapshot(DeviceState state, boolean live) {
         pushSnapshot(LocalMeshProtocol.StateSnapshot.fromDeviceState(state, live));
     }
 
-    public void pushSnapshot(LocalMeshProtocol.StateSnapshot snapshot) {
-        LocalMeshProtocol.StateSnapshot safe = snapshot == null
-                ? LocalMeshProtocol.StateSnapshot.disconnected()
-                : snapshot;
-        latestSnapshot = safe;
-        if (mode != MODE_HOST || hostClients.isEmpty()) return;
-        String encoded = LocalMeshProtocol.encodeState(safe);
-        for (HostClientSession session : hostClients) {
-            session.enqueue(encoded);
+    public synchronized void pushSnapshot(LocalMeshProtocol.StateSnapshot snapshot) {
+        HostSession host = hostSession;
+        if (host == null || !isCurrentHost(host)) return;
+        host.snapshot = snapshot == null ? LocalMeshProtocol.StateSnapshot.disconnected() : snapshot;
+        if (host.hostClients.isEmpty()) return;
+        String encoded = LocalMeshProtocol.encodeState(host.snapshot);
+        for (HostClientSession peer : host.hostClients) {
+            // The writer first queues the initial snapshot, after sending AUTH_OK.
+            if (peer.writer != null && canUseHostClient(peer)) peer.enqueue(encoded);
         }
     }
 
-    private void runHostAcceptor(int gen) {
-        ServerSocket ss = null;
-        try {
-            ss = openServerSocket();
-            if (generation.get() != gen || mode != MODE_HOST) {
-                closeQuietly(ss);
-                return;
-            }
-            hostServerSocket = ss;
-            listenPort = ss.getLocalPort();
-            String ip = localLanIp();
-            int port = listenPort;
-            String pin = pin();
-            HostStatusListener listener = hostStatusListener;
-            if (listener != null) {
-                mainHandler.post(() -> listener.onHostStarted(ip, port, pin));
-            }
-            startBeaconThread(gen, port);
+    /** Applies current network admission rules to authenticated peers without charging a rate slot. */
+    public synchronized void enforceFirewallPolicy() {
+        HostSession host = hostSession;
+        if (host == null || !isCurrentHost(host)) return;
+        boolean removed = host.hostClients.removeIf(peer -> {
+            if (firewall.allowsPeer(peer.remoteIp, peer.localIp)) return false;
+            peer.close();
+            return true;
+        });
+        if (removed) notifyHostClientCount(host);
+    }
 
-            while (generation.get() == gen && mode == MODE_HOST && !ss.isClosed()) {
-                Socket client = ss.accept();
-                if (generation.get() != gen || mode != MODE_HOST) {
-                    closeQuietly(client);
-                    break;
+    private final class HostSession {
+        final long gen;
+        final HostCommandSink sink;
+        final HostStatusListener listener;
+        final Thread acceptThread;
+        final Set<HostClientSession> pendingHostSockets = new HashSet<>();
+        final Set<HostClientSession> hostClients = new HashSet<>();
+        volatile LocalMeshProtocol.StateSnapshot snapshot = LocalMeshProtocol.StateSnapshot.disconnected();
+        ServerSocket serverSocket;
+        DatagramSocket beaconSocket;
+        Thread beaconThread;
+
+        HostSession(long gen, HostCommandSink sink, HostStatusListener listener) {
+            this.gen = gen;
+            this.sink = sink;
+            this.listener = listener;
+            acceptThread = daemonThread("WearEars-MeshHost", () -> runHostAcceptor(this));
+        }
+
+        void close() {
+            closeQuietly(serverSocket);
+            closeQuietly(beaconSocket);
+            for (HostClientSession peer : pendingHostSockets) peer.close();
+            for (HostClientSession peer : hostClients) peer.close();
+            pendingHostSockets.clear();
+            hostClients.clear();
+            interruptThread(acceptThread);
+            interruptThread(beaconThread);
+        }
+    }
+
+    private void runHostAcceptor(HostSession host) {
+        try (ServerSocket server = openServerSocket(host)) {
+            int port = server.getLocalPort();
+            String ip = localLanIp();
+            synchronized (this) {
+                if (!isCurrentHost(host)) return;
+                if (host.listener != null) {
+                    postForGeneration(host.gen, () -> host.listener.onHostStarted(ip, port, pin()));
                 }
-                String remoteIp = client.getInetAddress() != null ? client.getInetAddress().getHostAddress() : null;
-                LocalMeshFirewall.Decision connDecision = firewall.checkIncomingConnection(remoteIp, localLanIp());
-                if (!connDecision.allowed) {
-                    if (LocalMeshFirewall.REASON_NON_PRIVATE_IP.equals(connDecision.reasonCode)) {
-                        closeQuietly(client);
-                    } else {
-                        sendRejectAndClose(client);
-                    }
-                    continue;
-                }
-                if (hostClients.size() >= MAX_CLIENTS) {
-                    sendRejectAndClose(client);
-                    continue;
-                }
-                HostClientSession session = new HostClientSession(gen, client, remoteIp);
-                session.start();
+                host.beaconThread = daemonThread("WearEars-MeshBeacon", () -> runBeaconLoop(host, port));
+                host.beaconThread.start();
             }
-        } catch (Throwable t) {
-            if (generation.get() == gen && mode == MODE_HOST) {
-                Log.w(TAG, "Host acceptor stopped with error", t);
-                HostStatusListener listener = hostStatusListener;
-                if (listener != null) {
-                    String msg = t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
-                    mainHandler.post(() -> listener.onHostError(msg));
-                }
+            while (isCurrentHost(host)) {
+                registerHostClient(host, server.accept());
+            }
+        } catch (IOException | RuntimeException error) {
+            synchronized (this) {
+                if (!isCurrentHost(host)) return;
+                Log.w(TAG, "Host acceptor stopped with error", error);
                 stopAll();
+                if (host.listener != null) {
+                    postForGeneration(generation, () -> host.listener.onHostError(errorMessage(error)));
+                }
             }
-        } finally {
+        }
+    }
+
+    private synchronized void registerHostClient(HostSession host, Socket socket) {
+        if (!isCurrentHost(host) || host.pendingHostSockets.size() >= MAX_PENDING
+                || host.hostClients.size() >= MAX_CLIENTS) {
+            closeQuietly(socket);
+            return;
+        }
+        HostClientSession peer = new HostClientSession(host, socket);
+        host.pendingHostSockets.add(peer);
+        peer.reader.start();
+    }
+
+    private synchronized ServerSocket newHostServerSocket(HostSession host) throws IOException {
+        if (!isCurrentHost(host)) throw new IOException("Host stopped");
+        ServerSocket server = new ServerSocket();
+        host.serverSocket = server;
+        return server;
+    }
+
+    private ServerSocket openServerSocket(HostSession host) throws IOException {
+        ServerSocket ss = newHostServerSocket(host);
+        try {
+            ss.setReuseAddress(true);
+            ss.bind(new InetSocketAddress(LocalMeshProtocol.DEFAULT_TCP_PORT));
+            return ss;
+        } catch (IOException conflict) {
             closeQuietly(ss);
         }
-    }
 
-    private ServerSocket openServerSocket() throws IOException {
+        ss = newHostServerSocket(host);
         try {
-            ServerSocket preferred = new ServerSocket();
-            preferred.setReuseAddress(true);
-            preferred.bind(new InetSocketAddress(LocalMeshProtocol.DEFAULT_TCP_PORT));
-            return preferred;
-        } catch (IOException conflict) {
-            ServerSocket fallback = new ServerSocket();
-            fallback.setReuseAddress(true);
-            fallback.bind(new InetSocketAddress(0));
-            return fallback;
+            ss.setReuseAddress(true);
+            ss.bind(new InetSocketAddress(0));
+            return ss;
+        } catch (IOException | RuntimeException error) {
+            closeQuietly(ss);
+            throw error;
         }
     }
 
-    private void startBeaconThread(int gen, int tcpPort) {
-        Thread t = new Thread(() -> runBeaconLoop(gen, tcpPort), "WearEars-MeshBeacon");
-        t.setDaemon(true);
-        beaconThread = t;
-        t.start();
-    }
-
-    private void runBeaconLoop(int gen, int tcpPort) {
-        DatagramSocket sock = null;
-        try {
-            sock = new DatagramSocket();
-            sock.setBroadcast(true);
-            beaconSocket = sock;
-            while (generation.get() == gen && mode == MODE_HOST && !Thread.currentThread().isInterrupted()) {
-                try {
-                    LocalMeshProtocol.StateSnapshot snap = latestSnapshot;
-                    String payload = LocalMeshProtocol.encodeBeacon(
-                            tcpPort, hostName(), snap.deviceName, snap.connected);
-                    byte[] data = payload.getBytes(StandardCharsets.UTF_8);
-                    broadcastBeaconPacket(sock, data);
-                } catch (Throwable sendErr) {
-                    Log.w(TAG, "Beacon send failed", sendErr);
-                }
-                try {
-                    Thread.sleep(BEACON_INTERVAL_MS);
-                } catch (InterruptedException ie) {
-                    break;
-                }
+    private void runBeaconLoop(HostSession host, int tcpPort) {
+        try (DatagramSocket socket = new DatagramSocket()) {
+            synchronized (this) {
+                if (!isCurrentHost(host)) return;
+                host.beaconSocket = socket;
             }
-        } catch (Throwable t) {
-            if (generation.get() == gen && mode == MODE_HOST) {
-                Log.w(TAG, "Beacon loop error", t);
+            socket.setBroadcast(true);
+            while (isCurrentHost(host) && !Thread.currentThread().isInterrupted()) {
+                LocalMeshProtocol.StateSnapshot snap = host.snapshot;
+                String payload = LocalMeshProtocol.encodeBeacon(
+                        tcpPort, hostName(), snap.deviceName, snap.connected);
+                broadcastBeaconPacket(socket, payload.getBytes(StandardCharsets.UTF_8));
+                Thread.sleep(BEACON_INTERVAL_MS);
             }
-        } finally {
-            closeQuietly(sock);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        } catch (IOException | RuntimeException error) {
+            if (isCurrentHost(host)) Log.w(TAG, "Beacon loop error", error);
         }
     }
 
@@ -420,52 +420,43 @@ public final class LocalMeshManager {
         }
     }
 
-    private void sendRejectAndClose(Socket client) {
-        Thread reject = new Thread(() -> {
-            try {
-                client.setSoTimeout(2000);
-                LocalMeshProtocol.writeFrame(client.getOutputStream(), LocalMeshProtocol.encodeAuthErr());
-            } catch (Throwable ignored) {
-            } finally {
-                closeQuietly(client);
-            }
-        }, "WearEars-MeshReject");
-        reject.setDaemon(true);
-        reject.start();
+    private void notifyHostClientCount(HostSession host) {
+        if (!isCurrentHost(host) || host.listener == null) return;
+        int count = host.hostClients.size();
+        postForGeneration(host.gen, () -> host.listener.onHostClientCountChanged(count));
     }
 
-    private void notifyHostClientCount() {
-        HostStatusListener listener = hostStatusListener;
-        if (listener != null) {
-            int count = hostClients.size();
-            mainHandler.post(() -> listener.onHostClientCountChanged(count));
-        }
+    // Membership and thread setup are guarded by the manager monitor.
+    private boolean canUseHostClient(HostClientSession peer) {
+        return isCurrentHost(peer.host) && peer.host.hostClients.contains(peer)
+                && firewall.allowsPeer(peer.remoteIp, peer.localIp);
+    }
+
+    private synchronized void removeHostClient(HostClientSession peer) {
+        peer.close();
+        peer.host.pendingHostSockets.remove(peer);
+        if (peer.host.hostClients.remove(peer)) notifyHostClientCount(peer.host);
     }
 
     private final class HostClientSession {
-        private final int gen;
+        private final HostSession host;
         private final Socket socket;
         private final String remoteIp;
+        private final String localIp;
         private final BlockingQueue<String> outQueue = new LinkedBlockingQueue<>(CLIENT_SEND_QUEUE_CAP);
-        private volatile boolean closed = false;
-        private volatile Thread reader;
-        private volatile Thread writer;
+        private final Thread reader;
+        private Thread writer;
+        private volatile boolean closed;
 
-        HostClientSession(int gen, Socket socket, String remoteIp) {
-            this.gen = gen;
+        HostClientSession(HostSession host, Socket socket) {
+            this.host = host;
             this.socket = socket;
-            this.remoteIp = remoteIp == null ? "" : remoteIp;
-        }
-
-        void start() {
-            Thread r = new Thread(this::runReadLoop, "WearEars-MeshHostClient");
-            r.setDaemon(true);
-            this.reader = r;
-            r.start();
+            remoteIp = socket.getInetAddress().getHostAddress();
+            localIp = socket.getLocalAddress().getHostAddress();
+            reader = daemonThread("WearEars-MeshHostClient", this::runReadLoop);
         }
 
         void enqueue(String frame) {
-            if (closed || frame == null) return;
             if (!outQueue.offer(frame)) {
                 outQueue.poll();
                 outQueue.offer(frame);
@@ -473,128 +464,153 @@ public final class LocalMeshManager {
         }
 
         void close() {
+            if (closed) return;
             closed = true;
             closeQuietly(socket);
-            if (writer != null) writer.interrupt();
-            if (reader != null) reader.interrupt();
+            outQueue.clear();
+            interruptThread(writer);
+            interruptThread(reader);
         }
 
         private void runReadLoop() {
-            boolean registered = false;
             try {
-                socket.setSoTimeout(AUTH_READ_TIMEOUT_MS);
-                InputStream in = socket.getInputStream();
-                OutputStream out = socket.getOutputStream();
-
-                // Authenticate via HELLO|<pin>|<clientName>
-                int failures = 0;
-                boolean authed = false;
-                while (!closed && generation.get() == gen && mode == MODE_HOST) {
-                    String line = LocalMeshProtocol.readLineBounded(in);
-                    if (line == null) return;
-                    LocalMeshProtocol.Frame frame = LocalMeshProtocol.parseFrame(line);
-                    if (frame != null
-                            && frame.type == LocalMeshProtocol.FrameType.HELLO
-                            && LocalMeshProtocol.constantTimeEquals(pin(), frame.pin)) {
-                        if (hostClients.size() >= MAX_CLIENTS) {
-                            LocalMeshProtocol.writeFrame(out, LocalMeshProtocol.encodeAuthErr());
-                            return;
-                        }
-                        firewall.recordAuthSuccess(remoteIp);
-                        authed = true;
-                        break;
-                    }
-                    failures++;
-                    boolean lockedOut = firewall.recordAuthFailure(remoteIp);
-                    LocalMeshProtocol.writeFrame(out, LocalMeshProtocol.encodeAuthErr());
-                    if (lockedOut || failures >= MAX_AUTH_FAILURES) {
-                        return;
-                    }
+                LocalMeshFirewall.Decision admission;
+                synchronized (LocalMeshManager.this) {
+                    if (!isCurrentHost(host) || closed) return;
+                    admission = firewall.checkIncomingConnection(remoteIp, localIp);
                 }
-                if (!authed || closed || generation.get() != gen || mode != MODE_HOST) {
+                if (!admission.allowed) {
+                    if (!LocalMeshFirewall.REASON_NON_PRIVATE_IP.equals(admission.reasonCode)) {
+                        LocalMeshProtocol.writeFrame(socket.getOutputStream(), LocalMeshProtocol.encodeAuthErr());
+                    }
                     return;
                 }
 
+                socket.setSoTimeout(AUTH_READ_TIMEOUT_MS);
+                InputStream in = socket.getInputStream();
+                OutputStream out = socket.getOutputStream();
+                if (!authenticate(in, out)) return;
                 socket.setSoTimeout(SESSION_READ_TIMEOUT_MS);
-                hostClients.add(this);
-                registered = true;
-                notifyHostClientCount();
-
                 LocalMeshProtocol.writeFrame(out, LocalMeshProtocol.encodeAuthOk(hostName()));
-                LocalMeshProtocol.writeFrame(out, LocalMeshProtocol.encodeState(latestSnapshot));
+                synchronized (LocalMeshManager.this) {
+                    if (!canUseHostClient(this)) return;
+                    enqueue(LocalMeshProtocol.encodeState(host.snapshot));
+                    writer = daemonThread("WearEars-MeshHostWriter", () -> runWriteLoop(out));
+                    writer.start();
+                }
 
-                Thread w = new Thread(() -> runWriteLoop(out), "WearEars-MeshHostWriter");
-                w.setDaemon(true);
-                this.writer = w;
-                w.start();
-
-                while (!closed && generation.get() == gen && mode == MODE_HOST) {
+                while (!closed && isCurrentHost(host)) {
                     String line = LocalMeshProtocol.readLineBounded(in);
                     if (line == null) break;
                     LocalMeshProtocol.Frame frame = LocalMeshProtocol.parseFrame(line);
-                    if (frame == null) {
-                        if (line.contains("FIND_MY_BUDS")) {
-                            firewall.checkCommand(remoteIp,
-                                    LocalMeshProtocol.Frame.cmdFeature(FeatureId.FIND_MY_BUDS, 0));
-                            enqueue(LocalMeshProtocol.encodeAuthErr());
-                        }
-                        continue;
+                    if (frame == null && line.contains("FIND_MY_BUDS")) {
+                        // The parser drops this feature. Still record the attempt at the firewall.
+                        frame = LocalMeshProtocol.Frame.cmdFeature(FeatureId.FIND_MY_BUDS, 0);
                     }
-                    handleHostFrame(frame);
+                    if (frame != null) handleHostFrame(frame);
                 }
-            } catch (Throwable ignored) {
+            } catch (IOException | RuntimeException ignored) {
             } finally {
-                closed = true;
-                if (registered) {
-                    hostClients.remove(this);
-                    notifyHostClientCount();
-                }
-                closeQuietly(socket);
-                if (writer != null) writer.interrupt();
+                removeHostClient(this);
             }
+        }
+
+        private boolean authenticate(InputStream in, OutputStream out) throws IOException {
+            for (int failures = 0; failures < MAX_AUTH_FAILURES && !closed && isCurrentHost(host); failures++) {
+                String line = LocalMeshProtocol.readLineBounded(in);
+                if (line == null) return false;
+                LocalMeshProtocol.Frame frame = LocalMeshProtocol.parseFrame(line);
+                boolean retry = false;
+                synchronized (LocalMeshManager.this) {
+                    if (!isCurrentHost(host) || !host.pendingHostSockets.contains(this)) return false;
+                    if (firewall.allowsPeer(remoteIp, localIp)) {
+                        if (frame != null && frame.type == LocalMeshProtocol.FrameType.HELLO
+                                && LocalMeshProtocol.constantTimeEquals(pin(), frame.pin)) {
+                            if (host.hostClients.size() < MAX_CLIENTS) {
+                                host.pendingHostSockets.remove(this);
+                                host.hostClients.add(this);
+                                firewall.recordAuthSuccess(remoteIp);
+                                notifyHostClientCount(host);
+                                return true;
+                            }
+                        } else {
+                            boolean lockedOut = firewall.recordAuthFailure(remoteIp);
+                            if (lockedOut) enforceFirewallPolicy();
+                            retry = !lockedOut;
+                        }
+                    }
+                }
+                LocalMeshProtocol.writeFrame(out, LocalMeshProtocol.encodeAuthErr());
+                if (!retry) return false;
+            }
+            return false;
         }
 
         private void runWriteLoop(OutputStream out) {
             try {
-                while (!closed && generation.get() == gen && mode == MODE_HOST) {
+                while (!closed && isCurrentHost(host)) {
                     String frame = outQueue.take();
+                    synchronized (LocalMeshManager.this) {
+                        if (!canUseHostClient(this)) return;
+                    }
                     LocalMeshProtocol.writeFrame(out, frame);
                 }
-            } catch (Throwable ignored) {
-                close();
+            } catch (IOException | RuntimeException ignored) {
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            } finally {
+                removeHostClient(this);
             }
         }
 
         private void handleHostFrame(LocalMeshProtocol.Frame frame) {
-            LocalMeshFirewall.Decision cmdDecision = firewall.checkCommand(remoteIp, frame);
-            if (!cmdDecision.allowed) {
-                enqueue(LocalMeshProtocol.encodeAuthErr());
-                if (LocalMeshFirewall.REASON_IP_BANNED.equals(cmdDecision.reasonCode)) {
-                    close();
-                }
-                return;
-            }
-            if (frame.type == LocalMeshProtocol.FrameType.PING) {
-                enqueue(LocalMeshProtocol.encodePong());
-                return;
-            }
-            HostCommandSink sink = hostSink;
-            if (sink == null) return;
-            if (frame.type == LocalMeshProtocol.FrameType.CMD_NOISE) {
-                int targetMode = frame.noiseMode;
-                if (targetMode >= Controls.MODE_ANC && targetMode <= Controls.MODE_TRANS) {
-                    mainHandler.post(() -> sink.onRemoteNoiseMode(targetMode));
-                }
-            } else if (frame.type == LocalMeshProtocol.FrameType.CMD_REFRESH) {
-                mainHandler.post(sink::onRemoteRefresh);
-            } else if (frame.type == LocalMeshProtocol.FrameType.CMD_FEATURE) {
-                FeatureId id = frame.featureId;
-                // Secondary hearing-safety hard redline on Host side.
-                if (id == null || id == FeatureId.FIND_MY_BUDS || !LocalMeshProtocol.isAllowedRemoteFeature(id)) {
+            synchronized (LocalMeshManager.this) {
+                if (!canUseHostClient(this)) return;
+                if (!firewall.checkCommand(remoteIp, frame).allowed) {
+                    enqueue(LocalMeshProtocol.encodeAuthErr());
                     return;
                 }
-                int val = frame.featureValue;
-                mainHandler.post(() -> sink.onRemoteFeature(id, val));
+                switch (frame.type) {
+                    case PING:
+                        enqueue(LocalMeshProtocol.encodePong());
+                        break;
+                    case CMD_NOISE:
+                    case CMD_REFRESH:
+                    case CMD_FEATURE:
+                        if (host.sink != null) mainHandler.post(() -> dispatchHostCommand(frame));
+                        break;
+                    default:
+                        break;
+                }
+            }
+        }
+
+        private void dispatchHostCommand(LocalMeshProtocol.Frame frame) {
+            synchronized (LocalMeshManager.this) {
+                if (!canUseHostClient(this)) return;
+                if (!firewall.recheckCommand(remoteIp, frame).allowed) {
+                    enqueue(LocalMeshProtocol.encodeAuthErr());
+                    return;
+                }
+                switch (frame.type) {
+                    case CMD_NOISE:
+                        if (frame.noiseMode >= Controls.MODE_ANC && frame.noiseMode <= Controls.MODE_TRANS) {
+                            host.sink.onRemoteNoiseMode(frame.noiseMode);
+                        }
+                        break;
+                    case CMD_REFRESH:
+                        host.sink.onRemoteRefresh();
+                        break;
+                    case CMD_FEATURE:
+                        FeatureId id = frame.featureId;
+                        // Independent hearing-safety gate before handing off to ControlHub.
+                        if (id != null && id != FeatureId.FIND_MY_BUDS && LocalMeshProtocol.isAllowedRemoteFeature(id)) {
+                            host.sink.onRemoteFeature(id, frame.featureValue);
+                        }
+                        break;
+                    default:
+                        break;
+                }
             }
         }
     }
@@ -603,335 +619,307 @@ public final class LocalMeshManager {
 
     public synchronized void startDiscovery(DiscoveryListener listener) {
         stopDiscovery();
-        this.discoveryListener = listener;
-        this.discoveryActive = true;
-        this.discoveredPeers.clear();
-        Thread t = new Thread(this::runDiscoveryLoop, "WearEars-MeshDiscovery");
-        t.setDaemon(true);
-        this.discoveryThread = t;
-        t.start();
+        DiscoverySession session = new DiscoverySession(discoveryGen, listener);
+        discoverySession = session;
+        session.thread.start();
     }
 
     public synchronized void stopDiscovery() {
-        discoveryActive = false;
-        discoveryListener = null;
-        closeQuietly(discoverySocket);
-        discoverySocket = null;
-        Thread t = discoveryThread;
-        discoveryThread = null;
-        if (t != null) t.interrupt();
-        discoveredPeers.clear();
+        discoveryGen++;
+        DiscoverySession session = discoverySession;
+        discoverySession = null;
+        if (session != null) {
+            closeQuietly(session.socket);
+            interruptThread(session.thread);
+        }
     }
 
-    private void runDiscoveryLoop() {
-        DatagramSocket sock = null;
-        try {
-            sock = new DatagramSocket(null);
-            sock.setReuseAddress(true);
-            sock.setBroadcast(true);
-            sock.bind(new InetSocketAddress(LocalMeshProtocol.DISCOVERY_UDP_PORT));
-            sock.setSoTimeout(2_000);
-            discoverySocket = sock;
-            byte[] buf = new byte[LocalMeshProtocol.MAX_LINE_BYTES];
+    private final class DiscoverySession {
+        final int gen;
+        final DiscoveryListener listener;
+        final Thread thread;
+        final Map<String, DiscoveredPeer> peers = new HashMap<>();
+        DatagramSocket socket;
 
-            while (discoveryActive && !Thread.currentThread().isInterrupted()) {
+        DiscoverySession(int gen, DiscoveryListener listener) {
+            this.gen = gen;
+            this.listener = listener;
+            thread = daemonThread("WearEars-MeshDiscovery", () -> runDiscoveryLoop(this));
+        }
+    }
+
+    private void runDiscoveryLoop(DiscoverySession session) {
+        try (DatagramSocket socket = new DatagramSocket(null)) {
+            synchronized (this) {
+                if (session.gen != discoveryGen) return;
+                session.socket = socket;
+            }
+            socket.setReuseAddress(true);
+            socket.setBroadcast(true);
+            socket.bind(new InetSocketAddress(LocalMeshProtocol.DISCOVERY_UDP_PORT));
+            socket.setSoTimeout(2_000);
+            byte[] buffer = new byte[LocalMeshProtocol.MAX_LINE_BYTES];
+
+            while (session.gen == discoveryGen && !Thread.currentThread().isInterrupted()) {
                 boolean changed = false;
                 try {
-                    DatagramPacket pkt = new DatagramPacket(buf, buf.length);
-                    sock.receive(pkt);
-                    String senderIp = pkt.getAddress() != null ? pkt.getAddress().getHostAddress() : null;
-                    if (LocalMeshProtocol.isPrivateLanAddress(senderIp)) {
-                        String text = new String(pkt.getData(), pkt.getOffset(), pkt.getLength(), StandardCharsets.UTF_8);
+                    DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                    socket.receive(packet);
+                    String ip = packet.getAddress().getHostAddress();
+                    if (LocalMeshProtocol.isPrivateLanAddress(ip)) {
+                        String text = new String(packet.getData(), packet.getOffset(),
+                                packet.getLength(), StandardCharsets.UTF_8);
                         LocalMeshProtocol.Beacon beacon = LocalMeshProtocol.parseBeacon(text);
                         if (beacon != null) {
-                            long now = System.currentTimeMillis();
-                            String key = senderIp + ":" + beacon.tcpPort;
-                            discoveredPeers.put(key, new DiscoveredPeer(
-                                    senderIp, beacon.tcpPort, beacon.hostName,
-                                    beacon.deviceName, beacon.connected, now));
+                            session.peers.put(ip + ":" + beacon.tcpPort, new DiscoveredPeer(
+                                    ip, beacon.tcpPort, beacon.hostName, beacon.deviceName,
+                                    beacon.connected, System.currentTimeMillis()));
                             changed = true;
                         }
                     }
                 } catch (SocketTimeoutException timeout) {
                     // Periodic sweep for stale peers.
                 }
-                if (pruneStalePeers(System.currentTimeMillis())) {
-                    changed = true;
-                }
-                if (changed) {
-                    dispatchPeers();
-                }
+                long now = System.currentTimeMillis();
+                boolean removed = session.peers.values().removeIf(peer -> now - peer.lastSeenMs > DISCOVERY_STALE_MS);
+                if (changed || removed) dispatchPeers(session);
             }
-        } catch (Throwable t) {
-            if (discoveryActive) {
-                Log.w(TAG, "Discovery loop error", t);
+        } catch (IOException | RuntimeException error) {
+            if (session.gen == discoveryGen) {
+                Log.w(TAG, "Discovery loop error", error);
+                if (session.listener != null) postDiscoveryEvent(session, session.listener::onDiscoveryError);
             }
         } finally {
-            closeQuietly(sock);
-        }
-    }
-
-    private boolean pruneStalePeers(long nowMs) {
-        boolean removed = false;
-        for (String key : new ArrayList<>(discoveredPeers.keySet())) {
-            DiscoveredPeer peer = discoveredPeers.get(key);
-            if (peer != null && nowMs - peer.lastSeenMs > DISCOVERY_STALE_MS) {
-                if (discoveredPeers.remove(key) != null) removed = true;
+            synchronized (this) {
+                if (discoverySession == session) discoverySession = null;
             }
         }
-        return removed;
     }
 
-    private void dispatchPeers() {
-        DiscoveryListener listener = discoveryListener;
-        if (listener == null || !discoveryActive) return;
-        ArrayList<DiscoveredPeer> snapshot = new ArrayList<>(discoveredPeers.values());
-        Collections.sort(snapshot, Comparator.comparing((DiscoveredPeer p) -> p.hostName)
-                .thenComparing(p -> p.ip)
-                .thenComparingInt(p -> p.port));
-        List<DiscoveredPeer> unmodifiable = Collections.unmodifiableList(snapshot);
+    private void dispatchPeers(DiscoverySession session) {
+        if (session.listener == null || session.gen != discoveryGen) return;
+        List<DiscoveredPeer> snapshot = new ArrayList<>(session.peers.values());
+        snapshot.sort(Comparator.comparing((DiscoveredPeer peer) -> peer.hostName)
+                .thenComparing(peer -> peer.ip)
+                .thenComparingInt(peer -> peer.port));
+        List<DiscoveredPeer> peers = Collections.unmodifiableList(snapshot);
+        postDiscoveryEvent(session, () -> session.listener.onPeersUpdated(peers));
+    }
+
+    private void postDiscoveryEvent(DiscoverySession session, Runnable callback) {
         mainHandler.post(() -> {
-            if (discoveryActive) listener.onPeersUpdated(unmodifiable);
+            synchronized (this) {
+                if (session.gen == discoveryGen) callback.run();
+            }
         });
     }
 
     // ---- Client TCP session ----
 
     public synchronized void connectClient(String ip, int port, String pin, ClientListener listener) {
-        if (!LocalMeshProtocol.isPrivateLanAddress(ip)) {
-            if (listener != null) mainHandler.post(() -> listener.onClientError("Invalid LAN address"));
+        String invalidReason = clientInputError(ip, port, pin);
+        if (invalidReason != null) {
+            if (listener != null) postForGeneration(generation, () -> listener.onClientError(invalidReason));
             return;
         }
-        if (port < 1 || port > 65535) {
-            if (listener != null) mainHandler.post(() -> listener.onClientError("Invalid port"));
-            return;
-        }
-        if (!LocalMeshProtocol.isValidPin(pin)) {
-            if (listener != null) mainHandler.post(() -> listener.onClientError("Invalid 4-digit PIN"));
-            return;
-        }
-
         stopAll();
-        int gen = generation.incrementAndGet();
-        this.mode = MODE_CLIENT;
-        this.clientAuthed = false;
-        this.clientListener = listener;
-        this.clientSendQueue = new LinkedBlockingQueue<>(CLIENT_SEND_QUEUE_CAP);
+        ClientSession session = new ClientSession(generation, ip, port, pin, listener);
+        clientSession = session;
+        mode = MODE_CLIENT;
+        session.reader.start();
+    }
 
-        Thread reader = new Thread(() -> runClientSession(gen, ip, port, pin), "WearEars-MeshClient");
-        reader.setDaemon(true);
-        this.clientReadThread = reader;
-        reader.start();
+    private static String clientInputError(String ip, int port, String pin) {
+        if (!LocalMeshProtocol.isPrivateLanAddress(ip)) return "Invalid LAN address";
+        if (port < 1 || port > 65535) return "Invalid port";
+        if (!LocalMeshProtocol.isValidPin(pin)) return "Invalid 4-digit PIN";
+        return null;
+    }
+
+    private boolean isCurrentClient(ClientSession session) {
+        return mode == MODE_CLIENT && generation == session.gen;
     }
 
     public boolean sendNoise(int mode) {
-        if (this.mode != MODE_CLIENT || !clientAuthed) return false;
         if (mode < Controls.MODE_ANC || mode > Controls.MODE_TRANS) return false;
         return enqueueClientFrame(LocalMeshProtocol.encodeCmdNoise(mode));
     }
 
     public boolean sendRefresh() {
-        if (this.mode != MODE_CLIENT || !clientAuthed) return false;
         return enqueueClientFrame(LocalMeshProtocol.encodeCmdRefresh());
     }
 
-    /**
-     * Sends a remote feature write to Host. Hard-blocks FIND_MY_BUDS and disallowed features.
-     */
+    /** Sends a remote feature write to Host. Hard-blocks FIND_MY_BUDS and disallowed features. */
     public boolean sendFeature(FeatureId id, int val) {
-        if (this.mode != MODE_CLIENT || !clientAuthed) return false;
         if (id == null || id == FeatureId.FIND_MY_BUDS || !LocalMeshProtocol.isAllowedRemoteFeature(id)) {
             return false;
         }
         return enqueueClientFrame(LocalMeshProtocol.encodeCmdFeature(id, val));
     }
 
-    private boolean enqueueClientFrame(String frame) {
-        BlockingQueue<String> queue = clientSendQueue;
-        if (queue == null || frame == null) return false;
-        return queue.offer(frame);
+    private synchronized boolean enqueueClientFrame(String frame) {
+        ClientSession session = clientSession;
+        return session != null && session.authed && session.sendQueue.offer(frame);
     }
 
-    private void runClientSession(int gen, String ip, int port, String pin) {
-        Socket sock = null;
-        String disconnectReason = "Disconnected";
-        boolean reportedError = false;
+    private final class ClientSession {
+        final long gen;
+        final ClientListener listener;
+        final Socket socket = new Socket();
+        final BlockingQueue<String> sendQueue = new LinkedBlockingQueue<>(CLIENT_SEND_QUEUE_CAP);
+        final Thread reader;
+        Thread writer;
+        volatile boolean authed;
+
+        ClientSession(long gen, String ip, int port, String pin, ClientListener listener) {
+            this.gen = gen;
+            this.listener = listener;
+            reader = daemonThread("WearEars-MeshClient", () -> runClientSession(this, ip, port, pin));
+        }
+
+        void close() {
+            authed = false;
+            closeQuietly(socket);
+            sendQueue.clear();
+            interruptThread(writer);
+            interruptThread(reader);
+        }
+    }
+
+    private void runClientSession(ClientSession session, String ip, int port, String pin) {
+        Socket socket = session.socket;
+        String disconnected = "Disconnected";
+        String error = null;
         try {
-            sock = new Socket();
-            sock.connect(new InetSocketAddress(ip, port), CONNECT_TIMEOUT_MS);
-            if (generation.get() != gen || mode != MODE_CLIENT) {
-                closeQuietly(sock);
-                return;
-            }
-            clientSocket = sock;
-            sock.setSoTimeout(AUTH_READ_TIMEOUT_MS);
+            socket.connect(new InetSocketAddress(ip, port), CONNECT_TIMEOUT_MS);
+            socket.setSoTimeout(AUTH_READ_TIMEOUT_MS);
 
-            InputStream in = sock.getInputStream();
-            OutputStream out = sock.getOutputStream();
-
+            InputStream in = socket.getInputStream();
+            OutputStream out = socket.getOutputStream();
             LocalMeshProtocol.writeFrame(out, LocalMeshProtocol.encodeHello(pin, hostName()));
-            String respLine = LocalMeshProtocol.readLineBounded(in);
-            LocalMeshProtocol.Frame resp = LocalMeshProtocol.parseFrame(respLine);
-            if (resp == null || resp.type != LocalMeshProtocol.FrameType.AUTH_OK) {
-                reportedError = true;
-                String err = (resp != null && resp.type == LocalMeshProtocol.FrameType.AUTH_ERR)
-                        ? "PIN rejected"
-                        : "Handshake failed";
-                postClientError(gen, err);
+            LocalMeshProtocol.Frame response = LocalMeshProtocol.parseFrame(LocalMeshProtocol.readLineBounded(in));
+            if (response == null || response.type != LocalMeshProtocol.FrameType.AUTH_OK) {
+                error = response != null && response.type == LocalMeshProtocol.FrameType.AUTH_ERR
+                        ? "PIN rejected" : "Handshake failed";
                 return;
             }
 
-            sock.setSoTimeout(SESSION_READ_TIMEOUT_MS);
-            clientAuthed = true;
-            String remoteHost = resp.name;
-            ClientListener listener = clientListener;
-            if (listener != null && generation.get() == gen) {
-                mainHandler.post(() -> listener.onClientConnected(remoteHost));
+            socket.setSoTimeout(SESSION_READ_TIMEOUT_MS);
+            synchronized (this) {
+                if (!isCurrentClient(session)) return;
+                session.authed = true;
+                postClientEvent(session, () -> session.listener.onClientConnected(response.name));
+                session.writer = daemonThread("WearEars-MeshClientWriter", () -> runClientWriter(session, out));
+                session.writer.start();
             }
 
-            Thread writer = new Thread(() -> runClientWriterAndHeartbeat(gen, out), "WearEars-MeshClientWriter");
-            writer.setDaemon(true);
-            this.clientWriteThread = writer;
-            writer.start();
-
-            while (generation.get() == gen && mode == MODE_CLIENT && !sock.isClosed()) {
+            while (isCurrentClient(session) && !socket.isClosed()) {
                 String line = LocalMeshProtocol.readLineBounded(in);
                 if (line == null) {
-                    disconnectReason = "Host closed connection";
+                    disconnected = "Host closed connection";
                     break;
                 }
                 LocalMeshProtocol.Frame frame = LocalMeshProtocol.parseFrame(line);
                 if (frame == null) continue;
                 if (frame.type == LocalMeshProtocol.FrameType.STATE && frame.state != null) {
-                    LocalMeshProtocol.StateSnapshot snap = frame.state;
-                    ClientListener l = clientListener;
-                    if (l != null && generation.get() == gen) {
-                        mainHandler.post(() -> l.onClientState(snap));
-                    }
+                    postClientEvent(session, () -> session.listener.onClientState(frame.state));
                 } else if (frame.type == LocalMeshProtocol.FrameType.PING) {
-                    enqueueClientFrame(LocalMeshProtocol.encodePong());
+                    session.sendQueue.offer(LocalMeshProtocol.encodePong());
                 }
             }
-        } catch (Throwable t) {
-            if (generation.get() == gen && mode == MODE_CLIENT) {
-                String msg = t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
-                if (!clientAuthed) {
-                    reportedError = true;
-                    postClientError(gen, msg);
-                } else {
-                    disconnectReason = msg;
-                }
+        } catch (IOException | RuntimeException failure) {
+            if (session.authed) {
+                disconnected = errorMessage(failure);
+            } else {
+                error = errorMessage(failure);
             }
         } finally {
-            closeQuietly(sock);
-            Thread w = clientWriteThread;
-            if (w != null) w.interrupt();
-            if (generation.get() == gen) {
-                boolean wasClient = (mode == MODE_CLIENT);
-                clientAuthed = false;
-                clientSocket = null;
-                clientWriteThread = null;
-                clientReadThread = null;
-                clientSendQueue = null;
-                mode = MODE_OFF;
-                if (wasClient && !reportedError) {
-                    ClientListener l = clientListener;
-                    String finalReason = disconnectReason;
-                    if (l != null) {
-                        mainHandler.post(() -> l.onClientDisconnected(finalReason));
-                    }
-                }
-            }
+            finishClientSession(session, error, disconnected);
         }
     }
 
-    private void runClientWriterAndHeartbeat(int gen, OutputStream out) {
-        BlockingQueue<String> queue = clientSendQueue;
-        if (queue == null) return;
+    private void runClientWriter(ClientSession session, OutputStream out) {
         try {
-            while (generation.get() == gen && mode == MODE_CLIENT && clientAuthed) {
-                String frame = queue.poll(CLIENT_PING_INTERVAL_MS, TimeUnit.MILLISECONDS);
-                if (generation.get() != gen || mode != MODE_CLIENT || !clientAuthed) break;
-                if (frame == null) {
-                    LocalMeshProtocol.writeFrame(out, LocalMeshProtocol.encodePing());
-                } else {
-                    LocalMeshProtocol.writeFrame(out, frame);
-                }
+            while (isCurrentClient(session) && session.authed) {
+                String frame = session.sendQueue.poll(CLIENT_PING_INTERVAL_MS, TimeUnit.MILLISECONDS);
+                if (!isCurrentClient(session) || !session.authed) return;
+                LocalMeshProtocol.writeFrame(out, frame == null ? LocalMeshProtocol.encodePing() : frame);
             }
-        } catch (Throwable ignored) {
-            closeQuietly(clientSocket);
+        } catch (IOException | RuntimeException ignored) {
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        } finally {
+            closeQuietly(session.socket);
         }
     }
 
-    private void postClientError(int gen, String msg) {
-        ClientListener l = clientListener;
-        if (l != null && generation.get() == gen) {
-            mainHandler.post(() -> l.onClientError(msg));
+    private void postClientEvent(ClientSession session, Runnable callback) {
+        if (session.listener != null) {
+            postForGeneration(session.gen, () -> {
+                if (isCurrentClient(session)) callback.run();
+            });
+        }
+    }
+
+    private synchronized void finishClientSession(ClientSession session, String error, String disconnected) {
+        session.close();
+        if (!isCurrentClient(session)) return;
+        clientSession = null;
+        mode = MODE_OFF;
+        if (session.listener != null) {
+            postForGeneration(session.gen, () -> {
+                if (error == null) session.listener.onClientDisconnected(disconnected);
+                else session.listener.onClientError(error);
+            });
         }
     }
 
     // ---- Full teardown ----
 
     public synchronized void stopAll() {
-        int prevMode = mode;
-        HostStatusListener prevHostListener = hostStatusListener;
-
-        generation.incrementAndGet();
+        generation++;
         mode = MODE_OFF;
-        listenPort = 0;
-        clientAuthed = false;
+        HostSession host = hostSession;
+        hostSession = null;
+        ClientSession client = clientSession;
+        clientSession = null;
 
-        // Tear down Host
-        hostSink = null;
-        hostStatusListener = null;
-        closeQuietly(hostServerSocket);
-        hostServerSocket = null;
-        closeQuietly(beaconSocket);
-        beaconSocket = null;
-        for (HostClientSession session : hostClients) {
-            session.close();
+        if (host != null) {
+            host.close();
+            if (host.listener != null) postForGeneration(generation, host.listener::onHostStopped);
         }
-        hostClients.clear();
-        interruptThread(hostAcceptThread);
-        hostAcceptThread = null;
-        interruptThread(beaconThread);
-        beaconThread = null;
-
-        // Tear down Discovery
+        if (client != null) client.close();
         stopDiscovery();
-
-        // Tear down Client
-        clientListener = null;
-        closeQuietly(clientSocket);
-        clientSocket = null;
-        BlockingQueue<String> q = clientSendQueue;
-        clientSendQueue = null;
-        if (q != null) q.clear();
-        interruptThread(clientWriteThread);
-        clientWriteThread = null;
-        interruptThread(clientReadThread);
-        clientReadThread = null;
-
-        if (prevMode == MODE_HOST && prevHostListener != null) {
-            mainHandler.post(prevHostListener::onHostStopped);
-        }
     }
 
-    private static void interruptThread(Thread t) {
-        if (t != null) {
-            try {
-                t.interrupt();
-            } catch (Throwable ignored) {
+    private void postForGeneration(long gen, Runnable callback) {
+        mainHandler.post(() -> {
+            synchronized (this) {
+                if (generation == gen) callback.run();
             }
-        }
+        });
     }
 
-    private static void closeQuietly(AutoCloseable c) {
-        if (c != null) {
-            try {
-                c.close();
-            } catch (Throwable ignored) {
-            }
+    private static String errorMessage(Throwable error) {
+        String message = error.getMessage();
+        return message != null ? message : error.getClass().getSimpleName();
+    }
+
+    private static Thread daemonThread(String name, Runnable work) {
+        Thread thread = new Thread(work, name);
+        thread.setDaemon(true);
+        return thread;
+    }
+
+    private static void interruptThread(Thread thread) {
+        if (thread != null && thread != Thread.currentThread()) thread.interrupt();
+    }
+
+    private static void closeQuietly(AutoCloseable resource) {
+        if (resource == null) return;
+        try {
+            resource.close();
+        } catch (Exception ignored) {
         }
     }
 }

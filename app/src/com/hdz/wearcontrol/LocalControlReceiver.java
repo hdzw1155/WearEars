@@ -19,17 +19,6 @@ public class LocalControlReceiver extends BroadcastReceiver {
     public static final String ACTION_REFRESH = "com.hdz.wearcontrol.ACTION_REFRESH";
     public static final String EXTRA_MODE = "mode";
 
-    /** Synced by SettingsActivity / AppPrefs; defaults to disabled. */
-    static volatile boolean bridgeEnabled = false;
-
-    public static void setBridgeEnabled(boolean enabled) {
-        bridgeEnabled = enabled;
-    }
-
-    public static boolean isBridgeEnabled() {
-        return bridgeEnabled;
-    }
-
     @Override
     public void onReceive(Context context, Intent intent) {
         if (context == null || intent == null) return;
@@ -40,9 +29,11 @@ public class LocalControlReceiver extends BroadcastReceiver {
         if (!AppPrefs.hasDisclaimer(context)) return;
 
         // Gate 2: Local software bridge must be explicitly enabled.
-        if (!bridgeEnabled) return;
+        if (!AppPrefs.localIntentBridge(context)) return;
 
         // Gate 3: Strict allowlist of noise/refresh actions only (never FIND_MY_BUDS or volume increase).
+        if (!ACTION_SET_NOISE.equals(action) && !ACTION_CYCLE_NOISE.equals(action)
+                && !ACTION_REFRESH.equals(action)) return;
         ControlHub hub = ControlHub.get(context);
         if (ACTION_SET_NOISE.equals(action)) {
             int mode = parseModeExtra(intent);

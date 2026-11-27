@@ -2,9 +2,14 @@ package com.hdz.wearcontrol;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.graphics.Typeface;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.InputFilter;
 import android.text.InputType;
@@ -19,12 +24,14 @@ import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -37,9 +44,13 @@ public class DeveloperSettingsActivity extends Activity {
     private AppScrollView scroll;
     private ArcIndicatorView indicator;
     private AlertDialog meshDialog;
+    private TextView meshScanStatus;
+    private Runnable restartMeshScan;
+    private boolean meshScanning;
     private AlertDialog meshSubDialog;
     private AlertDialog fwDialog;
     private AlertDialog fwSubDialog;
+    private AlertDialog diagnosticDialog;
 
     static Intent intent(Context ctx) {
         return new Intent(ctx, DeveloperSettingsActivity.class);
@@ -135,7 +146,7 @@ public class DeveloperSettingsActivity extends Activity {
                 LocalMeshManager.get(DeveloperSettingsActivity.this).firewall().clearBans();
                 Toast.makeText(DeveloperSettingsActivity.this,
                         R.string.fw_bans_cleared, Toast.LENGTH_SHORT).show();
-                refreshChoices();
+                syncFirewallAndRefresh();
             }
         });
 
@@ -145,11 +156,11 @@ public class DeveloperSettingsActivity extends Activity {
             public void run() {
                 boolean next = !AppPrefs.localIntentBridge(DeveloperSettingsActivity.this);
                 AppPrefs.setLocalIntentBridge(DeveloperSettingsActivity.this, next);
-                LocalControlReceiver.setBridgeEnabled(next);
                 refreshChoices();
             }
         });
 
+        bindClick(R.id.diagnostic_report_btn, this::showDiagnosticReport);
         refreshChoices();
         applyPhoneInsets();
         if (isHudMode()) {
@@ -174,12 +185,18 @@ public class DeveloperSettingsActivity extends Activity {
         if (indicator != null && DeviceForm.isWatch(this, AppPrefs.hostFormOverride(this))) {
             indicator.setActive(true);
         }
+        if (meshDialog != null && meshDialog.isShowing() && restartMeshScan != null) {
+            restartMeshScan.run();
+        }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        LocalMeshManager.get(this).stopDiscovery();
+        stopMeshScan();
+        if (meshDialog != null && meshDialog.isShowing() && meshScanStatus != null) {
+            meshScanStatus.setText(R.string.settings_mesh_scan_paused);
+        }
         if (scroll != null) scroll.setActive(false);
         if (indicator != null && DeviceForm.isWatch(this, AppPrefs.hostFormOverride(this))) {
             indicator.setActive(false);
@@ -188,11 +205,12 @@ public class DeveloperSettingsActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        LocalMeshManager.get(this).stopDiscovery();
+        stopMeshScan();
         dismissQuietly(meshDialog);
         dismissQuietly(meshSubDialog);
         dismissQuietly(fwDialog);
         dismissQuietly(fwSubDialog);
+        dismissQuietly(diagnosticDialog);
         super.onDestroy();
     }
 
@@ -313,11 +331,9 @@ public class DeveloperSettingsActivity extends Activity {
             public void onClick(View view) {
                 if (AppPrefs.meshMode(DeveloperSettingsActivity.this) == mode) return;
                 AppPrefs.setMeshMode(DeveloperSettingsActivity.this, mode);
-                if (mode == LocalMeshManager.MODE_OFF) {
-                    LocalMeshManager.get(DeveloperSettingsActivity.this).stopAll();
-                } else if (mode == LocalMeshManager.MODE_HOST) {
-                    LocalMeshManager.get(DeveloperSettingsActivity.this).pin();
-                }
+                LocalMeshManager mesh = LocalMeshManager.get(DeveloperSettingsActivity.this);
+                mesh.stopAll();
+                if (mode == LocalMeshManager.MODE_HOST) mesh.pin();
                 refreshChoices();
             }
         });
@@ -337,75 +353,94 @@ public class DeveloperSettingsActivity extends Activity {
         if (isFinishing() || isDestroyed()) return;
         dismissQuietly(meshDialog);
 
-        final LocalMeshManager mesh = LocalMeshManager.get(this);
-        final List<LocalMeshManager.DiscoveredPeer> peers = new ArrayList<>();
-        final List<String> labels = new ArrayList<>();
-        labels.add(getString(R.string.settings_mesh_scanning));
+        LocalMeshManager mesh = LocalMeshManager.get(this);
+        List<LocalMeshManager.DiscoveredPeer> peers = new ArrayList<>();
+        List<String> labels = new ArrayList<>();
 
-        int dialogTheme = NeoStyle.dialogTheme(isLightSurface());
-        Context dialogCtx = new ContextThemeWrapper(this, dialogTheme);
-        final ArrayAdapter<String> adapter = new ArrayAdapter<>(
-                dialogCtx, android.R.layout.simple_list_item_1, labels);
-        final ListView listView = new ListView(dialogCtx);
+        int theme = NeoStyle.dialogTheme(isLightSurface());
+        Context dialogCtx = new ContextThemeWrapper(this, theme);
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(dialogCtx, android.R.layout.simple_list_item_1, labels);
+        ListView listView = new ListView(dialogCtx);
         listView.setAdapter(adapter);
 
-        final AlertDialog dialog = new AlertDialog.Builder(this, dialogTheme)
+        LinearLayout content = new LinearLayout(dialogCtx);
+        content.setOrientation(LinearLayout.VERTICAL);
+        TextView status = new TextView(dialogCtx);
+        int pad = Math.round(16f * getResources().getDisplayMetrics().density);
+        status.setPadding(pad, pad / 2, pad, pad / 2);
+        content.addView(status);
+        content.addView(listView);
+
+        AlertDialog dialog = new AlertDialog.Builder(this, theme)
                 .setTitle(R.string.settings_mesh_scan_title)
-                .setView(listView)
-                .setNeutralButton(R.string.settings_mesh_manual_btn, new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface d, int w) {
-                        showManualMeshDialog();
-                    }
-                })
+                .setView(content)
+                .setNeutralButton(R.string.settings_mesh_manual_btn, (d, w) -> showManualMeshDialog())
                 .setNegativeButton(R.string.dialog_cancel, null)
                 .create();
         meshDialog = dialog;
+        meshScanStatus = status;
 
-        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view, int pos, long id) {
-                if (pos < 0 || pos >= peers.size()) return;
-                LocalMeshManager.DiscoveredPeer peer = peers.get(pos);
-                dialog.dismiss();
-                showPinPromptDialog(peer);
+        listView.setOnItemClickListener((parent, view, pos, id) -> {
+            if (!meshScanning || pos < 0 || pos >= peers.size()) return;
+            LocalMeshManager.DiscoveredPeer peer = peers.get(pos);
+            dialog.dismiss();
+            showPinPromptDialog(peer);
+        });
+        dialog.setOnDismissListener(d -> {
+            if (meshDialog == dialog) {
+                stopMeshScan();
+                meshDialog = null;
+                meshScanStatus = null;
+                restartMeshScan = null;
             }
         });
 
-        dialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
-            @Override
-            public void onDismiss(DialogInterface d) {
-                mesh.stopDiscovery();
-            }
-        });
-
-        mesh.startDiscovery(new LocalMeshManager.DiscoveryListener() {
-            @Override
-            public void onPeersUpdated(List<LocalMeshManager.DiscoveredPeer> updated) {
-                if (meshDialog != dialog || !dialog.isShowing() || isFinishing() || isDestroyed()) return;
-                peers.clear();
-                labels.clear();
-                if (updated == null || updated.isEmpty()) {
-                    labels.add(getString(R.string.settings_mesh_scanning));
-                } else {
-                    for (LocalMeshManager.DiscoveredPeer p : updated) {
-                        peers.add(p);
-                        String state = getString(p.connected
-                                ? R.string.settings_mesh_peer_connected
-                                : R.string.settings_mesh_peer_idle);
-                        String dev = (p.deviceName != null && !p.deviceName.isEmpty())
-                                ? " \u00B7 " + p.deviceName : "";
-                        labels.add(p.hostName + " (" + p.ip + ":" + p.port + ")\n" + state + dev);
+        restartMeshScan = () -> {
+            meshScanning = true;
+            status.setText(R.string.settings_mesh_scanning);
+            peers.clear();
+            labels.clear();
+            adapter.notifyDataSetChanged();
+            mesh.startDiscovery(new LocalMeshManager.DiscoveryListener() {
+                @Override public void onPeersUpdated(List<LocalMeshManager.DiscoveredPeer> updated) {
+                    if (!isCurrentMeshScan(dialog)) return;
+                    peers.clear();
+                    peers.addAll(updated);
+                    labels.clear();
+                    for (LocalMeshManager.DiscoveredPeer peer : peers) {
+                        String state = getString(peer.connected
+                                ? R.string.settings_mesh_peer_connected : R.string.settings_mesh_peer_idle);
+                        String device = peer.deviceName.isEmpty() ? "" : " · " + peer.deviceName;
+                        labels.add(peer.hostName + " (" + peer.ip + ":" + peer.port + ")\n" + state + device);
                     }
+                    adapter.notifyDataSetChanged();
                 }
-                adapter.notifyDataSetChanged();
-            }
-        });
 
+                @Override public void onDiscoveryError() {
+                    if (!isCurrentMeshScan(dialog)) return;
+                    meshScanning = false;
+                    peers.clear();
+                    labels.clear();
+                    adapter.notifyDataSetChanged();
+                    status.setText(R.string.settings_mesh_scan_failed);
+                }
+            });
+        };
         dialog.show();
+        restartMeshScan.run();
     }
 
-    private void showPinPromptDialog(final LocalMeshManager.DiscoveredPeer peer) {
+    private boolean isCurrentMeshScan(AlertDialog dialog) {
+        return meshScanning && meshDialog == dialog && dialog.isShowing() && !isFinishing() && !isDestroyed();
+    }
+
+    private void stopMeshScan() {
+        if (!meshScanning) return;
+        meshScanning = false;
+        LocalMeshManager.get(this).stopDiscovery();
+    }
+
+    private void showPinPromptDialog(LocalMeshManager.DiscoveredPeer peer) {
         if (peer == null || isFinishing() || isDestroyed()) return;
         dismissQuietly(meshSubDialog);
 
@@ -420,34 +455,29 @@ public class DeveloperSettingsActivity extends Activity {
         desc.setText(getString(R.string.settings_mesh_pin_for, peer.hostName, peer.ip, peer.port));
         box.addView(desc);
 
-        final EditText pinInput = new EditText(dialogCtx);
+        EditText pinInput = new EditText(dialogCtx);
         pinInput.setHint(R.string.settings_mesh_pin_hint);
         pinInput.setInputType(InputType.TYPE_CLASS_NUMBER);
         pinInput.setFilters(new InputFilter[]{new InputFilter.LengthFilter(4)});
         pinInput.setText(AppPrefs.meshPin(this));
         box.addView(pinInput);
 
-        meshSubDialog = new AlertDialog.Builder(this, dialogTheme)
+        AlertDialog dialog = new AlertDialog.Builder(this, dialogTheme)
                 .setTitle(R.string.settings_mesh_pin_title)
                 .setView(box)
-                .setPositiveButton(R.string.settings_mesh_save, new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface d, int w) {
-                        String pin = pinInput.getText().toString().trim();
-                        if (!LocalMeshProtocol.isValidPin(pin)) {
-                            Toast.makeText(DeveloperSettingsActivity.this,
-                                    R.string.settings_mesh_invalid_pin, Toast.LENGTH_SHORT).show();
-                            return;
-                        }
-                        AppPrefs.setMeshHostIp(DeveloperSettingsActivity.this, peer.ip);
-                        AppPrefs.setMeshHostPort(DeveloperSettingsActivity.this, peer.port);
-                        AppPrefs.setMeshPin(DeveloperSettingsActivity.this, pin);
-                        AppPrefs.setMeshMode(DeveloperSettingsActivity.this, LocalMeshManager.MODE_CLIENT);
-                        refreshChoices();
-                    }
-                })
+                .setPositiveButton(R.string.settings_mesh_save, null)
                 .setNegativeButton(R.string.dialog_cancel, null)
-                .show();
+                .create();
+        showMeshSubDialog(dialog);
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String pin = pinInput.getText().toString().trim();
+            if (!LocalMeshProtocol.isValidPin(pin)) {
+                showInputError(pinInput, R.string.settings_mesh_invalid_pin);
+                return;
+            }
+            saveMeshTarget(peer.ip, peer.port, pin);
+            dialog.dismiss();
+        });
     }
 
     private void showManualMeshDialog() {
@@ -461,67 +491,80 @@ public class DeveloperSettingsActivity extends Activity {
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(pad, pad / 2, pad, pad / 2);
 
-        final EditText ipInput = new EditText(dialogCtx);
+        EditText ipInput = new EditText(dialogCtx);
         ipInput.setHint(R.string.settings_mesh_ip_hint);
         ipInput.setSingleLine(true);
         ipInput.setText(AppPrefs.meshHostIp(this));
         box.addView(ipInput);
 
-        final EditText portInput = new EditText(dialogCtx);
+        EditText portInput = new EditText(dialogCtx);
         portInput.setHint(R.string.settings_mesh_port_hint);
         portInput.setInputType(InputType.TYPE_CLASS_NUMBER);
         portInput.setSingleLine(true);
         portInput.setText(String.valueOf(AppPrefs.meshHostPort(this)));
         box.addView(portInput);
 
-        final EditText pinInput = new EditText(dialogCtx);
+        EditText pinInput = new EditText(dialogCtx);
         pinInput.setHint(R.string.settings_mesh_pin_hint);
         pinInput.setInputType(InputType.TYPE_CLASS_NUMBER);
         pinInput.setFilters(new InputFilter[]{new InputFilter.LengthFilter(4)});
         pinInput.setText(AppPrefs.meshPin(this));
         box.addView(pinInput);
 
-        meshSubDialog = new AlertDialog.Builder(this, dialogTheme)
+        AlertDialog dialog = new AlertDialog.Builder(this, dialogTheme)
                 .setTitle(R.string.settings_mesh_manual_title)
                 .setView(box)
-                .setPositiveButton(R.string.settings_mesh_save, new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface d, int w) {
-                        String ip = ipInput.getText().toString().trim();
-                        String portStr = portInput.getText().toString().trim();
-                        String pin = pinInput.getText().toString().trim();
-                        if (!LocalMeshProtocol.isPrivateLanAddress(ip)) {
-                            Toast.makeText(DeveloperSettingsActivity.this,
-                                    R.string.settings_mesh_invalid_ip, Toast.LENGTH_SHORT).show();
-                            return;
-                        }
-                        int port = LocalMeshProtocol.DEFAULT_TCP_PORT;
-                        if (!portStr.isEmpty()) {
-                            try {
-                                port = Integer.parseInt(portStr);
-                            } catch (NumberFormatException ignored) {
-                                port = -1;
-                            }
-                        }
-                        if (port < 1 || port > 65535) {
-                            Toast.makeText(DeveloperSettingsActivity.this,
-                                    R.string.settings_mesh_invalid_port, Toast.LENGTH_SHORT).show();
-                            return;
-                        }
-                        if (!LocalMeshProtocol.isValidPin(pin)) {
-                            Toast.makeText(DeveloperSettingsActivity.this,
-                                    R.string.settings_mesh_invalid_pin, Toast.LENGTH_SHORT).show();
-                            return;
-                        }
-                        AppPrefs.setMeshHostIp(DeveloperSettingsActivity.this, ip);
-                        AppPrefs.setMeshHostPort(DeveloperSettingsActivity.this, port);
-                        AppPrefs.setMeshPin(DeveloperSettingsActivity.this, pin);
-                        AppPrefs.setMeshMode(DeveloperSettingsActivity.this, LocalMeshManager.MODE_CLIENT);
-                        refreshChoices();
-                    }
-                })
+                .setPositiveButton(R.string.settings_mesh_save, null)
                 .setNegativeButton(R.string.dialog_cancel, null)
-                .show();
+                .create();
+        showMeshSubDialog(dialog);
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String ip = ipInput.getText().toString().trim();
+            if (!LocalMeshProtocol.isPrivateLanAddress(ip)) {
+                showInputError(ipInput, R.string.settings_mesh_invalid_ip);
+                return;
+            }
+            String portText = portInput.getText().toString().trim();
+            int port;
+            try {
+                port = portText.isEmpty() ? LocalMeshProtocol.DEFAULT_TCP_PORT : Integer.parseInt(portText);
+            } catch (NumberFormatException invalidPort) {
+                port = -1;
+            }
+            if (port < 1 || port > 65535) {
+                showInputError(portInput, R.string.settings_mesh_invalid_port);
+                return;
+            }
+            String pin = pinInput.getText().toString().trim();
+            if (!LocalMeshProtocol.isValidPin(pin)) {
+                showInputError(pinInput, R.string.settings_mesh_invalid_pin);
+                return;
+            }
+            saveMeshTarget(ip, port, pin);
+            dialog.dismiss();
+        });
+    }
+
+    private void showMeshSubDialog(AlertDialog dialog) {
+        meshSubDialog = dialog;
+        dialog.setOnDismissListener(d -> {
+            if (meshSubDialog == dialog) meshSubDialog = null;
+        });
+        dialog.show();
+    }
+
+    private void saveMeshTarget(String ip, int port, String pin) {
+        LocalMeshManager.get(this).stopAll();
+        AppPrefs.setMeshHostIp(this, ip);
+        AppPrefs.setMeshHostPort(this, port);
+        AppPrefs.setMeshPin(this, pin);
+        AppPrefs.setMeshMode(this, LocalMeshManager.MODE_CLIENT);
+        refreshChoices();
+    }
+
+    private void showInputError(EditText input, int message) {
+        input.requestFocus();
+        input.setError(getString(message));
     }
 
     // ---- Firewall dialogs ----
@@ -576,13 +619,11 @@ public class DeveloperSettingsActivity extends Activity {
                         AppPrefs.setFwAllowlist(DeveloperSettingsActivity.this, "");
                         Toast.makeText(DeveloperSettingsActivity.this,
                                 R.string.fw_allowlist_cleared, Toast.LENGTH_SHORT).show();
-                        refreshChoices();
+                        syncFirewallAndRefresh();
                     }
                 })
                 .setNegativeButton(R.string.fw_dialog_close, null)
                 .create();
-        fwDialog = dialog;
-
         listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int pos, long id) {
@@ -592,12 +633,12 @@ public class DeveloperSettingsActivity extends Activity {
                 AppPrefs.setFwAllowlist(DeveloperSettingsActivity.this, fw.allowlistToCsv());
                 Toast.makeText(DeveloperSettingsActivity.this,
                         getString(R.string.fw_allowlist_removed, removed), Toast.LENGTH_SHORT).show();
+                syncFirewallAndRefresh();
                 reloadList.run();
-                refreshChoices();
             }
         });
 
-        dialog.show();
+        showFirewallDialog(dialog);
     }
 
     private void showAddAllowlistIpDialog() {
@@ -620,29 +661,34 @@ public class DeveloperSettingsActivity extends Activity {
         ipInput.setSingleLine(true);
         box.addView(ipInput);
 
-        fwSubDialog = new AlertDialog.Builder(this, dialogTheme)
+        AlertDialog dialog = new AlertDialog.Builder(this, dialogTheme)
                 .setTitle(R.string.fw_allowlist_add_title)
                 .setView(box)
-                .setPositiveButton(R.string.settings_mesh_save, new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface d, int w) {
-                        String ip = ipInput.getText().toString().trim();
-                        if (!LocalMeshProtocol.isPrivateLanAddress(ip)) {
-                            Toast.makeText(DeveloperSettingsActivity.this,
-                                    R.string.settings_mesh_invalid_ip, Toast.LENGTH_SHORT).show();
-                            return;
-                        }
-                        LocalMeshFirewall fw = LocalMeshManager.get(DeveloperSettingsActivity.this).firewall();
-                        fw.addAllowedIp(ip);
-                        AppPrefs.setFwAllowlist(DeveloperSettingsActivity.this, fw.allowlistToCsv());
-                        Toast.makeText(DeveloperSettingsActivity.this,
-                                getString(R.string.fw_allowlist_added, ip), Toast.LENGTH_SHORT).show();
-                        refreshChoices();
-                        showAllowlistDialog();
-                    }
-                })
+                .setPositiveButton(R.string.settings_mesh_save, null)
                 .setNegativeButton(R.string.dialog_cancel, null)
-                .show();
+                .create();
+        fwSubDialog = dialog;
+        dialog.setOnDismissListener(d -> {
+            if (fwSubDialog == dialog) fwSubDialog = null;
+        });
+        dialog.show();
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String ip = ipInput.getText().toString().trim();
+            if (!LocalMeshProtocol.isPrivateLanAddress(ip)) {
+                showInputError(ipInput, R.string.settings_mesh_invalid_ip);
+                return;
+            }
+            LocalMeshFirewall firewall = LocalMeshManager.get(this).firewall();
+            if (!firewall.addAllowedIp(ip)) {
+                showInputError(ipInput, R.string.fw_allowlist_duplicate);
+                return;
+            }
+            AppPrefs.setFwAllowlist(this, firewall.allowlistToCsv());
+            syncFirewallAndRefresh();
+            Toast.makeText(this, getString(R.string.fw_allowlist_added, ip), Toast.LENGTH_SHORT).show();
+            dialog.dismiss();
+            showAllowlistDialog();
+        });
     }
 
     private void showFirewallLogsDialog() {
@@ -670,11 +716,20 @@ public class DeveloperSettingsActivity extends Activity {
         ListView listView = new ListView(dialogCtx);
         listView.setAdapter(adapter);
 
-        fwDialog = new AlertDialog.Builder(this, dialogTheme)
+        AlertDialog dialog = new AlertDialog.Builder(this, dialogTheme)
                 .setTitle(R.string.fw_logs_dialog_title)
                 .setView(listView)
                 .setNegativeButton(R.string.fw_dialog_close, null)
-                .show();
+                .create();
+        showFirewallDialog(dialog);
+    }
+
+    private void showFirewallDialog(AlertDialog dialog) {
+        fwDialog = dialog;
+        dialog.setOnDismissListener(d -> {
+            if (fwDialog == dialog) fwDialog = null;
+        });
+        dialog.show();
     }
 
     private String localizeReason(String reason) {
@@ -702,13 +757,93 @@ public class DeveloperSettingsActivity extends Activity {
         if (LocalMeshFirewall.REASON_FIND_BUDS_HARD_BLOCK.equals(reason)) {
             return getString(R.string.fw_reason_find_buds);
         }
-        if (LocalMeshFirewall.REASON_READ_ONLY_MODE.equals(reason)) {
+        if (LocalMeshFirewall.REASON_READ_ONLY_MODE.equals(reason)
+                || LocalMeshFirewall.AUDIT_READ_ONLY_BLOCKED.equals(reason)) {
             return getString(R.string.fw_reason_readonly);
         }
         if (LocalMeshFirewall.REASON_CMD_RATE_LIMIT.equals(reason)) {
             return getString(R.string.fw_reason_cmd_rate);
         }
         return reason == null ? "" : reason;
+    }
+
+    private void showDiagnosticReport() {
+        if (isFinishing() || isDestroyed()) return;
+        dismissQuietly(diagnosticDialog);
+
+        String report = buildDiagnosticReport();
+        int theme = NeoStyle.dialogTheme(isLightSurface());
+        Context dialogCtx = new ContextThemeWrapper(this, theme);
+        TextView preview = new TextView(dialogCtx);
+        preview.setTypeface(Typeface.MONOSPACE);
+        preview.setTextSize(13f);
+        int pad = Math.round(16f * getResources().getDisplayMetrics().density);
+        preview.setPadding(pad, pad, pad, pad);
+        preview.setText(report);
+        ScrollView body = new ScrollView(dialogCtx);
+        body.addView(preview);
+
+        AlertDialog dialog = new AlertDialog.Builder(this, theme)
+                .setTitle(R.string.diagnostic_report_title)
+                .setView(body)
+                .setPositiveButton(R.string.diagnostic_report_copy, null)
+                .setNegativeButton(R.string.fw_dialog_close, null)
+                .create();
+        diagnosticDialog = dialog;
+        dialog.setOnDismissListener(d -> {
+            if (diagnosticDialog == dialog) diagnosticDialog = null;
+        });
+        dialog.show();
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            ClipboardManager clipboard = getSystemService(ClipboardManager.class);
+            if (clipboard == null) return;
+            clipboard.setPrimaryClip(ClipData.newPlainText(getString(R.string.diagnostic_report_title), report));
+            Toast.makeText(this, R.string.diagnostic_report_copied, Toast.LENGTH_SHORT).show();
+        });
+    }
+
+    private String buildDiagnosticReport() {
+        String version;
+        try {
+            version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (PackageManager.NameNotFoundException | RuntimeException ignored) {
+            version = null;
+        }
+        int form = DeviceForm.resolveForm(this, AppPrefs.hostFormOverride(this));
+        String formLabel = form == HostFormLogic.FORM_WATCH ? "watch"
+                : form == HostFormLogic.FORM_HUD ? "hud" : "phone";
+        int mode = AppPrefs.meshMode(this);
+        boolean remote = mode == LocalMeshManager.MODE_CLIENT;
+        DiagnosticReportBuilder.MeshRole role = remote ? DiagnosticReportBuilder.MeshRole.CLIENT
+                : mode == LocalMeshManager.MODE_HOST ? DiagnosticReportBuilder.MeshRole.HOST
+                : DiagnosticReportBuilder.MeshRole.OFF;
+
+        ControlHub hub = ControlHub.get(this);
+        LocalMeshManager mesh = LocalMeshManager.get(this);
+        LocalMeshFirewall firewall = mesh.firewall();
+        String brand = remote ? "" : hub.driverBrand();
+        String stage = hub.connectionStage();
+        if (remote) {
+            stage = mesh.isClientConnected() ? "live"
+                    : mesh.mode() == LocalMeshManager.MODE_CLIENT ? "connecting" : "idle";
+        }
+        return DiagnosticReportBuilder.build(new DiagnosticReportBuilder.Input(
+                version, Build.VERSION.SDK_INT, formLabel, BluetoothAccess.connect(this), brand,
+                brand == null || brand.isEmpty() ? -1 : hub.verifLevel(), stage, role,
+                firewall.isEnabled(), firewall.isReadOnlyMode(), firewall.blockedCount(),
+                firewall.bannedIpCount(), remote ? -1 : supportedFeatureCount(hub.state()),
+                AppPrefs.LANG_EN.equals(AppPrefs.lang(this))));
+    }
+
+    private static int supportedFeatureCount(DeviceState state) {
+        EnumSet<FeatureId> features = EnumSet.noneOf(FeatureId.class);
+        features.addAll(state.features.keySet());
+        int caps = state.caps;
+        if ((caps & Controls.CAP_NOISE) != 0) features.add(FeatureId.NOISE_MODE);
+        if ((caps & Controls.CAP_SPATIAL) != 0) features.add(FeatureId.SPATIAL_AUDIO);
+        if ((caps & (Controls.CAP_DEEPX | Controls.CAP_EQUALIZER)) != 0) features.add(FeatureId.EQUALIZER);
+        int battery = (caps & (Controls.CAP_BATTERY | Controls.CAP_BATTERY_SINGLE)) != 0 ? 1 : 0;
+        return features.size() + battery;
     }
 
     // ---- Rendering & theme ----
@@ -791,7 +926,6 @@ public class DeveloperSettingsActivity extends Activity {
 
         // Local App Bridge section
         boolean bridgeOn = AppPrefs.localIntentBridge(this);
-        LocalControlReceiver.setBridgeEnabled(bridgeOn);
         setChoice(R.id.intent_bridge_choice, bridgeOn, day, style);
         TextView bridgeView = (TextView) findViewById(R.id.intent_bridge_choice);
         if (bridgeView != null) {
@@ -800,6 +934,7 @@ public class DeveloperSettingsActivity extends Activity {
                     : R.string.settings_intent_bridge_off);
         }
 
+        setChoice(R.id.diagnostic_report_btn, false, day, style);
         if (hud) {
             View list = findViewById(R.id.dev_settings_list);
             if (list != null) {

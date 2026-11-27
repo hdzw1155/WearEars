@@ -273,6 +273,8 @@
     <string name="settings_mesh_pick_host">Scan LAN Hosts / Manual</string>
     <string name="settings_mesh_scan_title">Scan LAN Hosts</string>
     <string name="settings_mesh_scanning">Listening for LAN beacons (UDP 19846)…</string>
+    <string name="settings_mesh_scan_paused">Scan paused. It will resume when you return.</string>
+    <string name="settings_mesh_scan_failed">Could not start scanning. Reopen the scan or connect manually.</string>
     <string name="settings_mesh_manual_btn">Manual Entry</string>
     <string name="settings_mesh_manual_title">Manual LAN Host</string>
     <string name="settings_mesh_ip_hint">Host LAN IP (e.g. 192.168.1.8)</string>
@@ -308,6 +310,12 @@
     <string name="settings_dev_options_summary">LAN Mesh: %1$s · Firewall: %2$s</string>
     <string name="settings_dev_options_enter">LAN Mesh · Firewall · Bridge →</string>
     <string name="dev_settings_title">Developer options</string>
+    <string name="diagnostic_report_title">Diagnostic report (redacted)</string>
+    <string name="diagnostic_report_copy">Copy report</string>
+    <string name="diagnostic_report_copied">Diagnostic report copied</string>
+    <string name="qs_tile_label">WearEars</string>
+    <string name="qs_tile_battery">%1$d%%</string>
+    <string name="qs_tile_mode_battery">%1$s · %2$s</string>
     <string name="fw_card_title">LAN Firewall</string>
     <string name="fw_state_on">On</string>
     <string name="fw_state_off">Off</string>
@@ -338,6 +346,7 @@
     <string name="fw_logs_dialog_title">Firewall Block Logs</string>
     <string name="fw_logs_empty">No blocked events yet</string>
     <string name="fw_dialog_close">Close</string>
+    <string name="fw_allowlist_duplicate">This IP is already on the allowlist</string>
     <string name="fw_reason_non_private">Non-private IP rejected</string>
     <string name="fw_reason_banned">IP currently banned</string>
     <string name="fw_reason_cross_subnet">Cross-/24 subnet blocked</string>

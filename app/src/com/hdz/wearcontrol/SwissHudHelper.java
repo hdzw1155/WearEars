@@ -1,6 +1,7 @@
 package com.hdz.wearcontrol;
 
 import android.content.Context;
+import android.content.res.ColorStateList;
 import android.graphics.Typeface;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -28,6 +29,13 @@ public final class SwissHudHelper {
     public static final int COLOR_FOCUS_BLUE = 0xFF3B82F6;
     public static final int COLOR_TEXT = 0xFFFFFFFF;
     public static final int COLOR_TEXT_DIM = 0xFFB0B8C8;
+
+    private static final ColorStateList CONTROL_TEXT = new ColorStateList(
+            new int[][] {
+                    {android.R.attr.state_selected}, {android.R.attr.state_focused},
+                    {android.R.attr.state_pressed}, {}
+            },
+            new int[] {COLOR_TEXT, COLOR_TEXT, COLOR_TEXT, COLOR_TEXT_DIM});
 
     private static final float FOCUS_SCALE = 1.02f;
     private static final String HEADER_BRAND = "WEAREARS // HUD";
@@ -234,6 +242,7 @@ public final class SwissHudHelper {
         target.setFocusable(true);
         target.setFocusableInTouchMode(false);
         target.setBackgroundResource(R.drawable.bg_swiss_hud_focus);
+        if (target instanceof TextView) ((TextView) target).setTextColor(CONTROL_TEXT);
         target.setElevation(0f);
         target.setStateListAnimator(null);
 

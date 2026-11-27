@@ -40,13 +40,15 @@ final class ControlHub implements ConnectionOwner.Host, Transactions.Host, Featu
     private Runnable deferredReset;
     private String tileAddress;
     private int evidence = Controls.VERIF_UNTESTED;
+    private String driverBrand = "";
     ControlHub(Context app) {
         this.app = app;
         links = new ConnectionOwner(app, main, this);
-        LocalControlReceiver.setBridgeEnabled(AppPrefs.localIntentBridge(app));
     }
     DeviceState state() { return state; }
     int verifLevel() { return evidence; }
+    String driverBrand() { return driverBrand; }
+    String connectionStage() { return links.connectionStage(); }
     boolean isConnected() { return links.live() || (state.connected && state.parked); }
     boolean isBurstMode() {
         return DeviceForm.isPhone(app, AppPrefs.hostFormOverride(app)) && AppPrefs.phoneBurstMode(app);
@@ -185,6 +187,7 @@ final class ControlHub implements ConnectionOwner.Host, Transactions.Host, Featu
         }
         state.limitation = source.privateLink() ? "" : "standard";
         evidence = source.verifLevel();
+        driverBrand = source.brandName();
         TileStore.selectDevice(app, address, name, state.caps, state.potentialCaps, evidence);
         for (UiListener l : views()) l.onConnectionState(R.string.status_connecting, 0);
         return new SessionReports(this, source);
@@ -196,6 +199,7 @@ final class ControlHub implements ConnectionOwner.Host, Transactions.Host, Featu
         state.limitation = s.privateLink() ? "" : "standard";
         if (name != null && !name.isEmpty()) state.name = name;
         TileStore.saveName(app, state.name);
+        TileStore.noteQuickSettingsConnection(app, state.address, true);
         for (UiListener l : views()) l.onConnected(state.name);
         pushMeshStateIfHosting();
         if (transactions.busy()) transactions.connected();

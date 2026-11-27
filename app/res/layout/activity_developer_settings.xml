@@ -318,6 +318,28 @@
                     android:textSize="11sp" />
             </LinearLayout>
 
+            <LinearLayout
+                android:id="@+id/diagnostic_report_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_set_card"
+                android:orientation="vertical"
+                android:padding="14dp">
+
+                <TextView
+                    android:id="@+id/diagnostic_report_btn"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_set_choice"
+                    android:gravity="center"
+                    android:minHeight="34dp"
+                    android:padding="6dp"
+                    android:text="@string/diagnostic_report_title"
+                    android:textColor="@color/text_dim"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
             <TextView
                 android:id="@+id/dev_settings_hint"
                 android:layout_width="match_parent"

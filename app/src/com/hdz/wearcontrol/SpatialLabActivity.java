@@ -38,6 +38,8 @@ public class SpatialLabActivity extends Activity {
     private static final int PINNA_NOTCH_STEP_HZ = 250;
     private static final float VOL_CAP_GAIN = 0.25f; // -12 dBFS
     private static final long VOL_POLL_MS = 250L;
+    private static final long MANUAL_FADE_TIMEOUT_NS = 250_000_000L;
+    private static final Object AUDIO_OUTPUT_LOCK = new Object();
 
     private static final int[] SCENE_IDS = {
             R.id.spatial_scene_wide,
@@ -68,12 +70,9 @@ public class SpatialLabActivity extends Activity {
     private volatile int livePinnaNotchHz = WearEarsBinauralKernel.PINNA_NOTCH_DEFAULT_HZ;
     private volatile float liveCeilingGain = 1.0f;
 
-    // Audio playback lifecycle (guarded by audioLock)
-    private final Object audioLock = new Object();
-    private volatile boolean playing = false;
-    private volatile boolean stopRequested = false;
-    private Thread audioThread;
-    private AudioTrack activeTrack;
+    // Playback selection is main-thread owned. Each worker has its own cancellation token.
+    private PlaybackSession playback;
+    private boolean restartPlayback;
 
     // Rotary scroll accumulator for smooth 15° watch crown steps
     private float rotaryAccum = 0.0f;
@@ -82,7 +81,7 @@ public class SpatialLabActivity extends Activity {
         @Override
         public void run() {
             refreshVolumeSafety();
-            if (playing) {
+            if (isPlaybackRequested()) {
                 ui.postDelayed(this, VOL_POLL_MS);
             }
         }
@@ -152,7 +151,7 @@ public class SpatialLabActivity extends Activity {
                 @Override
                 public void onClick(View v) {
                     haptic(HapticFeedbackConstants.KEYBOARD_TAP);
-                    if (playing) {
+                    if (isPlaybackRequested()) {
                         stopPlayback(false);
                     } else {
                         startPlayback();
@@ -322,24 +321,21 @@ public class SpatialLabActivity extends Activity {
         haptic(HapticFeedbackConstants.CLOCK_TICK);
     }
 
+    private boolean isPlaybackRequested() {
+        return playback != null && (!playback.cancelled || restartPlayback);
+    }
+
     private void startPlayback() {
-        refreshVolumeSafety();
-        WearEarsSpatialEffect.get(this).setLabActive(this, true);
-        synchronized (audioLock) {
-            if (playing) {
-                return;
-            }
-            playing = true;
-            stopRequested = false;
-            Thread t = new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    runAudioLoop();
-                }
-            }, "WearEars-Binaural");
-            audioThread = t;
-            t.start();
+        if (playback != null) {
+            // Restart after the previous track has been released, even on rapid taps.
+            restartPlayback = true;
+            playback.cancel(true);
+            refreshPlayButton();
+            return;
         }
+        refreshVolumeSafety();
+        playback = new PlaybackSession();
+        playback.worker.start();
         refreshPlayButton();
         ui.removeCallbacks(volumePollTask);
         ui.postDelayed(volumePollTask, VOL_POLL_MS);
@@ -347,42 +343,56 @@ public class SpatialLabActivity extends Activity {
 
     private void stopPlayback(boolean immediate) {
         ui.removeCallbacks(volumePollTask);
-        Thread threadToJoin;
-        AudioTrack trackToInterrupt = null;
-        synchronized (audioLock) {
-            stopRequested = true;
-            if (immediate) {
-                playing = false;
-                trackToInterrupt = activeTrack;
-            }
-            threadToJoin = audioThread;
-        }
-        if (immediate && trackToInterrupt != null) {
-            try {
-                trackToInterrupt.pause();
-                trackToInterrupt.flush();
-                trackToInterrupt.stop();
-            } catch (RuntimeException ignored) {
-            }
-        }
-        if (threadToJoin != null && threadToJoin != Thread.currentThread()) {
-            try {
-                threadToJoin.join(immediate ? 400L : 250L);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
-        synchronized (audioLock) {
-            if (audioThread == threadToJoin) {
-                playing = false;
-                audioThread = null;
-            }
-        }
-        WearEarsSpatialEffect.get(this).setLabActive(this, false);
+        restartPlayback = false;
+        if (playback != null) playback.cancel(immediate);
         refreshPlayButton();
     }
 
-    private void runAudioLoop() {
+    private final class PlaybackSession {
+        final Thread worker = new Thread(() -> runPlayback(this), "WearEars-Binaural");
+        volatile boolean cancelled;
+        private volatile long stopDeadlineNs;
+        // Owned exclusively by this session's audio thread.
+        private AudioTrack track;
+
+        void cancel(boolean immediate) {
+            if (immediate || !cancelled) {
+                stopDeadlineNs = System.nanoTime() + (immediate ? 0L : MANUAL_FADE_TIMEOUT_NS);
+                cancelled = true;
+            }
+            if (immediate) worker.interrupt();
+        }
+
+        boolean shouldStopNow() {
+            return worker.isInterrupted() || (cancelled && System.nanoTime() - stopDeadlineNs >= 0);
+        }
+    }
+
+    private void runPlayback(PlaybackSession session) {
+        try {
+            // Only audio workers acquire this lock, including after Activity recreation.
+            synchronized (AUDIO_OUTPUT_LOCK) {
+                if (session.cancelled) return;
+                WearEarsSpatialEffect effect = WearEarsSpatialEffect.get(this);
+                try {
+                    effect.setLabActive(this, true);
+                    runAudioLoop(session);
+                } finally {
+                    releaseTrack(session.track);
+                    session.track = null;
+                    effect.setLabActive(this, false);
+                }
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        } catch (RuntimeException error) {
+            Log.w(TAG, "AudioTrack playback error", error);
+        } finally {
+            ui.post(() -> onPlaybackFinished(session));
+        }
+    }
+
+    private void runAudioLoop(PlaybackSession session) throws InterruptedException {
         try {
             Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO);
         } catch (RuntimeException ignored) {
@@ -394,17 +404,9 @@ public class SpatialLabActivity extends Activity {
                 sampleRate, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT);
         if (minBuf <= 0) {
             Log.w(TAG, "AudioTrack minBufferSize invalid: " + minBuf);
-            synchronized (audioLock) {
-                if (audioThread == Thread.currentThread()) {
-                    playing = false;
-                    audioThread = null;
-                }
-            }
-            WearEarsSpatialEffect.get(this).setLabActive(this, false);
-            notifyAudioStoppedOnUi();
             return;
         }
-        final int bufBytes = Math.max(minBuf, block * 4 * 4); // >= 4 stereo blocks (~21 ms)
+        final int bufBytes = Math.max(minBuf, block * 4 * 4);
 
         AudioAttributes.Builder attrBuilder = new AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -419,115 +421,91 @@ public class SpatialLabActivity extends Activity {
                 .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                 .build();
 
-        AudioTrack track = null;
-        try {
-            track = new AudioTrack.Builder()
-                    .setAudioAttributes(attrBuilder.build())
-                    .setAudioFormat(format)
-                    .setBufferSizeInBytes(bufBytes)
-                    .setTransferMode(AudioTrack.MODE_STREAM)
-                    .build();
+        AudioTrack track = new AudioTrack.Builder()
+                .setAudioAttributes(attrBuilder.build())
+                .setAudioFormat(format)
+                .setBufferSizeInBytes(bufBytes)
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .build();
+        session.track = track;
+        if (track.getState() != AudioTrack.STATE_INITIALIZED) {
+            Log.w(TAG, "AudioTrack failed to initialize");
+            return;
+        }
 
-            if (track.getState() != AudioTrack.STATE_INITIALIZED) {
-                Log.w(TAG, "AudioTrack failed to initialize");
-                return;
+        WearEarsBinauralKernel kernel = new WearEarsBinauralKernel();
+        kernel.setAzimuthDeg(liveAzimuthDeg);
+        kernel.setScene(liveScene);
+        kernel.setHeadWidthPct(liveHeadWidthPct);
+        kernel.setPinnaNotchHz(livePinnaNotchHz);
+        kernel.setOutputGainCeiling(liveCeilingGain);
+        kernel.reset();
+        kernel.resetAuditionGenerator();
+        kernel.fadeIn();
+
+        float[] mono = new float[block];
+        float[] outL = new float[block];
+        float[] outR = new float[block];
+        short[] pcm = new short[block * 2];
+
+        if (session.cancelled) return;
+        track.play();
+        boolean fadingOut = false;
+        while (!session.shouldStopNow()) {
+            if (session.cancelled && !fadingOut) {
+                kernel.fadeOut();
+                fadingOut = true;
             }
 
-            synchronized (audioLock) {
-                if (!playing || stopRequested) {
-                    return;
-                }
-                activeTrack = track;
-            }
-
-            WearEarsBinauralKernel kernel = new WearEarsBinauralKernel();
             kernel.setAzimuthDeg(liveAzimuthDeg);
             kernel.setScene(liveScene);
             kernel.setHeadWidthPct(liveHeadWidthPct);
             kernel.setPinnaNotchHz(livePinnaNotchHz);
             kernel.setOutputGainCeiling(liveCeilingGain);
-            kernel.reset();
-            kernel.resetAuditionGenerator();
-            kernel.fadeIn();
+            kernel.fillAuditionSource(mono, block, WearEarsBinauralKernel.AUDITION_CHORD_TEXTURE);
+            kernel.processMono(mono, outL, outR, block);
 
-            // Pre-allocated zero-GC audio buffers
-            float[] mono = new float[block];
-            float[] outL = new float[block];
-            float[] outR = new float[block];
-            short[] pcm = new short[block * 2];
-
-            track.play();
-            boolean fadingOut = false;
-
-            while (playing) {
-                if (stopRequested && !fadingOut) {
-                    kernel.fadeOut();
-                    fadingOut = true;
-                }
-
-                kernel.setAzimuthDeg(liveAzimuthDeg);
-                kernel.setScene(liveScene);
-                kernel.setHeadWidthPct(liveHeadWidthPct);
-                kernel.setPinnaNotchHz(livePinnaNotchHz);
-                kernel.setOutputGainCeiling(liveCeilingGain);
-
-                kernel.fillAuditionSource(mono, block, WearEarsBinauralKernel.AUDITION_CHORD_TEXTURE);
-                kernel.processMono(mono, outL, outR, block);
-
-                for (int i = 0; i < block; i++) {
-                    pcm[i * 2] = floatToPcm16(outL[i]);
-                    pcm[i * 2 + 1] = floatToPcm16(outR[i]);
-                }
-
-                int written = track.write(pcm, 0, pcm.length, AudioTrack.WRITE_BLOCKING);
-                if (written < 0) {
-                    break;
-                }
-                if (fadingOut && kernel.isFadedOut()) {
-                    break;
-                }
+            for (int i = 0; i < block; i++) {
+                pcm[i * 2] = floatToPcm16(outL[i]);
+                pcm[i * 2 + 1] = floatToPcm16(outR[i]);
             }
-        } catch (RuntimeException e) {
-            Log.w(TAG, "AudioTrack playback error", e);
-        } finally {
-            if (track != null) {
-                try {
-                    track.pause();
-                    track.flush();
-                    track.stop();
-                } catch (RuntimeException ignored) {
-                }
-                try {
-                    track.release();
-                } catch (RuntimeException ignored) {
-                }
+
+            // Non-blocking writes let cancellation reach the owning worker even on a stalled track.
+            int offset = 0;
+            while (offset < pcm.length && !session.shouldStopNow()) {
+                int written = track.write(pcm, offset, pcm.length - offset, AudioTrack.WRITE_NON_BLOCKING);
+                if (written < 0) return;
+                if (written == 0) Thread.sleep(4L);
+                offset += written;
             }
-            boolean isCurrent;
-            synchronized (audioLock) {
-                if (activeTrack == track) {
-                    activeTrack = null;
-                }
-                isCurrent = (audioThread == Thread.currentThread());
-                if (isCurrent) {
-                    playing = false;
-                    audioThread = null;
-                }
-            }
-            if (isCurrent) {
-                WearEarsSpatialEffect.get(SpatialLabActivity.this).setLabActive(SpatialLabActivity.this, false);
-                notifyAudioStoppedOnUi();
-            }
+            if (fadingOut && kernel.isFadedOut()) break;
         }
     }
 
-    private void notifyAudioStoppedOnUi() {
-        ui.post(new Runnable() {
-            @Override
-            public void run() {
-                ui.removeCallbacks(volumePollTask);
-                refreshPlayButton();
-            }
-        });
+    private static void releaseTrack(AudioTrack track) {
+        if (track == null) return;
+        try {
+            track.pause();
+            track.flush();
+            track.stop();
+        } catch (RuntimeException ignored) {
+        }
+        try {
+            track.release();
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    private void onPlaybackFinished(PlaybackSession session) {
+        if (playback != session) return;
+        playback = null;
+        ui.removeCallbacks(volumePollTask);
+        if (restartPlayback) {
+            restartPlayback = false;
+            startPlayback();
+        } else if (!isDestroyed()) {
+            refreshPlayButton();
+        }
     }
 
     /**
@@ -605,7 +583,7 @@ public class SpatialLabActivity extends Activity {
     }
 
     private void refreshPlayButton() {
-        boolean active = playing && !stopRequested;
+        boolean active = isPlaybackRequested();
         if (playBtn != null) {
             playBtn.setText(active ? R.string.spatial_lab_stop : R.string.spatial_lab_play);
             if (active) {

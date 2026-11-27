@@ -454,6 +454,27 @@ public final class LocalMeshChecks {
         check(fw.checkCommand(clientIp, LocalMeshProtocol.Frame.cmdNoise(Controls.MODE_OFF)).allowed,
                 "CMD_NOISE allowed when readOnlyMode=false");
 
+        fw.configure(false, false, false, true);
+        int blockedBefore = fw.blockedCount();
+        LocalMeshFirewall.Decision filterOff = fw.checkCommand(clientIp,
+                LocalMeshProtocol.Frame.cmdNoise(Controls.MODE_TRANS));
+        check(!filterOff.allowed && LocalMeshFirewall.REASON_READ_ONLY_MODE.equals(filterOff.reasonCode),
+                "read-only blocks noise writes with the network filter off");
+        check(!fw.checkCommand(clientIp, LocalMeshProtocol.Frame.cmdFeature(FeatureId.WIND_REDUCTION, 1)).allowed,
+                "read-only blocks feature writes with the network filter off");
+        List<LocalMeshFirewall.AuditEvent> readOnlyEvents = fw.recentEvents();
+        check(fw.blockedCount() == blockedBefore + 2
+                        && LocalMeshFirewall.AUDIT_READ_ONLY_BLOCKED.equals(
+                                readOnlyEvents.get(readOnlyEvents.size() - 1).reason),
+                "read-only blocks increment the counter and record READ_ONLY_BLOCKED");
+        check(fw.checkCommand(clientIp, LocalMeshProtocol.Frame.cmdRefresh()).allowed,
+                "read-only allows refresh with the network filter off");
+        check(fw.checkCommand(clientIp, LocalMeshProtocol.Frame.simple(LocalMeshProtocol.FrameType.PING)).allowed,
+                "read-only allows ping with the network filter off");
+        check(fw.checkCommand(clientIp, LocalMeshProtocol.Frame.simple(LocalMeshProtocol.FrameType.PONG)).allowed,
+                "read-only allows pong with the network filter off");
+        fw.configure(true, true, false, false);
+
         // 8. Command rate limit: 20 per 10s
         now.addAndGet(20_000L);
         String cmdIp = "192.168.1.96";
@@ -476,6 +497,10 @@ public final class LocalMeshChecks {
         LocalMeshFirewall.Decision fbOff = fw.checkCommand(cmdIp, findBudsFrame);
         check(!fbOff.allowed && LocalMeshFirewall.REASON_FIND_BUDS_HARD_BLOCK.equals(fbOff.reasonCode),
                 "FIND_MY_BUDS STILL hard-blocked when fw disabled");
+        fw.setReadOnlyMode(true);
+        check(LocalMeshFirewall.REASON_FIND_BUDS_HARD_BLOCK.equals(fw.checkCommand(cmdIp, findBudsFrame).reasonCode),
+                "FIND_MY_BUDS takes priority over read-only");
+        fw.setReadOnlyMode(false);
         LocalMeshFirewall.Decision disallowedFeat = fw.checkCommand(cmdIp,
                 LocalMeshProtocol.Frame.cmdFeature(FeatureId.WEAR_DETECTION, 1));
         check(!disallowedFeat.allowed && LocalMeshFirewall.REASON_DISALLOWED_FEATURE.equals(disallowedFeat.reasonCode),

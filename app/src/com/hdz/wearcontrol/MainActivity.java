@@ -163,9 +163,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
 
         @Override public void onClientDisconnected(String reason) {
             if (!resumed || curMeshMode != LocalMeshManager.MODE_CLIENT) return;
-            meshClientConnected = false;
-            remoteState.disconnect();
-            renderPanels();
+            resetMeshClientState();
             setChip(getString(R.string.chip_mesh_client));
             setState(R.string.status_mesh_disconnected, colIdle(), true, false,
                     reason == null ? "" : reason);
@@ -173,9 +171,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
 
         @Override public void onClientError(String reason) {
             if (!resumed || curMeshMode != LocalMeshManager.MODE_CLIENT) return;
-            meshClientConnected = false;
-            remoteState.disconnect();
-            renderPanels();
+            resetMeshClientState();
             setChip(getString(R.string.chip_mesh_client));
             setState(R.string.status_mesh_disconnected, colWarn(), false, false,
                     getString(R.string.sub_mesh_error, reason == null ? "" : reason));
@@ -209,7 +205,6 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        LocalControlReceiver.setBridgeEnabled(AppPrefs.localIntentBridge(this));
         curUiStyle = AppPrefs.uiStyle(this);
         curLang = AppPrefs.lang(this);
         int formOverride = AppPrefs.hostFormOverride(this);
@@ -674,7 +669,6 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
     @Override
     protected void onResume() {
         super.onResume();
-        LocalControlReceiver.setBridgeEnabled(AppPrefs.localIntentBridge(this));
         // 设置页可能改了界面风格/语言/显示形态/多端协同模式: 回到主界面时重建一次, 立即生效
         int style = AppPrefs.uiStyle(this);
         String lang = AppPrefs.lang(this);
@@ -715,7 +709,12 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
         if (dot != null) dot.setBreathing(false);
         if (curMeshMode != LocalMeshManager.MODE_OFF) {
             LocalMeshManager.get(this).stopAll();
-            meshClientConnected = false;
+            if (curMeshMode == LocalMeshManager.MODE_CLIENT) {
+                resetMeshClientState();
+            } else {
+                meshHostPort = 0;
+                meshHostClients = 0;
+            }
         }
         if (client != null) {
             client.removeListener(this);
@@ -962,6 +961,7 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
     private void setMode(int mode) {
         haptic(HapticFeedbackConstants.KEYBOARD_TAP);
         if (curMeshMode == LocalMeshManager.MODE_CLIENT) {
+            if (meshClientConnected && !remoteState.connected) return;
             if (!meshClientConnected || !LocalMeshManager.get(this).sendNoise(mode)) {
                 showTempSub(getString(R.string.sub_not_connected), TEMP_SUB_MS);
                 connectMeshClient();
@@ -1022,17 +1022,19 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
     }
 
     private void connectMeshClient() {
+        if (!resumed) return;
+        resetMeshClientState();
         if (!AppPrefs.hasDisclaimer(this)) {
+            LocalMeshManager.get(this).stopAll();
+            renderPanels();
             showDisclaimerDialog(true);
             return;
         }
-        if (!resumed) return;
         String ip = AppPrefs.meshHostIp(this);
         int port = AppPrefs.meshHostPort(this);
         String pin = AppPrefs.meshPin(this);
         if (!LocalMeshProtocol.isPrivateLanAddress(ip) || !LocalMeshProtocol.isValidPin(pin)) {
-            meshClientConnected = false;
-            remoteState.disconnect();
+            LocalMeshManager.get(this).stopAll();
             setChip(getString(R.string.chip_mesh_client));
             setState(R.string.status_mesh_unconfigured, colWarn(), false, false,
                     getString(R.string.sub_mesh_open_settings));
@@ -1043,9 +1045,15 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
         LocalMeshManager.get(this).connectClient(ip, port, pin, meshClientListener);
     }
 
+    private void resetMeshClientState() {
+        meshClientConnected = false;
+        meshRemoteHostName = "";
+        // begin() clears the remembered name, potential caps and presets as well as live values.
+        remoteState.begin("", "", 0, 0);
+    }
+
     private void applyRemoteSnapshot(LocalMeshProtocol.StateSnapshot snap) {
         if (snap == null) return;
-        remoteState.disconnect();
         if (snap.connected) {
             remoteState.begin("lan-mesh", snap.deviceName, snap.caps, snap.caps);
             remoteState.connected = true;
@@ -1103,11 +1111,9 @@ public class MainActivity extends Activity implements TwsClient.Listener, Contro
             setState(snap.parked ? R.string.status_parked : R.string.status_mesh_connected,
                     colOk(), false, false, label);
         } else {
+            remoteState.begin("", "", 0, 0);
             setChip(getString(R.string.chip_mesh_client));
             setState(R.string.status_mesh_connected, colIdle(), true, false, meshRemoteHostName);
-        }
-        if (hudMode && hudRoot != null) {
-            SwissHudHelper.applyFocusTree(this, hudRoot);
         }
     }
 

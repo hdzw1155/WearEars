@@ -25,6 +25,7 @@ final class TileStore {
     private static final String KEY_BATT_TOTAL = "tile_batt_total";
     private static final String KEY_CHARGE = "tile_charge";
     private static final String KEY_MODE = "tile_mode";
+    private static final String KEY_QS_CONNECTED = "qs_tile_connected";
     /** 最近一次连接的驱动能力位: 磁贴靠它决定显示哪些区 */
     private static final String KEY_CAPS = "tile_caps";
     /** 最近一次连接的驱动验证等级 */
@@ -81,6 +82,28 @@ final class TileStore {
                 TileSnapshot.UNKNOWN, TileSnapshot.UNKNOWN, TileSnapshot.UNKNOWN,
                 TileSnapshot.UNKNOWN, TileSnapshot.UNKNOWN, TileSnapshot.UNKNOWN,
                 0, TwsClient.VERIF_UNTESTED);
+    }
+
+    /** Quick Settings renders the last observed link state and the confirmed snapshot. */
+    static synchronized TileSnapshot readForQuickSettings(Context ctx) {
+        TileSnapshot snapshot = readOrEmpty(ctx);
+        try {
+            String pinned = AppPrefs.deviceAddress(ctx);
+            boolean connected = prefs(ctx).getBoolean(KEY_QS_CONNECTED, false)
+                    && (pinned.isEmpty() || pinned.equalsIgnoreCase(deviceAddress(ctx)));
+            return snapshot.forConnection(connected ? LinkState.CONNECTED : LinkState.DISCONNECTED);
+        } catch (RuntimeException unreadable) {
+            return snapshot.forConnection(LinkState.UNKNOWN);
+        }
+    }
+
+    /** Records an observation from the existing control session or a system Bluetooth event. */
+    static synchronized void noteQuickSettingsConnection(Context ctx, String address, boolean connected) {
+        SharedPreferences prefs = prefs(ctx);
+        if (address != null && (address.isEmpty() || !address.equalsIgnoreCase(deviceAddress(ctx)))) return;
+        if (prefs.getBoolean(KEY_QS_CONNECTED, false) != connected) {
+            prefs.edit().putBoolean(KEY_QS_CONNECTED, connected).apply();
+        }
     }
 
     /**
@@ -189,7 +212,7 @@ final class TileStore {
         boolean sameDevice = address.equals(p.getString("tile_address", ""));
         if (!sameDevice) {
             e.remove(KEY_BATT_L).remove(KEY_BATT_R).remove(KEY_BATT_C).remove(KEY_BATT_TOTAL)
-                    .remove(KEY_CHARGE).remove(KEY_MODE).remove(KEY_LAST_OK)
+                    .remove(KEY_CHARGE).remove(KEY_MODE).remove(KEY_LAST_OK).remove(KEY_QS_CONNECTED)
                     .remove("tile_pending").remove("tile_pending_until");
         } else {
             caps = TileSnapshot.displayCaps(p.getInt(KEY_CAPS, 0), caps, potentialCaps);

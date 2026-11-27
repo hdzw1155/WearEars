@@ -276,6 +276,8 @@
     <string name="settings_mesh_pick_host">扫描局域网主机 / 手动连接</string>
     <string name="settings_mesh_scan_title">扫描局域网主机</string>
     <string name="settings_mesh_scanning">正在监听局域网广播（UDP 19846）…</string>
+    <string name="settings_mesh_scan_paused">扫描已暂停，返回此页后自动继续。</string>
+    <string name="settings_mesh_scan_failed">扫描未能启动。请重新打开扫描，或手动连接。</string>
     <string name="settings_mesh_manual_btn">手动输入</string>
     <string name="settings_mesh_manual_title">手动连接局域网主机</string>
     <string name="settings_mesh_ip_hint">主机局域网 IP（如 192.168.1.8）</string>
@@ -311,6 +313,12 @@
     <string name="settings_dev_options_summary">局域网协同：%1$s · 防火墙：%2$s</string>
     <string name="settings_dev_options_enter">局域网协同 · 防火墙 · 联动 →</string>
     <string name="dev_settings_title">开发者选项</string>
+    <string name="diagnostic_report_title">诊断报告（已脱敏）</string>
+    <string name="diagnostic_report_copy">复制报告</string>
+    <string name="diagnostic_report_copied">诊断报告已复制</string>
+    <string name="qs_tile_label">WearEars</string>
+    <string name="qs_tile_battery">%1$d%%</string>
+    <string name="qs_tile_mode_battery">%1$s · %2$s</string>
     <string name="fw_card_title">内网防火墙</string>
     <string name="fw_state_on">开启</string>
     <string name="fw_state_off">关闭</string>
@@ -341,6 +349,7 @@
     <string name="fw_logs_dialog_title">防火墙拦截日志</string>
     <string name="fw_logs_empty">暂无拦截记录</string>
     <string name="fw_dialog_close">关闭</string>
+    <string name="fw_allowlist_duplicate">此 IP 已在白名单中</string>
     <string name="fw_reason_non_private">非私有局域网 IP 拒访</string>
     <string name="fw_reason_banned">IP 处于封禁期内</string>
     <string name="fw_reason_cross_subnet">跨子网 /24 拦截</string>

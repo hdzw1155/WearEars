@@ -38,6 +38,7 @@ public final class LocalMeshFirewall {
     public static final String REASON_READ_ONLY_MODE = "READ_ONLY_MODE";
     public static final String REASON_CMD_RATE_LIMIT = "CMD_RATE_LIMIT";
     public static final String REASON_INVALID_FRAME = "INVALID_FRAME";
+    public static final String AUDIT_READ_ONLY_BLOCKED = "READ_ONLY_BLOCKED";
 
     private static final int MAX_TRACKED_IPS = 128;
 
@@ -224,24 +225,35 @@ public final class LocalMeshFirewall {
     public synchronized Decision checkIncomingConnection(String remoteIp, String localIp) {
         long now = clockMs.getAsLong();
         String ip = normalizeIp(remoteIp);
+        String reason = networkBlockReason(ip, localIp, now);
+        if (reason != null) return denyAndRecord(now, ip.isEmpty() ? "unknown" : ip, reason);
+        if (enabled && !consumeRateSlotLocked(connTimes, ip, now, MAX_CONNS_PER_10S)) {
+            return denyAndRecord(now, ip, REASON_CONN_RATE_LIMIT);
+        }
+        return Decision.allow();
+    }
+
+    /** Revalidates an established or authenticating peer without spending another connection slot. */
+    public synchronized boolean allowsPeer(String remoteIp, String localIp) {
+        return networkBlockReason(normalizeIp(remoteIp), localIp, clockMs.getAsLong()) == null;
+    }
+
+    private String networkBlockReason(String ip, String localIp, long now) {
         if (!LocalMeshProtocol.isPrivateLanAddress(ip)) {
-            return denyAndRecord(now, ip.isEmpty() ? "unknown" : ip, REASON_NON_PRIVATE_IP);
+            return REASON_NON_PRIVATE_IP;
         }
         if (isBannedLocked(ip, now)) {
-            return denyAndRecord(now, ip, REASON_IP_BANNED);
+            return REASON_IP_BANNED;
         }
         if (enabled) {
             if (sameSubnetOnly && !isSameSubnet24(ip, normalizeIp(localIp))) {
-                return denyAndRecord(now, ip, REASON_CROSS_SUBNET);
+                return REASON_CROSS_SUBNET;
             }
             if (allowlistOnly && !allowlist.contains(ip)) {
-                return denyAndRecord(now, ip, REASON_NOT_IN_ALLOWLIST);
-            }
-            if (!consumeRateSlotLocked(connTimes, ip, now, MAX_CONNS_PER_10S)) {
-                return denyAndRecord(now, ip, REASON_CONN_RATE_LIMIT);
+                return REASON_NOT_IN_ALLOWLIST;
             }
         }
-        return Decision.allow();
+        return null;
     }
 
     /**
@@ -280,11 +292,20 @@ public final class LocalMeshFirewall {
 
     /**
      * Checks an authenticated inbound command frame:
-     * - Always hard-blocks FIND_MY_BUDS (and disallowed remote features), even if enabled == false.
-     * - When enabled: rejects banned IPs, allows only CMD_REFRESH / PING / PONG in readOnlyMode,
-     *   and enforces MAX_CMDS_PER_10S per 10s window.
+     * - Always hard-blocks FIND_MY_BUDS and disallowed remote features.
+     * - Read-only mode independently allows only CMD_REFRESH / PING / PONG.
+     * - The network filter rejects banned IPs and enforces MAX_CMDS_PER_10S per 10s window.
      */
     public synchronized Decision checkCommand(String remoteIp, LocalMeshProtocol.Frame frame) {
+        return checkCommand(remoteIp, frame, true);
+    }
+
+    /** Rechecks an accepted command at dispatch time using its original rate slot. */
+    synchronized Decision recheckCommand(String remoteIp, LocalMeshProtocol.Frame frame) {
+        return checkCommand(remoteIp, frame, false);
+    }
+
+    private Decision checkCommand(String remoteIp, LocalMeshProtocol.Frame frame, boolean consumeRateSlot) {
         long now = clockMs.getAsLong();
         String ip = normalizeIp(remoteIp);
         String logIp = ip.isEmpty() ? "unknown" : ip;
@@ -293,25 +314,24 @@ public final class LocalMeshFirewall {
         }
 
         // Unconditional hearing-safety hard redline: FIND_MY_BUDS is NEVER allowed over LAN.
-        if (frame.type == LocalMeshProtocol.FrameType.CMD_FEATURE) {
-            if (frame.featureId == FeatureId.FIND_MY_BUDS) {
-                return denyAndRecord(now, logIp, REASON_FIND_BUDS_HARD_BLOCK);
-            }
-            if (!LocalMeshProtocol.isAllowedRemoteFeature(frame.featureId)) {
-                return denyAndRecord(now, logIp, REASON_DISALLOWED_FEATURE);
-            }
+        if (frame.type == LocalMeshProtocol.FrameType.CMD_FEATURE && frame.featureId == FeatureId.FIND_MY_BUDS) {
+            return denyAndRecord(now, logIp, REASON_FIND_BUDS_HARD_BLOCK);
+        }
+        if (readOnlyMode && frame.type != LocalMeshProtocol.FrameType.CMD_REFRESH
+                && frame.type != LocalMeshProtocol.FrameType.PING
+                && frame.type != LocalMeshProtocol.FrameType.PONG) {
+            return denyAndRecord(now, logIp, REASON_READ_ONLY_MODE);
+        }
+        if (frame.type == LocalMeshProtocol.FrameType.CMD_FEATURE
+                && !LocalMeshProtocol.isAllowedRemoteFeature(frame.featureId)) {
+            return denyAndRecord(now, logIp, REASON_DISALLOWED_FEATURE);
         }
 
         if (enabled) {
             if (!ip.isEmpty() && isBannedLocked(ip, now)) {
                 return denyAndRecord(now, logIp, REASON_IP_BANNED);
             }
-            if (readOnlyMode && frame.type != LocalMeshProtocol.FrameType.CMD_REFRESH
-                    && frame.type != LocalMeshProtocol.FrameType.PING
-                    && frame.type != LocalMeshProtocol.FrameType.PONG) {
-                return denyAndRecord(now, logIp, REASON_READ_ONLY_MODE);
-            }
-            if (!consumeRateSlotLocked(cmdTimes, logIp, now, MAX_CMDS_PER_10S)) {
+            if (consumeRateSlot && !consumeRateSlotLocked(cmdTimes, logIp, now, MAX_CMDS_PER_10S)) {
                 return denyAndRecord(now, logIp, REASON_CMD_RATE_LIMIT);
             }
         }
@@ -366,7 +386,7 @@ public final class LocalMeshFirewall {
 
     private Decision denyAndRecord(long now, String ip, String reason) {
         blockedTotal++;
-        appendAuditLocked(now, ip, reason);
+        appendAuditLocked(now, ip, REASON_READ_ONLY_MODE.equals(reason) ? AUDIT_READ_ONLY_BLOCKED : reason);
         return Decision.deny(reason);
     }
 
